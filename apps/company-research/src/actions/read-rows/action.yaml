@@ -1,0 +1,8 @@
+name: company_research_read_rows
+type: custom
+description: Read rows from company-research typed tables 4-12 with optional filtering conditions
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: read-only

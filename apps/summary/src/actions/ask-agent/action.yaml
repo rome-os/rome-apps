@@ -1,0 +1,8 @@
+name: summary_ask_agent
+type: custom
+description: Invokes the Summary agent with a freeform prompt. Used internally by the generate-summary action.
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

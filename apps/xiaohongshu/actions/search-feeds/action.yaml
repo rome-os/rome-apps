@@ -1,0 +1,8 @@
+name: xiaohongshu_search_feeds
+type: custom
+description: Search Xiaohongshu notes with optional filters
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

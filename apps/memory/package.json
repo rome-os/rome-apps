@@ -1,0 +1,5 @@
+{
+  "name": "@rome/app-memory",
+  "private": true,
+  "type": "module"
+}

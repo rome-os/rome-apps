@@ -1,0 +1,8 @@
+name: audit_domain
+type: custom
+description: Run a full CITE domain authority audit with 40-item scoring, veto checks, and prioritized action plan
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: high
+sideEffects: write

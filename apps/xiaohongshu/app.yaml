@@ -1,0 +1,23 @@
+formatVersion: 1
+id: xiaohongshu
+version: 0.2.1
+description: Xiaohongshu browser automation actions
+
+actions:
+  - actions/list-feeds
+  - actions/search-feeds
+  - actions/get-feed-detail
+  - actions/user-profile
+  - actions/post-comment
+  - actions/reply-comment
+  - actions/like-feed
+  - actions/favorite-feed
+  - actions/publish
+  - actions/publish-video
+  - actions/fill-publish
+  - actions/fill-publish-video
+  - actions/click-publish
+  - actions/save-draft
+  - actions/long-article
+  - actions/select-template
+  - actions/next-step

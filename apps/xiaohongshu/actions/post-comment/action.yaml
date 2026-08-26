@@ -1,0 +1,8 @@
+name: xiaohongshu_post_comment
+type: custom
+description: Post a comment on a Xiaohongshu note
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

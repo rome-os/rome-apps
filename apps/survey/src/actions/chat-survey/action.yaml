@@ -1,0 +1,9 @@
+name: survey_chat_survey
+type: custom
+description: >
+  Run one turn of the consumer survey chat. The survey-chat agent asks
+  questions, renders rich UI components, and collects structured answers.
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

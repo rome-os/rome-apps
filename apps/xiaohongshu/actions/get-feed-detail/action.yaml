@@ -1,0 +1,8 @@
+name: xiaohongshu_get_feed_detail
+type: custom
+description: Get a Xiaohongshu note detail page and comments
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: read-only

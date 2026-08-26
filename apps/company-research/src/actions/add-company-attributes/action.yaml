@@ -1,0 +1,8 @@
+name: company_research_add_company_attributes
+type: custom
+description: Insert one company_attributes row with optional provenance
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

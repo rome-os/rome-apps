@@ -1,0 +1,8 @@
+name: check_technical
+type: custom
+description: Run a technical SEO health check for a given URL or domain
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

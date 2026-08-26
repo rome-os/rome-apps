@@ -1,0 +1,8 @@
+name: xiaohongshu_favorite_feed
+type: custom
+description: Favorite or unfavorite a Xiaohongshu note
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

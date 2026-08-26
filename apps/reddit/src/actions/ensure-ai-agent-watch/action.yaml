@@ -1,0 +1,8 @@
+name: ensure_ai_agent_watch
+type: custom
+description: Ensure the Reddit AI agent scan is scheduled to run every 3 hours
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

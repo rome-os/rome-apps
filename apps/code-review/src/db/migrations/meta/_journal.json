@@ -1,0 +1,104 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1778527418274,
+      "tag": "0000_cold_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778613818274,
+      "tag": "0001_add_repositories",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1778700218274,
+      "tag": "0002_pr_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1778786618274,
+      "tag": "0003_webhook_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1778873018274,
+      "tag": "0004_add_head_sha",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1778959418274,
+      "tag": "0005_trigger_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1779045818274,
+      "tag": "0006_stage_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783153677865,
+      "tag": "0007_manual_trigger_allowlist",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783175044564,
+      "tag": "0008_manual_trigger_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784136347400,
+      "tag": "0009_pr_review_rome_session",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785000000000,
+      "tag": "0010_agentic_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785100000000,
+      "tag": "0011_summary_trigger_phrase",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1785585600000,
+      "tag": "0012_rereview_lock_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1785587400000,
+      "tag": "0013_drop_pr_review_lock_idx",
+      "breakpoints": true
+    }
+  ]
+}

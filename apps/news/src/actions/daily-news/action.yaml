@@ -1,0 +1,8 @@
+name: daily_news
+type: custom
+description: Fetches top news and sends a morning digest to the guardian via Telegram
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: medium
+sideEffects: write

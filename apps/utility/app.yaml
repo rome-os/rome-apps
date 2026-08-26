@@ -1,0 +1,12 @@
+formatVersion: 1
+id: utility
+version: 1.0.0
+description: Apache-licensed skills for visual design, frontend development, MCP and skill authoring, web artifacts, and browser testing
+
+skills:
+  - skills/canvas-design
+  - skills/frontend-design
+  - skills/mcp-builder
+  - skills/skill-creator
+  - skills/web-artifacts-builder
+  - skills/webapp-testing

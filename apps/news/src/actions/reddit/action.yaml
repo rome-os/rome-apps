@@ -1,0 +1,8 @@
+name: reddit
+type: custom
+description: Search or browse Reddit
+entry: ./index.ts
+complexity: simple
+speed: moderate
+reliability: medium
+sideEffects: read-only

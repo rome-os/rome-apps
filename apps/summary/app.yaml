@@ -1,0 +1,24 @@
+formatVersion: 1
+id: summary
+version: 0.2.1
+description: Work summary generator — aggregates webchat conversations, channel messages, and GitHub activity into structured reports by project.
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: Summary
+  navLabel: Summary
+
+db:
+  migrations: db/migrations
+  tablePrefix: summary
+
+api:
+  entry: api/index
+
+actions:
+  - actions/generate-summary
+  - actions/ask-agent
+
+agents:
+  - agents/summary.yaml

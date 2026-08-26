@@ -1,0 +1,8 @@
+name: company_research_add_job_post
+type: custom
+description: Insert one job_posts row with optional provenance
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

@@ -1,0 +1,8 @@
+name: linkedin_search_conversations
+type: custom
+description: Search LinkedIn messaging conversations by keyword
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

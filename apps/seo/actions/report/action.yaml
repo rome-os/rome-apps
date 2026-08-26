@@ -1,0 +1,8 @@
+name: report
+type: custom
+description: Generate a comprehensive SEO and GEO performance report
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: medium
+sideEffects: write

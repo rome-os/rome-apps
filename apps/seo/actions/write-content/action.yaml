@@ -1,0 +1,8 @@
+name: write_content
+type: custom
+description: Write SEO and GEO optimized content from a topic and target keyword
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

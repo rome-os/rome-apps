@@ -1,0 +1,8 @@
+name: optimize_meta
+type: custom
+description: Optimize title tags, meta descriptions, and Open Graph tags for a page
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

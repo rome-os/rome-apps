@@ -1,0 +1,18 @@
+formatVersion: 1
+id: linkedin
+version: 0.2.1
+description: LinkedIn browser automation actions
+
+actions:
+  - actions/get-person-profile
+  - actions/search-people
+  - actions/connect-with-person
+  - actions/get-sidebar-profiles
+  - actions/get-company-profile
+  - actions/get-company-posts
+  - actions/get-job-details
+  - actions/search-jobs
+  - actions/get-inbox
+  - actions/get-conversation
+  - actions/search-conversations
+  - actions/send-message

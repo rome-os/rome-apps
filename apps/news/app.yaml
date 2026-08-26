@@ -1,0 +1,22 @@
+formatVersion: 1
+id: news
+version: 0.2.1
+description: News and Reddit ingestion actions
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: News
+  navLabel: News
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: news
+
+actions:
+  - actions/reddit
+  - actions/reddit-scan
+  - actions/daily-news

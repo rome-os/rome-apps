@@ -1,0 +1,8 @@
+name: company_research_run_company_research
+type: custom
+description: Ensure company research scheduling exists, run the four ChatGPT research queries, and populate structured company research tables
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

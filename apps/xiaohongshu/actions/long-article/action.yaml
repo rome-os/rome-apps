@@ -1,0 +1,8 @@
+name: xiaohongshu_long_article
+type: custom
+description: Open the Xiaohongshu long-article editor and prepare templates
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

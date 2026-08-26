@@ -1,0 +1,8 @@
+name: x_poll_metrics
+type: custom
+description: Poll X account metrics — fetches recent tweet performance (views, likes, retweets, replies) and notifications. If new comments/replies are found, triggers the comment-reply agent for response drafting. Designed to run on a 15-minute schedule.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

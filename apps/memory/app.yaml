@@ -1,0 +1,8 @@
+formatVersion: 1
+id: memory
+version: 0.2.1
+description: Memory and relationship skills
+
+skills:
+  - skills/memory
+  - skills/relationship

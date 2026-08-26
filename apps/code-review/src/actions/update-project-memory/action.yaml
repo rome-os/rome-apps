@@ -1,0 +1,12 @@
+name: code-review_update_project_memory
+type: custom
+description: >
+  Single write entry for a repo's project memory, used by the dashboard Save
+  button. Pure writer: snapshots the previous value, stores the final content,
+  and appends a memory_edits audit row. With a bare repo it performs a manual UI
+  edit; a taskToken path (reply + finalize) remains for programmatic callers.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

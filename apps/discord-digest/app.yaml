@@ -1,0 +1,26 @@
+formatVersion: 1
+id: discord-digest
+version: 0.8.7
+description: Periodically summarizes Discord channel messages and posts the digest back as a bot message.
+icon: assets/icon.svg
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: Discord Digest
+  navLabel: Discord Digest
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: discord_digest
+
+actions:
+  - actions/run-digest
+  - actions/read-attachment
+  - actions/read-link
+
+agents:
+  - agents/summarizer.yaml

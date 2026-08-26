@@ -1,0 +1,8 @@
+name: company_research_read_runs
+type: custom
+description: Read company research runs with optional filtering conditions
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

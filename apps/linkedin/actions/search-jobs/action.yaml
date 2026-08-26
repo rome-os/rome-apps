@@ -1,0 +1,8 @@
+name: linkedin_search_jobs
+type: custom
+description: Search LinkedIn jobs with optional filters
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

@@ -1,0 +1,8 @@
+name: linkedin_get_company_profile
+type: custom
+description: Get a LinkedIn company profile with optional posts and jobs sections
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

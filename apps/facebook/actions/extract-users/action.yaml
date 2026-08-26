@@ -1,0 +1,8 @@
+name: extract_users
+type: custom
+description: Extract commenters from a Facebook page feed through a discovered CDP browser session
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

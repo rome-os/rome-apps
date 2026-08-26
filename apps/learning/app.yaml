@@ -1,0 +1,7 @@
+formatVersion: 1
+id: learning
+version: 0.2.1
+description: Learning and vocabulary actions
+
+actions:
+  - actions/daily-gre-word

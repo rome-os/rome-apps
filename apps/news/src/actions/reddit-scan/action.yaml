@@ -1,0 +1,8 @@
+name: reddit_scan
+type: custom
+description: Scan Reddit for posts matching configured queries and store results
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: medium
+sideEffects: write

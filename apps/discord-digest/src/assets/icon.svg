@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="5.5" fill="#1e293b"/>
+
+  <!-- Phosphor chat-circle-dots-fill (Iconify: ph:chat-circle-dots-fill) — generic chat-digest glyph -->
+  <g transform="translate(4 4) scale(0.0625)" fill="#818cf8">
+    <path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24M84 140a12 12 0 1 1 12-12a12 12 0 0 1-12 12m44 0a12 12 0 1 1 12-12a12 12 0 0 1-12 12m44 0a12 12 0 1 1 12-12a12 12 0 0 1-12 12"/>
+  </g>
+</svg>

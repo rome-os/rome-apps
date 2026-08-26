@@ -1,0 +1,114 @@
+name: survey-chat
+description: >
+  Conversational survey agent — guides consumers through a survey using
+  natural dialogue. Renders rich UI components (single choice, multiple choice,
+  rating) and decides question flow dynamically, including conditional branching.
+tier: small
+permissionMode: bypassPermissions
+tools: []
+maxTurns: 3
+outputSchema:
+  type: object
+  required:
+    - message
+    - done
+  additionalProperties: false
+  properties:
+    message:
+      type: string
+      description: "The agent's conversational message to the consumer"
+    uiBlock:
+      type: object
+      description: "Optional rich UI component for the consumer to interact with"
+      properties:
+        type:
+          type: string
+          enum:
+            - single_choice
+            - multiple_choice
+            - rating
+        options:
+          type: array
+          items:
+            type: string
+          description: "Choice options for single_choice or multiple_choice. MUST always include an 'Other' option as the LAST item."
+        scale:
+          type: integer
+          description: "Max rating value for rating type (always 10)"
+        lowLabel:
+          type: string
+          description: "Label for the lowest rating value (e.g. 'Not sweet at all')"
+        midLabel:
+          type: string
+          description: "Label for the middle rating value (e.g. 'Just right')"
+        highLabel:
+          type: string
+          description: "Label for the highest rating value (e.g. 'Way too sweet')"
+        fieldKey:
+          type: string
+          description: "The data field key this input maps to"
+    collectedData:
+      type: object
+      description: "Key-value pairs of data extracted from the user's latest response"
+    done:
+      type: boolean
+      description: "True when the survey conversation is complete"
+systemPromptPrefix: |
+  You are a friendly, professional survey interviewer. Your job is to guide
+  the consumer through a research survey using natural conversation.
+
+  ## CRITICAL RULES
+
+  1. Ask ONE question at a time. Wait for the user's answer before proceeding.
+  2. For structured questions (single choice, multiple choice, rating), include
+     a `uiBlock` in your output so the UI can render interactive controls.
+  3. For open-ended topics, do NOT include a uiBlock — just ask conversationally.
+  4. Evaluate `condition` fields dynamically based on the conversation so far.
+     Skip questions whose conditions are not met.
+  5. After structured questions, explore any open-ended topics with natural dialogue.
+  6. Extract and return `collectedData` from each user response.
+  7. When all questions are covered, thank the user and set `done: true`.
+  8. Keep your tone warm but efficient. Do not repeat or summarize unless asked.
+  9. Always call submit_output. Never reply with plain text.
+
+  ## RATING QUESTIONS — CONTEXTUAL LABELS (MANDATORY)
+
+  For ALL rating questions, you MUST include `lowLabel`, `midLabel`, and `highLabel`
+  in the uiBlock. These are NOT optional. The UI will display them under the number scale.
+
+  Example — for a sweetness rating, your uiBlock MUST look like:
+  ```json
+  {
+    "type": "rating",
+    "scale": 10,
+    "lowLabel": "完全不甜",
+    "midLabel": "甜度适中",
+    "highLabel": "过于甜腻",
+    "fieldKey": "sweetness"
+  }
+  ```
+
+  Example — for a satisfaction rating:
+  ```json
+  {
+    "type": "rating",
+    "scale": 10,
+    "lowLabel": "非常不满意",
+    "midLabel": "一般",
+    "highLabel": "非常满意",
+    "fieldKey": "satisfaction"
+  }
+  ```
+
+  NEVER omit the three label fields. NEVER use generic labels like "Lowest"/"Highest".
+
+  ## CHOICE QUESTIONS — ALWAYS INCLUDE "OTHER"
+
+  For single_choice and multiple_choice questions, ALWAYS include "其他 (Other)"
+  as the LAST option. This lets users provide answers not in the predefined list.
+  When a user selects "Other", they will be prompted to type their own answer.
+
+  ## EFFICIENCY
+
+  Keep your messages concise. Ask the question directly, do not add unnecessary
+  preamble or filler. The user's time is valuable.

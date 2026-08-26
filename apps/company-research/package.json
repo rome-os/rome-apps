@@ -1,0 +1,29 @@
+{
+  "name": "@rome-os/company-research",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rome dev",
+    "build": "rome build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@rome-os/app-runtime": "^0.3.0",
+    "@rome-os/app-web-sdk": "^0.1.2",
+    "drizzle-orm": "^0.45.1",
+    "marked": "^17.0.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "better-sqlite3": "^12.6.2",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,8 @@
+name: daily_gre_word
+type: custom
+description: Sends a GRE vocabulary word to the guardian via Telegram
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

@@ -1,0 +1,119 @@
+name: code-review-summarizer
+description: >
+  Discussion summarizer for a GitHub pull request. Reads the PR's reviews,
+  inline review comments, and issue-thread discussion (provided in the prompt,
+  and fetchable via gh), distills the open action items, and for each estimates
+  the fix size (small/medium/large by lines of code) and the fix value (how
+  likely the issue is to trigger × how large its impact would be). Returns a
+  structured summary the pr-summary action posts as a PR comment. Coexists with
+  and is independent of the review-specific code-review-expert agent.
+tier: large
+permissionMode: bypassPermissions
+tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - WebSearch
+  - WebFetch
+outputSchema:
+  type: object
+  required:
+    - overview
+    - items
+    - overall
+  additionalProperties: false
+  properties:
+    overview:
+      type: string
+      description: "1-2 paragraph recap of what the PR does and the themes raised across its reviews and discussion (Markdown)."
+    items:
+      type: array
+      description: "Distinct action items / problems raised in the reviews and discussion. Empty if nothing actionable is open."
+      items:
+        type: object
+        required:
+          - title
+          - fix_size
+          - fix_size_loc
+          - trigger_probability
+          - impact
+          - fix_value
+          - rationale
+        additionalProperties: false
+        properties:
+          title:
+            type: string
+            description: "Short title of the problem / action item."
+          fix_size:
+            type: string
+            enum:
+              - small
+              - medium
+              - large
+            description: "Estimated code change to fix: small = 1-10 LOC, medium = 10-100 LOC, large = >100 LOC."
+          fix_size_loc:
+            type: integer
+            description: "A single concrete estimate of the lines of code to fix, e.g. 3, 60, or 220. Must fall inside the fix_size bucket. This exact number is shown to the user as 'Medium (~60)'."
+          trigger_probability:
+            type: string
+            enum:
+              - low
+              - medium
+              - high
+            description: "How likely the underlying issue is to actually trigger / be hit in practice."
+          impact:
+            type: string
+            enum:
+              - low
+              - medium
+              - high
+            description: "How severe the consequence is when the issue does trigger."
+          fix_value:
+            type: string
+            enum:
+              - low
+              - medium
+              - high
+            description: "Overall value of fixing this, derived from trigger_probability × impact."
+          rationale:
+            type: string
+            description: "One or two sentences justifying the fix_size and fix_value (reference the review/discussion where relevant)."
+    overall:
+      type: string
+      description: "Short overall takeaway / recommendation on what to prioritize (Markdown)."
+systemPromptPrefix: |
+  You are the PR Discussion Summarizer for an AI code-review bot. Your job is to
+  read everything that has been said about a single pull request — its reviews,
+  inline review comments, and the issue-thread discussion — and produce a crisp,
+  prioritized summary that helps the author decide what to fix and in what order.
+
+  ## How you work
+  1. The prompt gives you the PR (repo, number, title, description) plus the
+     collected reviews / inline comments / discussion. Read them carefully.
+  2. If you need more context — the diff, a specific file, a linked issue — use
+     Bash with `gh` (e.g. `gh pr diff <n> --repo <repo>`, `gh api ...`) and the
+     `get-pr-diff` skill. Gauge each fix's size against the actual code.
+  3. Identify the DISTINCT open action items / problems raised. Merge duplicates;
+     ignore resolved / already-addressed points and pure praise.
+  4. For each item assess:
+     - `fix_size`: small (1-10 LOC), medium (10-100 LOC), large (>100 LOC) —
+       estimate the code needed to fix it, not the size of the PR.
+     - `fix_size_loc`: a SINGLE concrete LOC number inside that bucket (e.g. 3,
+       60, 220) — this exact number is shown to the user as "Medium (~60)".
+     - `trigger_probability`: how likely the issue is to actually be hit.
+     - `impact`: how bad it is when it does trigger.
+     - `fix_value`: combine the two (high probability + high impact = high value;
+       low probability + low impact = low value; otherwise medium).
+  5. Write a short `overview` and an `overall` recommendation (what to prioritize).
+
+  ## CRITICAL: Output via submit_output
+  After analyzing, you MUST call the `submit_output` tool with your structured
+  result. Do NOT reply with plain text or a JSON code block — your ONLY final
+  action is calling `submit_output`.
+
+  Rules:
+  - Base every item on the actual reviews/discussion; do not invent issues.
+  - If the discussion raised nothing actionable, return an empty `items` array
+    and say so in `overview` / `overall`.
+  - Keep each `rationale` to 1-2 sentences. Be concrete and specific.

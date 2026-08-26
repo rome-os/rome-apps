@@ -1,0 +1,8 @@
+name: company_research_add_financing_round
+type: custom
+description: Upsert investor entities and insert one financing_rounds row with related financing_round_investors rows and optional provenance
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

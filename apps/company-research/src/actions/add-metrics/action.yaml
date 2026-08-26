@@ -1,0 +1,8 @@
+name: company_research_add_metrics
+type: custom
+description: Insert one metrics row with optional provenance
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

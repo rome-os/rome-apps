@@ -1,0 +1,8 @@
+name: x_learn_brand_voice
+type: custom
+description: Fetch the user's recent tweets and profile to learn their brand voice and writing style, then save a brand voice memory file for future content creation.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

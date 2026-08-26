@@ -1,0 +1,15 @@
+formatVersion: 1
+id: rome-table
+name: RomeTable
+icon: assets/icon.svg
+version: 0.2.0
+description: Database browser for inspecting Rome system and app tables
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: RomeTable
+  navLabel: Database
+
+api:
+  entry: api/index

@@ -1,0 +1,120 @@
+name: Rome Publish Stale
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Package and compute hash, but don't upload
+        type: boolean
+        default: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.diff.outputs.apps }}
+      count: ${{ steps.diff.outputs.count }}
+    env:
+      ROME_STORE_HOST: ${{ secrets.ROME_STORE_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare local vs published versions
+        id: diff
+        run: |
+          set -euo pipefail
+          host="${ROME_STORE_HOST:-https://romeos.cc}"
+          host="${host%/}"
+          stale=()
+          skipped=()
+          for manifest in apps/*/app.yaml; do
+            dir="$(basename "$(dirname "$manifest")")"
+            id=$(yq -r '.id' "$manifest")
+            version=$(yq -r '.version' "$manifest")
+            if [ -z "$id" ] || [ "$id" = "null" ] || [ -z "$version" ] || [ "$version" = "null" ]; then
+              echo "::warning::$manifest missing id/version, skipping"
+              continue
+            fi
+            # Encode the listing path: scoped ids ("@handle/slug") encode each segment;
+            # unscoped ids are just URL-encoded as a single segment.
+            if [[ "$id" == @*/* ]]; then
+              handle="${id%%/*}"
+              slug="${id#*/}"
+              listing_path="$(jq -rn --arg s "$handle" '$s|@uri')/$(jq -rn --arg s "$slug" '$s|@uri')"
+            else
+              listing_path="$(jq -rn --arg s "$id" '$s|@uri')"
+            fi
+            url="$host/api/store/listings/$listing_path"
+            body=$(mktemp)
+            code=$(curl -sS -o "$body" -w "%{http_code}" "$url")
+            case "$code" in
+              200)
+                if jq -e --arg v "$version" '(.versions // []) | map(select(.state == "live" and .version == $v)) | length > 0' "$body" >/dev/null; then
+                  echo "$id@$version — already live, skipping"
+                  skipped+=("$dir")
+                else
+                  echo "$id@$version — not live, will publish"
+                  stale+=("$dir")
+                fi
+                ;;
+              404)
+                echo "$id@$version — listing not found, will publish"
+                stale+=("$dir")
+                ;;
+              *)
+                echo "::error::GET $url returned HTTP $code"
+                cat "$body"
+                exit 1
+                ;;
+            esac
+            rm -f "$body"
+          done
+          if [ ${#stale[@]} -eq 0 ]; then
+            json='[]'
+          else
+            json=$(printf '%s\n' "${stale[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          fi
+          {
+            echo "apps=$json"
+            echo "count=${#stale[@]}"
+          } >> "$GITHUB_OUTPUT"
+          echo
+          echo "To publish: ${stale[*]:-<none>}"
+          echo "Already live: ${skipped[*]:-<none>}"
+
+  publish:
+    needs: detect
+    if: ${{ fromJSON(needs.detect.outputs.count) > 0 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    env:
+      ROME_STORE_HOST: ${{ secrets.ROME_STORE_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm --filter "./apps/${{ matrix.app }}" run --if-present build
+
+      - name: Rome publish
+        env:
+          ROME_TOKEN: ${{ secrets.ROME_TOKEN }}
+        run: |
+          pnpm exec rome publish "apps/${{ matrix.app }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

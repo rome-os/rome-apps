@@ -1,0 +1,8 @@
+name: xiaohongshu_user_profile
+type: custom
+description: Get a Xiaohongshu creator profile and posts
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

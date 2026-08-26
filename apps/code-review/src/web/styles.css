@@ -1,0 +1,50 @@
+@import "@rome-os/app-web-sdk/styles";
+
+.sd-markdown :where(h1, h2, h3, h4) {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1rem 0 0.5rem;
+}
+
+.sd-markdown :where(p, ul, ol, pre, table, blockquote) {
+  margin: 0.65rem 0;
+}
+
+.sd-markdown :where(ul, ol) {
+  padding-left: 1.25rem;
+}
+
+.sd-markdown :where(ul) {
+  list-style: disc;
+}
+
+.sd-markdown :where(ol) {
+  list-style: decimal;
+}
+
+.sd-markdown :where(code) {
+  font-size: 0.875em;
+}
+
+.sd-markdown :where(pre) {
+  overflow-x: auto;
+  border-radius: 0.5rem;
+}
+
+.sd-markdown :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.sd-markdown :where(th, td) {
+  border: 1px solid hsl(var(--border));
+  padding: 0.4rem 0.55rem;
+  vertical-align: top;
+}
+
+.sd-markdown :where(blockquote) {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}

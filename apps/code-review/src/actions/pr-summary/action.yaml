@@ -1,0 +1,16 @@
+name: code-review_pr-summary
+type: custom
+description: >
+  Summarize a GitHub pull request's reviews and discussion. Gathers all PR
+  reviews, inline review comments, and issue-thread discussion, summons the
+  code-review-summarizer agent to produce an overview plus a per-item fix-size
+  (small/medium/large by LOC) and fix-value (trigger probability × impact)
+  assessment, then posts the summary as a plain comment on the PR. Triggered by
+  the configurable summary phrase (default "summary"). Action owns the GitHub
+  posting + emoji lifecycle; an abandoned agent result is never published.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: high
+sideEffects: write
+cancellable: true

@@ -1,0 +1,8 @@
+name: xiaohongshu_click_publish
+type: custom
+description: Publish the active Xiaohongshu draft page
+entry: ./index.ts
+complexity: simple
+speed: slow
+reliability: medium
+sideEffects: write

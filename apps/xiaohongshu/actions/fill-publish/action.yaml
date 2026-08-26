@@ -1,0 +1,8 @@
+name: xiaohongshu_fill_publish
+type: custom
+description: Fill a Xiaohongshu image note draft without publishing
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

@@ -1,0 +1,21 @@
+formatVersion: 1
+id: brainstorm
+name: Brainstorm
+version: 0.2.0
+description: A guided brainstorming agent that turns rough ideas into approved design specs before implementation.
+icon: assets/icon.svg
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: Brainstorm
+  navLabel: Brainstorm
+
+api:
+  entry: api/index
+
+agents:
+  - agents/brainstorm.yaml
+
+skills:
+  - skills/brainstorming

@@ -1,0 +1,8 @@
+name: scan_ai_agents
+type: custom
+description: Search Reddit for recent AI agent discussions and store them in the Reddit app tables
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

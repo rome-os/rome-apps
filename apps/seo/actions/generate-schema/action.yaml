@@ -1,0 +1,8 @@
+name: generate_schema
+type: custom
+description: Generate Schema.org JSON-LD structured data markup for a page
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

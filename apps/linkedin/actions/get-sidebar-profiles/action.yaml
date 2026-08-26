@@ -1,0 +1,8 @@
+name: linkedin_get_sidebar_profiles
+type: custom
+description: Extract recommended profile links from a LinkedIn profile sidebar
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

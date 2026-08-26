@@ -1,0 +1,8 @@
+name: keyword_research
+type: custom
+description: Research and analyze keywords for a topic or niche
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: high
+sideEffects: write

@@ -1,0 +1,8 @@
+name: xiaohongshu_save_draft
+type: custom
+description: Save the active Xiaohongshu draft and close the page
+entry: ./index.ts
+complexity: simple
+speed: slow
+reliability: medium
+sideEffects: write

@@ -1,0 +1,8 @@
+name: company_research_search_companies
+type: custom
+description: Search or read company registry rows with optional filters
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

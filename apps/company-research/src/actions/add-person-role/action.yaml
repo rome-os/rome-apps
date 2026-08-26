@@ -1,0 +1,8 @@
+name: company_research_add_person_role
+type: custom
+description: Upsert a person by LinkedIn or personal profile URL identity, then insert one company_person_roles row with optional provenance. website_url must be the person's own profile page, personal site, or blog; do not use team pages or multi-person pages. Leave website_url empty when no personal page is found. If a matched URL already belongs to a different person_name, the action errors and suggests checking for a team page.
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

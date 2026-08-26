@@ -1,0 +1,72 @@
+name: Rome Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App directory under apps/ to publish
+        type: choice
+        required: true
+        options:
+          - brainstorm
+          - chatgpt
+          - code-review
+          - company-research
+          - discord-digest
+          - facebook
+          - learning
+          - linkedin
+          - memory
+          - news
+          - reddit
+          - rome-table
+          - seo
+          - stock-daily
+          - survey
+          - summary
+          - utility
+          - x-manager
+          - xiaohongshu
+      dry_run:
+        description: Package and compute hash, but don't upload
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ROME_STORE_HOST: ${{ secrets.ROME_STORE_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Verify app directory
+        run: |
+          dir="apps/${{ inputs.app }}"
+          if [ ! -f "$dir/app.yaml" ]; then
+            echo "::error::$dir/app.yaml not found"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm --filter "./apps/${{ inputs.app }}" run --if-present build
+
+      - name: Rome publish
+        env:
+          ROME_TOKEN: ${{ secrets.ROME_TOKEN }}
+        run: |
+          pnpm exec rome publish "apps/${{ inputs.app }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

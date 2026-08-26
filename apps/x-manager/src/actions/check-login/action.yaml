@@ -1,0 +1,8 @@
+name: x_check_login
+type: custom
+description: Check if the user is currently logged in to X (Twitter) in the browser. Returns login status and username if logged in.
+entry: ./index.ts
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: read-only

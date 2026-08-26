@@ -1,0 +1,8 @@
+name: discord-digest_run_digest
+type: custom
+description: Fetch recent Discord channel history, summarize it, optionally store and send the summary back to the channel.
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: high
+sideEffects: write

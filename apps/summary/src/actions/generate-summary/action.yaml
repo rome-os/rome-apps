@@ -1,0 +1,12 @@
+name: summary_generate_summary
+type: custom
+description: >
+  Generates a structured work summary report for a given time period.
+  Collects webchat conversations, channel messages, and GitHub activity,
+  then uses the summary agent to produce a project-oriented report.
+  Optionally sends the report to WeChat.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

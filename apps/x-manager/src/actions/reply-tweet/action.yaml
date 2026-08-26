@@ -1,0 +1,8 @@
+name: x_reply_tweet
+type: custom
+description: Reply to a specific tweet on X (Twitter) by tweet URL
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

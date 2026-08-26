@@ -1,0 +1,8 @@
+name: company_research_read_provenance
+type: custom
+description: Read field provenance rows with optional filtering conditions
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

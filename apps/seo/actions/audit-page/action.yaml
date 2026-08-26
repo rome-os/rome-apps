@@ -1,0 +1,8 @@
+name: audit_page
+type: custom
+description: Run a comprehensive on-page SEO plus CORE-EEAT content quality audit for a given URL or content
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: high
+sideEffects: write

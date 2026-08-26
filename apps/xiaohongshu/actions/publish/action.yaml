@@ -1,0 +1,8 @@
+name: xiaohongshu_publish
+type: custom
+description: Publish an image note to Xiaohongshu
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

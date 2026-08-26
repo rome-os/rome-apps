@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="5.5" fill="#0c4a6e"/>
+
+  <!-- Phosphor table-fill (Iconify: ph:table-fill) — actual row/column structure -->
+  <g transform="translate(4 4) scale(0.0625)" fill="#67e8f9">
+    <path d="M224 48H32a8 8 0 0 0-8 8v136a16 16 0 0 0 16 16h176a16 16 0 0 0 16-16V56a8 8 0 0 0-8-8M40 112h40v32H40Zm56 0h120v32H96Zm-56 48h40v32H40Zm176 32H96v-32h120z"/>
+  </g>
+</svg>

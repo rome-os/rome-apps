@@ -1,0 +1,8 @@
+name: company_research_add_company_social_page
+type: custom
+description: Insert one company_social_pages row with optional provenance
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

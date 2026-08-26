@@ -1,0 +1,8 @@
+name: discord-digest_read_link
+type: custom
+description: Safely inspect a public http(s) link shared in Discord. Supports metadata-first inspection and progressive excerpt reading for HTML/text/PDF links with offset/limit paging.
+entry: ./index.ts
+complexity: simple
+speed: moderate
+reliability: medium
+sideEffects: read-only

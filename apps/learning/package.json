@@ -1,0 +1,11 @@
+{
+  "name": "@rome/app-learning",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rome-os/app-runtime": "^0.3.0"
+  }
+}

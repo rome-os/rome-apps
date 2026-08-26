@@ -1,0 +1,8 @@
+name: company_research_add_company_relationship
+type: custom
+description: Upsert a related company by normalized domain, then insert one company_relationships row with optional provenance
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

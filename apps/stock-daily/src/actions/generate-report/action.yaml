@@ -1,0 +1,8 @@
+name: stock-daily_generate_report
+type: custom
+description: Generate and persist the latest Chinese US stock market daily close report.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

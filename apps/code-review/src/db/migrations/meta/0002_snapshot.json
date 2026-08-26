@@ -1,0 +1,93 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "prevId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tables": {
+    "repo_guardian__repositories": {
+      "name": "repo_guardian__repositories",
+      "columns": {
+        "id": { "name": "id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "url": { "name": "url", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "name": { "name": "name", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "added_at": { "name": "added_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "repo_guardian__findings": {
+      "name": "repo_guardian__findings",
+      "columns": {
+        "id": { "name": "id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "scan_id": { "name": "scan_id", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "category": { "name": "category", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "severity": { "name": "severity", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "title": { "name": "title", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "description": { "name": "description", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "file_path": { "name": "file_path", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "created_at": { "name": "created_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "repo_guardian__github_actions": {
+      "name": "repo_guardian__github_actions",
+      "columns": {
+        "id": { "name": "id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "scan_id": { "name": "scan_id", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "finding_id": { "name": "finding_id", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "action_type": { "name": "action_type", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "github_url": { "name": "github_url", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "title": { "name": "title", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "created_at": { "name": "created_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "repo_guardian__scans": {
+      "name": "repo_guardian__scans",
+      "columns": {
+        "id": { "name": "id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "repo": { "name": "repo", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "scan_type": { "name": "scan_type", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "summary": { "name": "summary", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "started_at": { "name": "started_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "completed_at": { "name": "completed_at", "type": "integer", "primaryKey": false, "notNull": false, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "repo_guardian__pr_reviews": {
+      "name": "repo_guardian__pr_reviews",
+      "columns": {
+        "id": { "name": "id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "repo": { "name": "repo", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "pr_number": { "name": "pr_number", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "pr_url": { "name": "pr_url", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "pr_title": { "name": "pr_title", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "pr_author": { "name": "pr_author", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "review_comment": { "name": "review_comment", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "github_comment_url": { "name": "github_comment_url", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "started_at": { "name": "started_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "completed_at": { "name": "completed_at", "type": "integer", "primaryKey": false, "notNull": false, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "repo_guardian__pr_review_settings": {
+      "name": "repo_guardian__pr_review_settings",
+      "columns": {
+        "id": { "name": "id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "repo": { "name": "repo", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "auto_review_enabled": { "name": "auto_review_enabled", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "custom_rules": { "name": "custom_rules", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "webhook_channel_url": { "name": "webhook_channel_url", "type": "text", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "created_at": { "name": "created_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "updated_at": { "name": "updated_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": { "schemas": {}, "tables": {}, "columns": {} },
+  "internal": { "indexes": {} }
+}

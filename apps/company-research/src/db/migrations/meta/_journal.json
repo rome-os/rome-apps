@@ -1,0 +1,41 @@
+{
+  "version": "8",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1773817200000,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775361600000,
+      "tag": "0001_job_posts_role_fingerprint_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "8",
+      "when": 1775422800000,
+      "tag": "0002_metrics_active_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "8",
+      "when": 1775451600000,
+      "tag": "0003_metrics_paying_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "8",
+      "when": 1775808000000,
+      "tag": "0004_run_reports",
+      "breakpoints": true
+    }
+  ]
+}

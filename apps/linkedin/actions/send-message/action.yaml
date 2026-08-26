@@ -1,0 +1,8 @@
+name: linkedin_send_message
+type: custom
+description: Send a LinkedIn message with explicit confirmation gating
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

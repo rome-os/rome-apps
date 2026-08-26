@@ -1,0 +1,8 @@
+name: xiaohongshu_reply_comment
+type: custom
+description: Reply to a Xiaohongshu comment by comment ID or user ID
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

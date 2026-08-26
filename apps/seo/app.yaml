@@ -1,0 +1,40 @@
+formatVersion: 1
+id: seo
+version: 0.2.1
+description: SEO and GEO skills plus workflow actions for audits, research, content, schema, reporting, and alerts
+
+agents:
+  - agents/seo.yaml
+
+actions:
+  - actions/audit-domain
+  - actions/audit-page
+  - actions/check-technical
+  - actions/generate-schema
+  - actions/keyword-research
+  - actions/optimize-meta
+  - actions/report
+  - actions/setup-alert
+  - actions/write-content
+
+skills:
+  - skills/keyword-research
+  - skills/competitor-analysis
+  - skills/serp-analysis
+  - skills/content-gap-analysis
+  - skills/seo-content-writer
+  - skills/geo-content-optimizer
+  - skills/meta-tags-optimizer
+  - skills/schema-markup-generator
+  - skills/on-page-seo-auditor
+  - skills/technical-seo-checker
+  - skills/internal-linking-optimizer
+  - skills/content-refresher
+  - skills/rank-tracker
+  - skills/backlink-analyzer
+  - skills/performance-reporter
+  - skills/alert-manager
+  - skills/content-quality-auditor
+  - skills/domain-authority-auditor
+  - skills/entity-optimizer
+  - skills/memory-management

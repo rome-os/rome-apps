@@ -1,0 +1,36 @@
+formatVersion: 1
+id: company-research
+name: Company Research
+version: 1.1.1
+description: Company Research miniapp
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: Company Research
+  navLabel: Companies
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: company_research
+
+actions:
+  - actions/run-company-research
+  - actions/add-company-attributes
+  - actions/add-company-social-page
+  - actions/add-person-role
+  - actions/add-company-relationship
+  - actions/add-financing-round
+  - actions/add-metrics
+  - actions/add-job-post
+  - actions/add-notable-event
+  - actions/add-product
+  - actions/read-rows
+  - actions/search-companies
+  - actions/read-runs
+  - actions/read-provenance
+
+skills: []

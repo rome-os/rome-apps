@@ -1,0 +1,13 @@
+{
+  "name": "@rome/app-seo",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rome-os/app-runtime": "^0.3.0"
+  }
+}

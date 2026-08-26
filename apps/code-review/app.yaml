@@ -1,0 +1,40 @@
+formatVersion: 1
+id: code-review
+name: Code Review
+version: 0.29.1
+icon: assets/icon.svg
+description: AI first-pass reviewer for GitHub PRs — posts inline findings, summarizes risk, and tracks review history in Rome.
+appRoot: dist
+# Publish src/ with the Store bundle so the app can be remixed.
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: Code Review
+  navLabel: Code Review
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: repo_guardian
+
+actions:
+  - actions/pr-review
+  - actions/pr-webhook
+  # Manual dashboard write path for project memory.
+  - actions/update-project-memory
+  # Summary flow: recap reviews/discussion + fix-size + fix-value.
+  - actions/pr-summary
+
+skills:
+  - skills/get-pr-diff
+  - skills/code-review-expert
+  # Summary flow.
+  - skills/summary-skill
+
+agents:
+  - agents/code-review-expert.yaml
+  # Summary flow: discussion summarizer with a structured outputSchema.
+  - agents/summary-agent.yaml

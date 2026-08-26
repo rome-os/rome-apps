@@ -1,0 +1,25 @@
+{
+  "name": "@rome/app-news",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rome dev",
+    "build": "rome build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rome-os/app-runtime": "^0.3.0",
+    "@rome-os/app-web-sdk": "^0.1.2",
+    "drizzle-orm": "^0.45.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "snoowrap": "^1.23.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.9.3"
+  }
+}

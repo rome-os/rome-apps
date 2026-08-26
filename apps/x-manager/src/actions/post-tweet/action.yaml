@@ -1,0 +1,8 @@
+name: x_post_tweet
+type: custom
+description: Post a new tweet or thread to X (Twitter). Supports text and optional images.
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

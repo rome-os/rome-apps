@@ -1,0 +1,8 @@
+name: xiaohongshu_select_template
+type: custom
+description: Select a template in the active Xiaohongshu long-article flow
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

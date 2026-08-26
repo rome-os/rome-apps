@@ -1,0 +1,8 @@
+name: xiaohongshu_like_feed
+type: custom
+description: Like or unlike a Xiaohongshu note
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

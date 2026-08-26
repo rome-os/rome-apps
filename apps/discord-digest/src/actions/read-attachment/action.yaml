@@ -1,0 +1,8 @@
+name: discord-digest_read_attachment
+type: custom
+description: Read a line range from a Discord attachment URL (text files and PDF/Word documents). Supports paging via offset/limit so contents can be read progressively. Returns startLine/endLine/totalLines/hasMore alongside the text.
+entry: ./index.ts
+complexity: simple
+speed: moderate
+reliability: medium
+sideEffects: read-only

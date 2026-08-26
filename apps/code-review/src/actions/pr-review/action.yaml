@@ -1,0 +1,9 @@
+name: code-review_pr-review
+type: custom
+description: Review a GitHub pull request using Code Review Expert analysis. Fetches PR diff, performs structured review (SOLID, security, performance, code quality), posts review comment to GitHub, and records results.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: high
+sideEffects: write
+cancellable: true

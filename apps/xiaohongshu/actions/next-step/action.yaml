@@ -1,0 +1,8 @@
+name: xiaohongshu_next_step
+type: custom
+description: Advance the active Xiaohongshu long-article flow to the publish page
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

@@ -1,0 +1,7 @@
+formatVersion: 1
+id: facebook
+version: 0.2.1
+description: Facebook page scraping actions
+
+actions:
+  - actions/extract-users

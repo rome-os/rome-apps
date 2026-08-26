@@ -1,0 +1,108 @@
+name: Rome Publish Changed
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit SHA to inspect for changed apps (defaults to the workflow ref's HEAD)
+        type: string
+        required: false
+      dry_run:
+        description: Package and compute hash, but don't upload
+        type: boolean
+        default: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.changed.outputs.apps }}
+      count: ${{ steps.changed.outputs.count }}
+      sha: ${{ steps.changed.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed apps
+        id: changed
+        env:
+          COMMIT_INPUT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          sha="${COMMIT_INPUT:-$GITHUB_SHA}"
+          if ! sha=$(git rev-parse --verify "$sha^{commit}" 2>/dev/null); then
+            echo "::error::commit '${COMMIT_INPUT:-$GITHUB_SHA}' not found in repository history"
+            exit 1
+          fi
+          if ! parent=$(git rev-parse --verify "$sha^" 2>/dev/null); then
+            echo "::error::commit $sha has no parent (root commit); cannot diff"
+            exit 1
+          fi
+          mapfile -t candidates < <(
+            git diff --name-only "$parent" "$sha" \
+              | awk -F/ '$1 == "apps" && NF >= 2 { print $2 }' \
+              | sort -u
+          )
+          apps=()
+          skipped=()
+          for name in "${candidates[@]}"; do
+            if [ -f "apps/$name/app.yaml" ]; then
+              apps+=("$name")
+            else
+              skipped+=("$name")
+            fi
+          done
+          if [ ${#apps[@]} -eq 0 ]; then
+            json='[]'
+          else
+            json=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          fi
+          {
+            echo "apps=$json"
+            echo "count=${#apps[@]}"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+          echo "Commit:   $sha"
+          echo "Parent:   $parent"
+          echo "Apps:     ${apps[*]:-<none>}"
+          [ ${#skipped[@]} -gt 0 ] && echo "Skipped (no app.yaml): ${skipped[*]}" || true
+
+  publish:
+    needs: detect
+    if: ${{ fromJSON(needs.detect.outputs.count) > 0 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    env:
+      ROME_STORE_HOST: ${{ secrets.ROME_STORE_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm --filter "./apps/${{ matrix.app }}" run --if-present build
+
+      - name: Rome publish
+        env:
+          ROME_TOKEN: ${{ secrets.ROME_TOKEN }}
+        run: |
+          pnpm exec rome publish "apps/${{ matrix.app }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

@@ -1,0 +1,8 @@
+name: xiaohongshu_list_feeds
+type: custom
+description: Get Xiaohongshu home feed recommendations
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

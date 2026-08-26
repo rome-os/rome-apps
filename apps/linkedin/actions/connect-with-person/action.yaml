@@ -1,0 +1,8 @@
+name: linkedin_connect_with_person
+type: custom
+description: Send a LinkedIn connection request or accept an incoming one
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

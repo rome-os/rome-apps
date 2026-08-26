@@ -1,0 +1,1 @@
+ALTER TABLE `discord_digest__configs` ADD `github_repos` text;

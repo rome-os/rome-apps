@@ -1,0 +1,8 @@
+name: x_fetch_notifications
+type: custom
+description: Fetch recent notifications from X (Twitter), including replies, mentions, likes, and retweets
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

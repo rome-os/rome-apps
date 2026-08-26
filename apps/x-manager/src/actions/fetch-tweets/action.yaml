@@ -1,0 +1,8 @@
+name: x_fetch_tweets
+type: custom
+description: Fetch recent tweets from a given user or the logged-in user's timeline
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: read-only

@@ -1,0 +1,10 @@
+name: survey_design_survey
+type: custom
+description: >
+  Run one turn of the survey design conversation between the merchant and
+  the survey-design-pro agent. Persists the chat history and updates the
+  survey definition when the agent produces a proposal or approval.
+complexity: moderate
+speed: moderate
+reliability: high
+sideEffects: write

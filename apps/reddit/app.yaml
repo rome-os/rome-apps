@@ -1,0 +1,21 @@
+formatVersion: 1
+id: reddit
+version: 0.2.1
+description: AI agent Reddit radar with scheduled ingestion and a mounted web dashboard
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: Reddit Radar
+  navLabel: Reddit
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: reddit
+
+actions:
+  - actions/scan-ai-agents
+  - actions/ensure-ai-agent-watch
