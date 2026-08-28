@@ -17,15 +17,12 @@ tools:
 outputSchema:
   type: object
   required:
-    - summary
     - verdict
     - verdict_reason
+    - summary
     - findings
   additionalProperties: false
   properties:
-    summary:
-      type: string
-      description: "1-2 paragraph overview of the changes and overall assessment"
     verdict:
       type: string
       enum:
@@ -36,6 +33,9 @@ outputSchema:
     verdict_reason:
       type: string
       description: "One sentence explaining the verdict"
+    summary:
+      type: string
+      description: "1-2 paragraph overview of the changes and overall assessment"
     findings:
       type: array
       items:

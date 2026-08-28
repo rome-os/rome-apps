@@ -51,9 +51,9 @@ interface AgentFinding {
 }
 
 interface AgentReviewOutput {
-  summary: string;
   verdict: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
   verdict_reason: string;
+  summary: string;
   findings: AgentFinding[];
 }
 
