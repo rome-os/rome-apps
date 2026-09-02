@@ -16,7 +16,7 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 - Supports manual runs from Rome, GitHub review requests, or a PR mention command.
 - Posts line-level findings plus a concise review summary and verdict.
 - Lets you tune review instructions per repository.
-- Lets you choose who can trigger reviews from GitHub events.
+- Lets you either allow selected GitHub users or allow everyone except people you block.
 - Keeps a review history dashboard in Rome for status, results, and follow-up.
 
 ## Best fit

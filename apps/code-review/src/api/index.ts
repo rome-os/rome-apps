@@ -6,7 +6,7 @@ import type {
 import { createAppLogger } from "@rome-os/app-runtime";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { ScanRepository } from "../db/repositories/repo.js";
+import type { ScanRepository, TriggerAccessMode } from "../db/repositories/repo.js";
 import { sanitizeCliError } from "../utils/cli-errors.js";
 import {
   GITHUB_EVENTS,
@@ -58,6 +58,11 @@ function sanitizeGitHubLoginList(value: unknown, guardianLogin: string | null): 
     logins.push(login);
   }
   return logins;
+}
+
+function parseTriggerAccessMode(value: unknown): TriggerAccessMode | null {
+  if (value === "allowlist" || value === "blocklist") return value;
+  return null;
 }
 
 function isValidGitHubLogin(login: string): boolean {
@@ -655,9 +660,18 @@ class GuardianApiHandler implements RomeAppApiHandler {
       const customRules = body.customRules ?? null;
       const existingSettings = repo.getPRReviewSettings(repoName);
       const guardianGithubLogin = await this._readGitHubLogin();
+      const triggerAccessMode = body.triggerAccessMode === undefined
+        ? undefined
+        : parseTriggerAccessMode(body.triggerAccessMode);
+      if (body.triggerAccessMode !== undefined && !triggerAccessMode) {
+        return json({ error: "triggerAccessMode must be 'allowlist' or 'blocklist'." }, { status: 400 });
+      }
       const triggerAllowlistInput = body.triggerAllowlist !== undefined ? body.triggerAllowlist : body.manualTriggerAllowlist;
       const triggerAllowlist = triggerAllowlistInput !== undefined
         ? sanitizeGitHubLoginList(triggerAllowlistInput, guardianGithubLogin)
+        : undefined;
+      const triggerBlocklist = body.triggerBlocklist !== undefined
+        ? sanitizeGitHubLoginList(body.triggerBlocklist, guardianGithubLogin)
         : undefined;
       const triggerWiringEnabled = enableAutoReview || !!manualTriggerEnabled;
 
@@ -720,7 +734,9 @@ class GuardianApiHandler implements RomeAppApiHandler {
           triggerOnReviewRequest,
           triggerOnMention,
           triggerOnPush,
+          triggerAccessMode: triggerAccessMode ?? undefined,
           triggerAllowlist,
+          triggerBlocklist,
           mentionTriggerPhrase,
           summaryTriggerPhrase,
           customRules,
@@ -761,7 +777,9 @@ class GuardianApiHandler implements RomeAppApiHandler {
         triggerOnReviewRequest,
         triggerOnMention,
         triggerOnPush,
+        triggerAccessMode: triggerAccessMode ?? undefined,
         triggerAllowlist,
+        triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
         customRules,

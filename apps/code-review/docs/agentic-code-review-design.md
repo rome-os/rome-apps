@@ -152,7 +152,7 @@ flowchart TD
 > **Core principle: split intents by "output contract (side-effect shape)", not by "topic".**
 > Topics (address issue / fix CI / implement / refactor …) are endless; building a handler per topic slices the domain ever narrower. But their output contract is often the same (change code → open a PR), and the output contract is exactly what durable landing (submit-action) is bound to.
 > So each intent = one **output contract**: classification only decides "which skill to mount, which submit-action to grant (how the result lands durably)"; **the concrete topic is left to the agent to figure out via prompt + gh CLI** — we don't enumerate it.
-> Classification is **not** a permission sandbox — the code agent already has Bash, can read files and run gh; a per-intent "read-only/write" gate can't be enforced and is pointless. "Who may trigger the bot" reuses the existing `triggerAllowlist`; no extra gate per intent.
+> Classification is **not** a permission sandbox — the code agent already has Bash, can read files and run gh; a per-intent "read-only/write" gate can't be enforced and is pointless. "Who may trigger the bot" reuses the repository's trigger access policy (selected people or everyone except blocked people); no extra gate per intent.
 
 | Intent | Surface | Which flow / submit-action | Landing (side effect) | Result emoji |
 |---|---|---|---|---|
@@ -322,7 +322,7 @@ flowchart TD
 2. **Idempotency**: deterministic branch name (e.g. `rome/issue-123` for issue-triggered, push directly to the PR branch for PR-triggered); check for an existing open PR before creating one; a re-run updates the branch instead of opening a duplicate.
 3. **Long-task progress feedback**: writing code is much slower than review; beyond 👀 it should reply "🛠️ working on it", record stages `cloning → coding → opening_pr`, and stay cancellable.
 4. **Positioned as a draft PR for humans to review**, not auto-merge (nicely caught by our own review capability).
-5. **Trigger gating reuses the existing `triggerAllowlist`** (who may trigger the bot); **no extra layer for code-task** — the code agent already has Bash, so an extra per-intent permission gate is redundant.
+5. **Trigger gating reuses the repository's trigger access policy** (selected people or everyone except blocked people); **no extra layer for code-task** — the code agent already has Bash, so an extra per-intent permission gate is redundant.
 
 ---
 
@@ -356,7 +356,7 @@ flowchart TD
 
 ## 10. Net-new vs reused
 
-- **Completely untouched**: the existing `pr-review` chain (clone / posting / emoji / locks / summon `code-review-expert`), the `get-pr-diff` skill, settings/allowlist, the routine subscription mechanism.
+- **Completely untouched**: the existing `pr-review` chain (clone / posting / emoji / locks / summon `code-review-expert`), the `get-pr-diff` skill, trigger access settings, the routine subscription mechanism.
 - **Tiny changes**: at the "no hard match" point pr-webhook changes `skip` into dispatch-to-new-flow; `buildAgentPrompt` injects a `projectMemory` block; the settings table gains a `projectMemory` field.
 - **Net-new (new flow)**: the front-filter split, dispatcher chassis + Registry, classifier (small agent / light LLM), general `code-agent`, `memory-skill` + `update_project_memory` + `memory_edits` audit table, `general-skill` + `reply_comment`, general/none handling.
 - **Phase 2**: `code-task` = add 1 skill (code-task-skill) + 1 submit-action (`submit_pull_request`) + the `issues` event subscription; general, covering address issue / fix CI / implement / refactor — every "change the code" topic, no per-topic handler.
@@ -374,7 +374,7 @@ flowchart TD
 - memory writes: **user edits and agent edits go through the same `update_project_memory` action**; changes are visible and traceable.
 - memory granularity: **one per repo**.
 - intent split: **by output contract (how the result lands), not by topic, not by permission**. `address-issue` is retired and folded into the general **`code-task`** (covering address issue / fix CI / implement / refactor …); the topic is discovered by the agent via prompt + gh CLI; a handler can mount multiple submit-actions and pick the landing shape after investigating.
-- **No per-intent permission gating**: the code agent already has Bash; a "read-only/write" gate can't be enforced and is redundant; trigger permission reuses the existing `triggerAllowlist`.
+- **No per-intent permission gating**: the code agent already has Bash; a "read-only/write" gate can't be enforced and is redundant; trigger permission reuses the repository's selected-people/blocklist policy.
 - `summon` per-call action restriction: **not done**; the general agent statically lists all submit-actions, guided by the skill/prompt to choose.
 
 ---
@@ -386,4 +386,4 @@ flowchart TD
   - **MVP (new flow)**: filter split + dispatcher chassis + classifier + `update-memory` (incl. `memory_edits` + `update_project_memory` + UI editing) + `general`/`none`.
   - **Phase 2**: `code-task` (`submit_pull_request` + progress feedback + branch idempotency) + the `issues` event subscription.
 - [x] ~~Confirm whether `summon` supports per-call action restriction~~ → **not done**; explained in skills, the general agent statically lists all submit-actions.
-- [ ] `code-task` branch idempotency (push to PR branch vs open a new PR from an issue) / long-task progress feedback details (phase 2); triggering follows the existing `triggerAllowlist`, no per-intent gate.
+- [ ] `code-task` branch idempotency (push to PR branch vs open a new PR from an issue) / long-task progress feedback details (phase 2); triggering follows the repository's trigger access policy, with no per-intent gate.

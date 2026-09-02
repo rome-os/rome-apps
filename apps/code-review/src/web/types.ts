@@ -42,8 +42,10 @@ export interface PRReviewSettingsData {
   triggerOnReviewRequest: boolean;
   triggerOnMention: boolean;
   triggerOnPush: boolean;
+  triggerAccessMode: TriggerAccessMode;
   triggerAllowlist: string[];
   manualTriggerAllowlist: string[];
+  triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
   customRules: string | null;
@@ -63,6 +65,8 @@ export interface PRReviewSettingsData {
   createdAt: string;
   updatedAt: string;
 }
+
+export type TriggerAccessMode = "allowlist" | "blocklist";
 
 export interface MemoryEditData {
   id: string;
@@ -183,7 +187,9 @@ export interface TriggerSettingsPayload {
   triggerOnMention: boolean;
   triggerOnPush: boolean;
   customRules: string;
+  triggerAccessMode: TriggerAccessMode;
   triggerAllowlist: string[];
+  triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
 }

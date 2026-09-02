@@ -49,9 +49,19 @@ export interface PRReviewTriggerSettings {
   triggerOnReviewRequest: boolean;
   triggerOnMention: boolean;
   triggerOnPush: boolean;
+  triggerAccessMode?: TriggerAccessMode;
   triggerAllowlist?: string[];
+  triggerBlocklist?: string[];
   mentionTriggerPhrase?: string;
   summaryTriggerPhrase?: string;
+}
+
+export type TriggerAccessMode = "allowlist" | "blocklist";
+
+export interface TriggerAccessPolicy {
+  mode?: TriggerAccessMode;
+  allowlist?: string[];
+  blocklist?: string[];
 }
 
 export type TriggerDecision =
@@ -166,13 +176,30 @@ export function triggerActor(payload: GitHubWebhookPayload): string | null {
 export function isTriggerActorAllowed(
   actorLogin: string | null,
   guardianLogin: string | null,
-  allowlist: string[] | undefined,
+  policy: TriggerAccessPolicy,
 ): boolean {
   const actor = normalizeGitHubLogin(actorLogin);
   const guardian = normalizeGitHubLogin(guardianLogin);
   if (!actor || !guardian) return false;
   if (actor === guardian) return true;
-  return (allowlist || []).some((login) => normalizeGitHubLogin(login) === actor);
+  if (policy.mode === "blocklist") {
+    return !(policy.blocklist || []).some((login) => normalizeGitHubLogin(login) === actor);
+  }
+  return (policy.allowlist || []).some((login) => normalizeGitHubLogin(login) === actor);
+}
+
+function triggerAccessPolicy(settings: PRReviewTriggerSettings): TriggerAccessPolicy {
+  return {
+    mode: settings.triggerAccessMode,
+    allowlist: settings.triggerAllowlist,
+    blocklist: settings.triggerBlocklist,
+  };
+}
+
+function actorDeniedReason(actorRole: string, settings: PRReviewTriggerSettings): string {
+  return settings.triggerAccessMode === "blocklist"
+    ? `${actorRole} is in the review trigger blocklist.`
+    : `${actorRole} is not in the review trigger allowlist.`;
 }
 
 function prNumberFromPayload(payload: GitHubWebhookPayload): { prNumber?: number } {
@@ -264,8 +291,8 @@ export function decidePRReviewTrigger(input: {
     }
 
     const actorLogin = triggerActor(payload);
-    if (!isTriggerActorAllowed(actorLogin, botLogin, settings.triggerAllowlist)) {
-      return { kind: "skip", reason: "Mention trigger actor is not in the review trigger allowlist." };
+    if (!isTriggerActorAllowed(actorLogin, botLogin, triggerAccessPolicy(settings))) {
+      return { kind: "skip", reason: actorDeniedReason("Mention trigger actor", settings) };
     }
 
     // Both commands operate on a PR's diff / reviews. A comment on a real issue
@@ -320,8 +347,8 @@ export function decidePRReviewTrigger(input: {
       return { kind: "skip", reason: `Trigger on create is disabled for ${repoSlug}.` };
     }
     const actorLogin = triggerActor(payload);
-    if (!currentGitHubLogin || !isTriggerActorAllowed(actorLogin, currentGitHubLogin, settings.triggerAllowlist)) {
-      return { kind: "skip", reason: "PR opener is not in the review trigger allowlist." };
+    if (!currentGitHubLogin || !isTriggerActorAllowed(actorLogin, currentGitHubLogin, triggerAccessPolicy(settings))) {
+      return { kind: "skip", reason: actorDeniedReason("PR opener", settings) };
     }
     return { kind: "trigger", repo: repoSlug, prNumber: pr.number, action, pr, triggerType: "pr_opened", actorLogin };
   }
@@ -334,8 +361,8 @@ export function decidePRReviewTrigger(input: {
       return { kind: "skip", reason: `Trigger on push is disabled for ${repoSlug}.` };
     }
     const actorLogin = triggerActor(payload);
-    if (!currentGitHubLogin || !isTriggerActorAllowed(actorLogin, currentGitHubLogin, settings.triggerAllowlist)) {
-      return { kind: "skip", reason: "PR pusher is not in the review trigger allowlist." };
+    if (!currentGitHubLogin || !isTriggerActorAllowed(actorLogin, currentGitHubLogin, triggerAccessPolicy(settings))) {
+      return { kind: "skip", reason: actorDeniedReason("PR pusher", settings) };
     }
     return { kind: "trigger", repo: repoSlug, prNumber: pr.number, action, pr, triggerType: "pr_synchronize", actorLogin };
   }
@@ -356,8 +383,8 @@ export function decidePRReviewTrigger(input: {
       return { kind: "skip", reason: `Review was requested from ${requestedLogin || "another reviewer"}, not ${botLogin}.` };
     }
     const actorLogin = triggerActor(payload);
-    if (!isTriggerActorAllowed(actorLogin, botLogin, settings.triggerAllowlist)) {
-      return { kind: "skip", reason: "Review requester is not in the review trigger allowlist." };
+    if (!isTriggerActorAllowed(actorLogin, botLogin, triggerAccessPolicy(settings))) {
+      return { kind: "skip", reason: actorDeniedReason("Review requester", settings) };
     }
     return { kind: "trigger", repo: repoSlug, prNumber: pr.number, action, pr, triggerType: "review_requested", actorLogin };
   }

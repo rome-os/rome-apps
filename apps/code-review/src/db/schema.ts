@@ -35,7 +35,9 @@ export function createAppDbSchema(tablePrefix: string = "repo_guardian") {
     triggerOnReviewRequest: integer("trigger_on_review_request").notNull().default(1),
     triggerOnMention: integer("trigger_on_mention").notNull().default(1),
     triggerOnPush: integer("trigger_on_push").notNull().default(1),
+    triggerAccessMode: text("trigger_access_mode").notNull().default("allowlist"),
     manualTriggerAllowlist: text("manual_trigger_allowlist"),
+    triggerBlocklist: text("trigger_blocklist"),
     mentionTriggerPhrase: text("mention_trigger_phrase").notNull().default("PTAL"),
     /**
      * Per-repo phrase that, when a PR comment @-mentions the bot and carries it,

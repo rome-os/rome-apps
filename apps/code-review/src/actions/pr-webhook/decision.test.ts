@@ -20,7 +20,9 @@ function settings(overrides: Partial<PRReviewTriggerSettings> = {}): PRReviewTri
     triggerOnReviewRequest: true,
     triggerOnMention: true,
     triggerOnPush: true,
+    triggerAccessMode: "allowlist",
     triggerAllowlist: [],
+    triggerBlocklist: [],
     mentionTriggerPhrase: "PTAL",
     ...overrides,
   };
@@ -314,9 +316,43 @@ describe("pr-webhook decision", () => {
   });
 
   it("keeps actor ACL behavior", () => {
-    expect(isTriggerActorAllowed("@Trusted-User", login, ["trusted-user"])).toBe(true);
-    expect(isTriggerActorAllowed("random-user", login, ["trusted-user"])).toBe(false);
-    expect(isTriggerActorAllowed(login, login, [])).toBe(true);
+    expect(isTriggerActorAllowed("@Trusted-User", login, { allowlist: ["trusted-user"] })).toBe(true);
+    expect(isTriggerActorAllowed("random-user", login, { allowlist: ["trusted-user"] })).toBe(false);
+    expect(isTriggerActorAllowed(login, login, { allowlist: [] })).toBe(true);
+  });
+
+  it("allows everyone except blocked users in blocklist mode", () => {
+    const policy = { mode: "blocklist" as const, blocklist: ["blocked-user"] };
+    expect(isTriggerActorAllowed("any-contributor", login, policy)).toBe(true);
+    expect(isTriggerActorAllowed("@Blocked-User", login, policy)).toBe(false);
+    // The connected guardian account is always allowed, even if stale data lists it.
+    expect(isTriggerActorAllowed(login, login, { mode: "blocklist", blocklist: [login] })).toBe(true);
+    // Missing actor or guardian identity remains fail-closed.
+    expect(isTriggerActorAllowed(null, login, policy)).toBe(false);
+    expect(isTriggerActorAllowed("any-contributor", null, policy)).toBe(false);
+
+    expect(decide("pull_request", prPayload("opened", "any-contributor"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({ kind: "trigger", actorLogin: "any-contributor" });
+    expect(decide("pull_request", prPayload("opened", "blocked-user"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "PR opener is in the review trigger blocklist.",
+    });
+    expect(decide("issue_comment", commentPayload("@rome-bot PTAL", "any-contributor"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({ kind: "trigger", actorLogin: "any-contributor" });
+    expect(decide("issue_comment", commentPayload("@rome-bot summary", "blocked-user"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "Mention trigger actor is in the review trigger blocklist.",
+    });
   });
 
   it("rejects malformed or unsupported events before triggering", () => {

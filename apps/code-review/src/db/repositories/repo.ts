@@ -52,8 +52,10 @@ export interface PRReviewSettings {
   triggerOnReviewRequest: boolean;
   triggerOnMention: boolean;
   triggerOnPush: boolean;
+  triggerAccessMode: TriggerAccessMode;
   triggerAllowlist: string[];
   manualTriggerAllowlist: string[];
+  triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
   customRules: string | null;
@@ -63,6 +65,8 @@ export interface PRReviewSettings {
   createdAt: string;
   updatedAt: string;
 }
+
+export type TriggerAccessMode = "allowlist" | "blocklist";
 
 /** A chassis task row for the new mention-handling flow. */
 export interface MentionTask {
@@ -198,6 +202,10 @@ export class ScanRepository {
 
   private serializeLoginList(value: unknown): string {
     return JSON.stringify(this.sanitizeLoginList(value));
+  }
+
+  private normalizeTriggerAccessMode(value: unknown): TriggerAccessMode {
+    return value === "blocklist" ? "blocklist" : "allowlist";
   }
 
   private normalizeMentionPhrase(value: unknown): string {
@@ -631,7 +639,7 @@ export class ScanRepository {
 
   getPRReviewSettings(repo: string): PRReviewSettings | undefined {
     const row = this.get<any>(
-      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, manual_trigger_allowlist as triggerAllowlist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,
+      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,
       [repo],
     );
     if (!row) return undefined;
@@ -644,8 +652,10 @@ export class ScanRepository {
       triggerOnReviewRequest: row.triggerOnReviewRequest === undefined ? !!row.triggerOnRequest : !!row.triggerOnReviewRequest,
       triggerOnMention: row.triggerOnMention === undefined ? !!row.triggerOnRequest : !!row.triggerOnMention,
       triggerOnPush: !!row.triggerOnPush,
+      triggerAccessMode: this.normalizeTriggerAccessMode(row.triggerAccessMode),
       triggerAllowlist,
       manualTriggerAllowlist: triggerAllowlist,
+      triggerBlocklist: this.parseLoginList(row.triggerBlocklist),
       mentionTriggerPhrase: this.normalizeMentionPhrase(row.mentionTriggerPhrase),
       summaryTriggerPhrase: this.normalizeSummaryPhrase(row.summaryTriggerPhrase),
       projectMemory: row.projectMemory ?? null,
@@ -653,7 +663,7 @@ export class ScanRepository {
     };
   }
 
-  upsertPRReviewSettings(repo: string, settings: { autoReviewEnabled?: boolean; triggerOnCreate?: boolean; triggerOnRequest?: boolean; triggerOnReviewRequest?: boolean; triggerOnMention?: boolean; triggerOnPush?: boolean; triggerAllowlist?: unknown; manualTriggerAllowlist?: unknown; mentionTriggerPhrase?: string | null; summaryTriggerPhrase?: string | null; customRules?: string | null; projectMemory?: string | null; webhookChannelUrl?: string | null; githubWebhookId?: string | null }): PRReviewSettings {
+  upsertPRReviewSettings(repo: string, settings: { autoReviewEnabled?: boolean; triggerOnCreate?: boolean; triggerOnRequest?: boolean; triggerOnReviewRequest?: boolean; triggerOnMention?: boolean; triggerOnPush?: boolean; triggerAccessMode?: TriggerAccessMode; triggerAllowlist?: unknown; manualTriggerAllowlist?: unknown; triggerBlocklist?: unknown; mentionTriggerPhrase?: string | null; summaryTriggerPhrase?: string | null; customRules?: string | null; projectMemory?: string | null; webhookChannelUrl?: string | null; githubWebhookId?: string | null }): PRReviewSettings {
     const existing = this.getPRReviewSettings(repo);
     const now = new Date().toISOString();
 
@@ -664,9 +674,12 @@ export class ScanRepository {
       const onReviewRequest = settings.triggerOnReviewRequest !== undefined ? settings.triggerOnReviewRequest : existing.triggerOnReviewRequest;
       const onMention = settings.triggerOnMention !== undefined ? settings.triggerOnMention : existing.triggerOnMention;
       const onPush = settings.triggerOnPush !== undefined ? settings.triggerOnPush : existing.triggerOnPush;
+      const triggerAccessMode = settings.triggerAccessMode !== undefined ? this.normalizeTriggerAccessMode(settings.triggerAccessMode) : existing.triggerAccessMode;
       const triggerAllowlistInput = settings.triggerAllowlist !== undefined ? settings.triggerAllowlist : settings.manualTriggerAllowlist;
       const triggerAllowlist = triggerAllowlistInput !== undefined ? this.sanitizeLoginList(triggerAllowlistInput) : existing.triggerAllowlist;
       const triggerAllowlistRaw = this.serializeLoginList(triggerAllowlist);
+      const triggerBlocklist = settings.triggerBlocklist !== undefined ? this.sanitizeLoginList(settings.triggerBlocklist) : existing.triggerBlocklist;
+      const triggerBlocklistRaw = this.serializeLoginList(triggerBlocklist);
       const mentionPhrase = settings.mentionTriggerPhrase !== undefined ? this.normalizeMentionPhrase(settings.mentionTriggerPhrase) : existing.mentionTriggerPhrase;
       const summaryPhrase = settings.summaryTriggerPhrase !== undefined ? this.normalizeSummaryPhrase(settings.summaryTriggerPhrase) : existing.summaryTriggerPhrase;
       const rules = settings.customRules !== undefined ? settings.customRules : existing.customRules;
@@ -674,10 +687,10 @@ export class ScanRepository {
       const webhook = settings.webhookChannelUrl !== undefined ? settings.webhookChannelUrl : existing.webhookChannelUrl;
       const webhookId = settings.githubWebhookId !== undefined ? settings.githubWebhookId : existing.githubWebhookId;
       this.run(
-        `UPDATE "${this.t("pr_review_settings")}" SET auto_review_enabled = ?, trigger_on_create = ?, trigger_on_request = ?, trigger_on_review_request = ?, trigger_on_mention = ?, trigger_on_push = ?, manual_trigger_allowlist = ?, mention_trigger_phrase = ?, summary_trigger_phrase = ?, custom_rules = ?, project_memory = ?, webhook_channel_url = ?, github_webhook_id = ?, updated_at = ? WHERE id = ?`,
-        [autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAllowlistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, existing.id],
+        `UPDATE "${this.t("pr_review_settings")}" SET auto_review_enabled = ?, trigger_on_create = ?, trigger_on_request = ?, trigger_on_review_request = ?, trigger_on_mention = ?, trigger_on_push = ?, trigger_access_mode = ?, manual_trigger_allowlist = ?, trigger_blocklist = ?, mention_trigger_phrase = ?, summary_trigger_phrase = ?, custom_rules = ?, project_memory = ?, webhook_channel_url = ?, github_webhook_id = ?, updated_at = ? WHERE id = ?`,
+        [autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, existing.id],
       );
-      return { ...existing, autoReviewEnabled: !!autoReview, triggerOnCreate: !!onCreate, triggerOnRequest: !!onRequest, triggerOnReviewRequest: !!onReviewRequest, triggerOnMention: !!onMention, triggerOnPush: !!onPush, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules ?? null, projectMemory: memory ?? null, webhookChannelUrl: webhook ?? null, githubWebhookId: webhookId ?? null, updatedAt: now };
+      return { ...existing, autoReviewEnabled: !!autoReview, triggerOnCreate: !!onCreate, triggerOnRequest: !!onRequest, triggerOnReviewRequest: !!onReviewRequest, triggerOnMention: !!onMention, triggerOnPush: !!onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules ?? null, projectMemory: memory ?? null, webhookChannelUrl: webhook ?? null, githubWebhookId: webhookId ?? null, updatedAt: now };
     }
 
     const id = crypto.randomUUID();
@@ -687,9 +700,12 @@ export class ScanRepository {
     const onReviewRequest = settings.triggerOnReviewRequest ?? true;
     const onMention = settings.triggerOnMention ?? true;
     const onPush = settings.triggerOnPush ?? true;
+    const triggerAccessMode = this.normalizeTriggerAccessMode(settings.triggerAccessMode);
     const triggerAllowlistInput = settings.triggerAllowlist !== undefined ? settings.triggerAllowlist : settings.manualTriggerAllowlist;
     const triggerAllowlist = this.sanitizeLoginList(triggerAllowlistInput);
     const triggerAllowlistRaw = this.serializeLoginList(triggerAllowlist);
+    const triggerBlocklist = this.sanitizeLoginList(settings.triggerBlocklist);
+    const triggerBlocklistRaw = this.serializeLoginList(triggerBlocklist);
     const mentionPhrase = this.normalizeMentionPhrase(settings.mentionTriggerPhrase);
     const summaryPhrase = this.normalizeSummaryPhrase(settings.summaryTriggerPhrase);
     const rules = settings.customRules ?? null;
@@ -697,15 +713,15 @@ export class ScanRepository {
     const webhook = settings.webhookChannelUrl ?? null;
     const webhookId = settings.githubWebhookId ?? null;
     this.run(
-      `INSERT INTO "${this.t("pr_review_settings")}" (id, repo, auto_review_enabled, trigger_on_create, trigger_on_request, trigger_on_review_request, trigger_on_mention, trigger_on_push, manual_trigger_allowlist, mention_trigger_phrase, summary_trigger_phrase, custom_rules, project_memory, webhook_channel_url, github_webhook_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, repo, autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAllowlistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, now],
+      `INSERT INTO "${this.t("pr_review_settings")}" (id, repo, auto_review_enabled, trigger_on_create, trigger_on_request, trigger_on_review_request, trigger_on_mention, trigger_on_push, trigger_access_mode, manual_trigger_allowlist, trigger_blocklist, mention_trigger_phrase, summary_trigger_phrase, custom_rules, project_memory, webhook_channel_url, github_webhook_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, repo, autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, now],
     );
-    return { id, repo, autoReviewEnabled: autoReview, triggerOnCreate: onCreate, triggerOnRequest: onRequest, triggerOnReviewRequest: onReviewRequest, triggerOnMention: onMention, triggerOnPush: onPush, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules, projectMemory: memory, webhookChannelUrl: webhook, githubWebhookId: webhookId, createdAt: now, updatedAt: now };
+    return { id, repo, autoReviewEnabled: autoReview, triggerOnCreate: onCreate, triggerOnRequest: onRequest, triggerOnReviewRequest: onReviewRequest, triggerOnMention: onMention, triggerOnPush: onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules, projectMemory: memory, webhookChannelUrl: webhook, githubWebhookId: webhookId, createdAt: now, updatedAt: now };
   }
 
   listAllPRReviewSettings(): PRReviewSettings[] {
     return this.all<any>(
-      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, manual_trigger_allowlist as triggerAllowlist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
+      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
     ).map((r: any) => ({
       ...r,
       autoReviewEnabled: !!r.autoReviewEnabled,
@@ -714,8 +730,10 @@ export class ScanRepository {
       triggerOnReviewRequest: r.triggerOnReviewRequest === undefined ? !!r.triggerOnRequest : !!r.triggerOnReviewRequest,
       triggerOnMention: r.triggerOnMention === undefined ? !!r.triggerOnRequest : !!r.triggerOnMention,
       triggerOnPush: !!r.triggerOnPush,
+      triggerAccessMode: this.normalizeTriggerAccessMode(r.triggerAccessMode),
       triggerAllowlist: this.parseLoginList(r.triggerAllowlist),
       manualTriggerAllowlist: this.parseLoginList(r.triggerAllowlist),
+      triggerBlocklist: this.parseLoginList(r.triggerBlocklist),
       mentionTriggerPhrase: this.normalizeMentionPhrase(r.mentionTriggerPhrase),
       summaryTriggerPhrase: this.normalizeSummaryPhrase(r.summaryTriggerPhrase),
       projectMemory: r.projectMemory ?? null,
