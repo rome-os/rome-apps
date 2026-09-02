@@ -6,7 +6,8 @@ import type {
 import { createAppLogger } from "@rome-os/app-runtime";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { ScanRepository, TriggerAccessMode } from "../db/repositories/repo.js";
+import type { ScanRepository } from "../db/repositories/repo.js";
+import { isTriggerAccessMode } from "../lib/trigger-access.js";
 import { sanitizeCliError } from "../utils/cli-errors.js";
 import {
   GITHUB_EVENTS,
@@ -58,11 +59,6 @@ function sanitizeGitHubLoginList(value: unknown, guardianLogin: string | null): 
     logins.push(login);
   }
   return logins;
-}
-
-function parseTriggerAccessMode(value: unknown): TriggerAccessMode | null {
-  if (value === "allowlist" || value === "blocklist") return value;
-  return null;
 }
 
 function isValidGitHubLogin(login: string): boolean {
@@ -662,7 +658,9 @@ class GuardianApiHandler implements RomeAppApiHandler {
       const guardianGithubLogin = await this._readGitHubLogin();
       const triggerAccessMode = body.triggerAccessMode === undefined
         ? undefined
-        : parseTriggerAccessMode(body.triggerAccessMode);
+        : isTriggerAccessMode(body.triggerAccessMode)
+          ? body.triggerAccessMode
+          : null;
       if (body.triggerAccessMode !== undefined && !triggerAccessMode) {
         return json({ error: "triggerAccessMode must be 'allowlist' or 'blocklist'." }, { status: 400 });
       }

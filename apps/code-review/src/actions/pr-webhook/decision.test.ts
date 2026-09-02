@@ -355,6 +355,44 @@ describe("pr-webhook decision", () => {
     });
   });
 
+  it("fails closed when synchronize or review-request events omit the actual actor", () => {
+    const synchronizeWithoutSender = prPayload("synchronize", "trusted-pr-author");
+    delete synchronizeWithoutSender.sender;
+    expect(decide("pull_request", synchronizeWithoutSender, {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: [],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "Could not identify the PR pusher for access filtering.",
+    });
+
+    const reviewRequestWithoutSender: GitHubWebhookPayload = {
+      ...prPayload("review_requested", "trusted-pr-author"),
+      requested_reviewer: { login },
+    };
+    delete reviewRequestWithoutSender.sender;
+    expect(decide("pull_request", reviewRequestWithoutSender, {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: [],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "Could not identify the review requester for access filtering.",
+    });
+
+    // Opened events are intentionally authorized against the PR author, so a
+    // missing sender does not erase the relevant identity for that event.
+    const openedWithoutSender = prPayload("opened", "trusted-pr-author");
+    delete openedWithoutSender.sender;
+    expect(decide("pull_request", openedWithoutSender, {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: [],
+    })).toMatchObject({
+      kind: "trigger",
+      actorLogin: "trusted-pr-author",
+      triggerType: "pr_opened",
+    });
+  });
+
   it("rejects malformed or unsupported events before triggering", () => {
     expect(decidePRReviewTrigger({
       githubEvent: "pull_request",

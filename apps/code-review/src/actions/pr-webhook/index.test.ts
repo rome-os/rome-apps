@@ -35,7 +35,7 @@ function makeDeps() {
   } as any;
 }
 
-function enableAllTriggers() {
+function enableAllTriggers(overrides: Record<string, unknown> = {}) {
   mocks.db.getPRReviewSettings.mockReturnValue({
     autoReviewEnabled: true,
     triggerOnCreate: true,
@@ -45,6 +45,7 @@ function enableAllTriggers() {
     triggerOnPush: true,
     triggerAllowlist: [],
     mentionTriggerPhrase: "PTAL",
+    ...overrides,
   });
 }
 
@@ -58,6 +59,7 @@ describe("pr-webhook action", () => {
   });
 
   it("accepts Routine event-bus pull_request input", async () => {
+    enableAllTriggers({ triggerAllowlist: ["zoolsher"] });
     const { createAction } = await import("./index.js");
     const deps = makeDeps();
     const action = createAction(config, deps);
@@ -261,6 +263,55 @@ describe("pr-webhook action", () => {
 
     expect(result.status).toBe("ok");
     expect(result.data).toMatchObject({ skipped: true });
+    expect(mocks.db.createQueuedPRReview).not.toHaveBeenCalled();
+    expect(deps.appContext.runAction).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for open-mode PR events without sender identity", async () => {
+    enableAllTriggers({
+      triggerAccessMode: "blocklist",
+      triggerAllowlist: [],
+      triggerBlocklist: [],
+    });
+    const { createAction } = await import("./index.js");
+    const deps = makeDeps();
+    const action = createAction(config, deps);
+
+    const synchronizeResult = await action.execute({
+      githubEvent: "pull_request",
+      __triggerPayload: {
+        action: "synchronize",
+        repository: { full_name: "amantru/rome-apps" },
+        pull_request: {
+          number: 751,
+          user: { login: "trusted-pr-author" },
+        },
+      },
+    });
+
+    const reviewRequestedResult = await action.execute({
+      githubEvent: "pull_request",
+      __triggerPayload: {
+        action: "review_requested",
+        repository: { full_name: "amantru/rome-apps" },
+        requested_reviewer: { login: "rome-bot" },
+        pull_request: {
+          number: 752,
+          user: { login: "trusted-pr-author" },
+        },
+      },
+    });
+
+    expect(synchronizeResult.status).toBe("ok");
+    expect(synchronizeResult.data).toMatchObject({
+      skipped: true,
+      reason: "Could not identify the PR pusher for access filtering.",
+    });
+    expect(reviewRequestedResult.status).toBe("ok");
+    expect(reviewRequestedResult.data).toMatchObject({
+      skipped: true,
+      reason: "Could not identify the review requester for access filtering.",
+    });
     expect(mocks.db.createQueuedPRReview).not.toHaveBeenCalled();
     expect(deps.appContext.runAction).not.toHaveBeenCalled();
   });

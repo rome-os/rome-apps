@@ -1,4 +1,7 @@
 import type { RomeSessionRef } from "@rome-os/app-web-sdk";
+import type { TriggerAccessMode } from "../lib/trigger-access.js";
+
+export type { TriggerAccessMode } from "../lib/trigger-access.js";
 
 export interface RepositoryData {
   id: string;
@@ -65,8 +68,6 @@ export interface PRReviewSettingsData {
   createdAt: string;
   updatedAt: string;
 }
-
-export type TriggerAccessMode = "allowlist" | "blocklist";
 
 export interface MemoryEditData {
   id: string;

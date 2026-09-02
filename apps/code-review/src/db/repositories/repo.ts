@@ -1,4 +1,5 @@
 import type { AppDbContext, DrizzleDb, RomeSessionRef } from "@rome-os/app-runtime";
+import { normalizeTriggerAccessMode, type TriggerAccessMode } from "../../lib/trigger-access.js";
 
 export interface Repository {
   id: string;
@@ -65,8 +66,6 @@ export interface PRReviewSettings {
   createdAt: string;
   updatedAt: string;
 }
-
-export type TriggerAccessMode = "allowlist" | "blocklist";
 
 /** A chassis task row for the new mention-handling flow. */
 export interface MentionTask {
@@ -202,10 +201,6 @@ export class ScanRepository {
 
   private serializeLoginList(value: unknown): string {
     return JSON.stringify(this.sanitizeLoginList(value));
-  }
-
-  private normalizeTriggerAccessMode(value: unknown): TriggerAccessMode {
-    return value === "blocklist" ? "blocklist" : "allowlist";
   }
 
   private normalizeMentionPhrase(value: unknown): string {
@@ -652,7 +647,7 @@ export class ScanRepository {
       triggerOnReviewRequest: row.triggerOnReviewRequest === undefined ? !!row.triggerOnRequest : !!row.triggerOnReviewRequest,
       triggerOnMention: row.triggerOnMention === undefined ? !!row.triggerOnRequest : !!row.triggerOnMention,
       triggerOnPush: !!row.triggerOnPush,
-      triggerAccessMode: this.normalizeTriggerAccessMode(row.triggerAccessMode),
+      triggerAccessMode: normalizeTriggerAccessMode(row.triggerAccessMode),
       triggerAllowlist,
       manualTriggerAllowlist: triggerAllowlist,
       triggerBlocklist: this.parseLoginList(row.triggerBlocklist),
@@ -674,7 +669,7 @@ export class ScanRepository {
       const onReviewRequest = settings.triggerOnReviewRequest !== undefined ? settings.triggerOnReviewRequest : existing.triggerOnReviewRequest;
       const onMention = settings.triggerOnMention !== undefined ? settings.triggerOnMention : existing.triggerOnMention;
       const onPush = settings.triggerOnPush !== undefined ? settings.triggerOnPush : existing.triggerOnPush;
-      const triggerAccessMode = settings.triggerAccessMode !== undefined ? this.normalizeTriggerAccessMode(settings.triggerAccessMode) : existing.triggerAccessMode;
+      const triggerAccessMode = settings.triggerAccessMode !== undefined ? normalizeTriggerAccessMode(settings.triggerAccessMode) : existing.triggerAccessMode;
       const triggerAllowlistInput = settings.triggerAllowlist !== undefined ? settings.triggerAllowlist : settings.manualTriggerAllowlist;
       const triggerAllowlist = triggerAllowlistInput !== undefined ? this.sanitizeLoginList(triggerAllowlistInput) : existing.triggerAllowlist;
       const triggerAllowlistRaw = this.serializeLoginList(triggerAllowlist);
@@ -700,7 +695,7 @@ export class ScanRepository {
     const onReviewRequest = settings.triggerOnReviewRequest ?? true;
     const onMention = settings.triggerOnMention ?? true;
     const onPush = settings.triggerOnPush ?? true;
-    const triggerAccessMode = this.normalizeTriggerAccessMode(settings.triggerAccessMode);
+    const triggerAccessMode = normalizeTriggerAccessMode(settings.triggerAccessMode);
     const triggerAllowlistInput = settings.triggerAllowlist !== undefined ? settings.triggerAllowlist : settings.manualTriggerAllowlist;
     const triggerAllowlist = this.sanitizeLoginList(triggerAllowlistInput);
     const triggerAllowlistRaw = this.serializeLoginList(triggerAllowlist);
@@ -730,7 +725,7 @@ export class ScanRepository {
       triggerOnReviewRequest: r.triggerOnReviewRequest === undefined ? !!r.triggerOnRequest : !!r.triggerOnReviewRequest,
       triggerOnMention: r.triggerOnMention === undefined ? !!r.triggerOnRequest : !!r.triggerOnMention,
       triggerOnPush: !!r.triggerOnPush,
-      triggerAccessMode: this.normalizeTriggerAccessMode(r.triggerAccessMode),
+      triggerAccessMode: normalizeTriggerAccessMode(r.triggerAccessMode),
       triggerAllowlist: this.parseLoginList(r.triggerAllowlist),
       manualTriggerAllowlist: this.parseLoginList(r.triggerAllowlist),
       triggerBlocklist: this.parseLoginList(r.triggerBlocklist),
