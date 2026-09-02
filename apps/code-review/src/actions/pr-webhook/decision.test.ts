@@ -20,7 +20,9 @@ function settings(overrides: Partial<PRReviewTriggerSettings> = {}): PRReviewTri
     triggerOnReviewRequest: true,
     triggerOnMention: true,
     triggerOnPush: true,
+    triggerAccessMode: "allowlist",
     triggerAllowlist: [],
+    triggerBlocklist: [],
     mentionTriggerPhrase: "PTAL",
     ...overrides,
   };
@@ -314,9 +316,81 @@ describe("pr-webhook decision", () => {
   });
 
   it("keeps actor ACL behavior", () => {
-    expect(isTriggerActorAllowed("@Trusted-User", login, ["trusted-user"])).toBe(true);
-    expect(isTriggerActorAllowed("random-user", login, ["trusted-user"])).toBe(false);
-    expect(isTriggerActorAllowed(login, login, [])).toBe(true);
+    expect(isTriggerActorAllowed("@Trusted-User", login, { allowlist: ["trusted-user"] })).toBe(true);
+    expect(isTriggerActorAllowed("random-user", login, { allowlist: ["trusted-user"] })).toBe(false);
+    expect(isTriggerActorAllowed(login, login, { allowlist: [] })).toBe(true);
+  });
+
+  it("allows everyone except blocked users in blocklist mode", () => {
+    const policy = { mode: "blocklist" as const, blocklist: ["blocked-user"] };
+    expect(isTriggerActorAllowed("any-contributor", login, policy)).toBe(true);
+    expect(isTriggerActorAllowed("@Blocked-User", login, policy)).toBe(false);
+    // The connected guardian account is always allowed, even if stale data lists it.
+    expect(isTriggerActorAllowed(login, login, { mode: "blocklist", blocklist: [login] })).toBe(true);
+    // Missing actor or guardian identity remains fail-closed.
+    expect(isTriggerActorAllowed(null, login, policy)).toBe(false);
+    expect(isTriggerActorAllowed("any-contributor", null, policy)).toBe(false);
+
+    expect(decide("pull_request", prPayload("opened", "any-contributor"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({ kind: "trigger", actorLogin: "any-contributor" });
+    expect(decide("pull_request", prPayload("opened", "blocked-user"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "PR opener is in the review trigger blocklist.",
+    });
+    expect(decide("issue_comment", commentPayload("@rome-bot PTAL", "any-contributor"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({ kind: "trigger", actorLogin: "any-contributor" });
+    expect(decide("issue_comment", commentPayload("@rome-bot summary", "blocked-user"), {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: ["blocked-user"],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "Mention trigger actor is in the review trigger blocklist.",
+    });
+  });
+
+  it("fails closed when synchronize or review-request events omit the actual actor", () => {
+    const synchronizeWithoutSender = prPayload("synchronize", "trusted-pr-author");
+    delete synchronizeWithoutSender.sender;
+    expect(decide("pull_request", synchronizeWithoutSender, {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: [],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "Could not identify the PR pusher for access filtering.",
+    });
+
+    const reviewRequestWithoutSender: GitHubWebhookPayload = {
+      ...prPayload("review_requested", "trusted-pr-author"),
+      requested_reviewer: { login },
+    };
+    delete reviewRequestWithoutSender.sender;
+    expect(decide("pull_request", reviewRequestWithoutSender, {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: [],
+    })).toMatchObject({
+      kind: "skip",
+      reason: "Could not identify the review requester for access filtering.",
+    });
+
+    // Opened events are intentionally authorized against the PR author, so a
+    // missing sender does not erase the relevant identity for that event.
+    const openedWithoutSender = prPayload("opened", "trusted-pr-author");
+    delete openedWithoutSender.sender;
+    expect(decide("pull_request", openedWithoutSender, {
+      triggerAccessMode: "blocklist",
+      triggerBlocklist: [],
+    })).toMatchObject({
+      kind: "trigger",
+      actorLogin: "trusted-pr-author",
+      triggerType: "pr_opened",
+    });
   });
 
   it("rejects malformed or unsupported events before triggering", () => {

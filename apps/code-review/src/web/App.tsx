@@ -290,6 +290,7 @@ export default function App({
       setError(null);
       try {
         const allowlist = normalizeGithubLogins(settings.triggerAllowlist);
+        const blocklist = normalizeGithubLogins(settings.triggerBlocklist);
         const response = await fetchAppApi("pr-review-settings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -302,7 +303,9 @@ export default function App({
             triggerOnReviewRequest: settings.triggerOnReviewRequest,
             triggerOnMention: settings.triggerOnMention,
             triggerOnPush: settings.triggerOnPush,
+            triggerAccessMode: settings.triggerAccessMode,
             triggerAllowlist: allowlist,
+            triggerBlocklist: blocklist,
             mentionTriggerPhrase: settings.mentionTriggerPhrase.trim() || "PTAL",
             summaryTriggerPhrase: settings.summaryTriggerPhrase.trim() || "summary",
             customRules: settings.customRules.trim() || null,

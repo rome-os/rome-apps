@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, AtSign, Brain, CheckCircle, Clock, Eye, ExternalLink, Github, GitPullRequest, Loader2, MessageSquare, Plug, Plus, RefreshCw, Settings, Trash2, Users, Wrench, X, XCircle, type LucideIcon } from "lucide-react";
+import { ArrowLeft, AtSign, Ban, Brain, CheckCircle, Clock, Eye, ExternalLink, Github, GitPullRequest, Loader2, MessageSquare, Plug, Plus, RefreshCw, Settings, Trash2, Users, Wrench, X, XCircle, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
-import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, TriggerSettingsPayload } from "@/types";
+import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
 import { fetchGithubUserProfile, getAppBasePath, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
 import { TRIGGER_SETTINGS_ROUTE } from "@/lib/constants";
 
-function AddAllowlistUserDialog({
+function AddAccessUserDialog({
   open,
+  mode,
+  guardianLogin,
   existingLogins,
   onClose,
   onConfirm,
 }: {
   open: boolean;
+  mode: TriggerAccessMode;
+  guardianLogin: string | null;
   existingLogins: string[];
   onClose: () => void;
   onConfirm: (profile: GithubUserProfile) => void;
@@ -42,8 +46,12 @@ function AddAllowlistUserDialog({
       setError("Enter a GitHub login.");
       return;
     }
+    if (mode === "blocklist" && guardianLogin && login === guardianLogin) {
+      setError("Your connected GitHub account is always allowed and cannot be blocked.");
+      return;
+    }
     if (existingLogins.includes(login)) {
-      setError(`@${login} is already allowed.`);
+      setError(`@${login} is already ${mode === "blocklist" ? "blocked" : "allowed"}.`);
       return;
     }
     setLoading(true);
@@ -73,7 +81,9 @@ function AddAllowlistUserDialog({
       <div className="w-full max-w-md rounded-xl border bg-background p-5 shadow-lg">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold">Add GitHub user</h2>
+            <h2 className="text-base font-semibold">
+              {mode === "blocklist" ? "Block GitHub user" : "Allow GitHub user"}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Look up a GitHub ID, verify the avatar and name, then confirm.
             </p>
@@ -137,7 +147,7 @@ function AddAllowlistUserDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!profile || loading}>
-              Confirm
+              {mode === "blocklist" ? "Block user" : "Allow user"}
             </Button>
           </div>
         </form>
@@ -146,13 +156,17 @@ function AddAllowlistUserDialog({
   );
 }
 
-function TriggerAllowlistEditor({
+function TriggerUserListEditor({
+  mode,
   guardianGithubLogin,
   value,
+  disabled,
   onChange,
 }: {
+  mode: TriggerAccessMode;
   guardianGithubLogin: string | null;
   value: string[];
+  disabled: boolean;
   onChange: (next: string[]) => void;
 }) {
   const [profiles, setProfiles] = useState<Record<string, GithubUserProfile>>({});
@@ -161,10 +175,10 @@ function TriggerAllowlistEditor({
   const guardianLogin = guardianGithubLogin ? normalizeGithubLoginInput(guardianGithubLogin) : null;
   const visibleLogins = useMemo(
     () => [
-      ...(guardianLogin ? [guardianLogin] : []),
+      ...(mode === "allowlist" && guardianLogin ? [guardianLogin] : []),
       ...value.filter((login) => login !== guardianLogin),
     ],
-    [guardianLogin, value],
+    [guardianLogin, mode, value],
   );
 
   useEffect(() => {
@@ -226,8 +240,11 @@ function TriggerAllowlistEditor({
 
   return (
     <div className="space-y-2.5">
+      <p className="text-xs font-medium text-foreground">
+        {mode === "blocklist" ? "Blocked people" : "Allowed people"}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
-        {guardianLogin ? (
+        {mode === "allowlist" && guardianLogin ? (
           <div className="group relative">
             <GithubUserAvatar
               login={guardianLogin}
@@ -238,18 +255,19 @@ function TriggerAllowlistEditor({
               You
             </span>
           </div>
-        ) : (
+        ) : mode === "allowlist" ? (
           <span className="rounded-full border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
             GitHub account not connected
           </span>
-        )}
+        ) : null}
         {value.map((login) => (
           <div key={login} className="group relative">
             <GithubUserAvatar login={login} profile={profiles[login]} className="h-10 w-10" />
             <button
               type="button"
               onClick={() => removeLogin(login)}
-              className="absolute -right-1 -top-1 hidden h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-destructive group-hover:flex"
+              disabled={disabled}
+              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={`Remove @${login}`}
             >
               <X className="h-3 w-3" />
@@ -259,19 +277,26 @@ function TriggerAllowlistEditor({
         <button
           type="button"
           onClick={() => setDialogOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed bg-background text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-          aria-label="Add GitHub user to trigger allowlist"
-          title="Add GitHub user"
+          disabled={disabled}
+          className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed bg-background text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={mode === "blocklist" ? "Add GitHub user to blocklist" : "Add GitHub user to allowlist"}
+          title={mode === "blocklist" ? "Block GitHub user" : "Allow GitHub user"}
         >
           <Plus className="h-4 w-4" />
         </button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Only these people can trigger the bot — reviews, questions, feedback, and code tasks.
+        {mode === "blocklist"
+          ? value.length > 0
+            ? "These accounts are ignored. Everyone else can trigger reviews, summaries, and @mention tasks."
+            : "No one is blocked. Any GitHub user can trigger reviews, summaries, and @mention tasks."
+          : "Only you and these accounts can trigger reviews, summaries, and @mention tasks."}
       </p>
-      <AddAllowlistUserDialog
+      <AddAccessUserDialog
         open={dialogOpen}
-        existingLogins={visibleLogins}
+        mode={mode}
+        guardianLogin={guardianLogin}
+        existingLogins={mode === "allowlist" && guardianLogin ? [guardianLogin, ...value] : value}
         onClose={() => setDialogOpen(false)}
         onConfirm={addProfile}
       />
@@ -317,7 +342,9 @@ function TriggerSettingsForm({
   initialTriggerOnReviewRequest,
   initialTriggerOnMention,
   initialTriggerOnPush,
+  initialTriggerAccessMode,
   initialTriggerAllowlist,
+  initialTriggerBlocklist,
   initialMentionTriggerPhrase,
   initialSummaryTriggerPhrase,
   initialCustomRules,
@@ -335,7 +362,9 @@ function TriggerSettingsForm({
   initialTriggerOnReviewRequest: boolean;
   initialTriggerOnMention: boolean;
   initialTriggerOnPush: boolean;
+  initialTriggerAccessMode: TriggerAccessMode;
   initialTriggerAllowlist: string[];
+  initialTriggerBlocklist: string[];
   initialMentionTriggerPhrase: string;
   initialSummaryTriggerPhrase: string;
   initialCustomRules: string;
@@ -352,8 +381,12 @@ function TriggerSettingsForm({
   const [triggerOnReviewRequest, setTriggerOnReviewRequest] = useState(initialTriggerOnReviewRequest);
   const [triggerOnMention, setTriggerOnMention] = useState(initialTriggerOnMention);
   const [triggerOnPush, setTriggerOnPush] = useState(initialTriggerOnPush);
+  const [triggerAccessMode, setTriggerAccessMode] = useState<TriggerAccessMode>(initialTriggerAccessMode);
   const [triggerAllowlist, setTriggerAllowlist] = useState(
     normalizeGithubLogins(initialTriggerAllowlist),
+  );
+  const [triggerBlocklist, setTriggerBlocklist] = useState(
+    normalizeGithubLogins(initialTriggerBlocklist),
   );
   const [mentionTriggerPhrase, setMentionTriggerPhrase] = useState(initialMentionTriggerPhrase || "PTAL");
   const [summaryTriggerPhrase, setSummaryTriggerPhrase] = useState(initialSummaryTriggerPhrase || "summary");
@@ -402,7 +435,9 @@ function TriggerSettingsForm({
         triggerOnMention,
         triggerOnPush,
         customRules,
+        triggerAccessMode,
         triggerAllowlist,
+        triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
         ...overrides,
@@ -487,7 +522,9 @@ function TriggerSettingsForm({
         triggerOnMention,
         triggerOnPush,
         customRules,
+        triggerAccessMode,
         triggerAllowlist,
+        triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
       });
@@ -538,16 +575,63 @@ function TriggerSettingsForm({
         <SectionHeader
           icon={Users}
           title="Who can use it"
-          description="Only these people's PRs and comments are acted on. You're always included."
+          description="Choose a default, then add the exceptions. Your connected account is always allowed."
         />
-        <TriggerAllowlistEditor
-          guardianGithubLogin={guardianGithubLogin}
-          value={triggerAllowlist}
-          onChange={(next) => {
-            setTriggerAllowlist(next);
-            void persistSettings({ triggerAllowlist: next });
-          }}
-        />
+        <div className="grid gap-2 pl-9 sm:grid-cols-2" role="radiogroup" aria-label="Who can trigger the bot">
+          <label className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${triggerAccessMode === "allowlist" ? "border-primary bg-primary/5" : "bg-background/60 hover:bg-muted/40"}`}>
+            <input
+              type="radio"
+              name="trigger-access-mode"
+              value="allowlist"
+              checked={triggerAccessMode === "allowlist"}
+              disabled={controlsDisabled}
+              onChange={() => {
+                setTriggerAccessMode("allowlist");
+                void persistSettings({ triggerAccessMode: "allowlist" });
+              }}
+              className="mt-1 h-4 w-4 accent-primary"
+            />
+            <span>
+              <span className="block text-sm font-medium">Selected people only</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">Start closed. Only you and people you allow can trigger the bot.</span>
+            </span>
+          </label>
+          <label className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${triggerAccessMode === "blocklist" ? "border-primary bg-primary/5" : "bg-background/60 hover:bg-muted/40"}`}>
+            <input
+              type="radio"
+              name="trigger-access-mode"
+              value="blocklist"
+              checked={triggerAccessMode === "blocklist"}
+              disabled={controlsDisabled}
+              onChange={() => {
+                setTriggerAccessMode("blocklist");
+                void persistSettings({ triggerAccessMode: "blocklist" });
+              }}
+              className="mt-1 h-4 w-4 accent-primary"
+            />
+            <span>
+              <span className="flex items-center gap-1.5 text-sm font-medium"><Ban className="h-3.5 w-3.5" />Everyone except blocked</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">Start open. Any GitHub user can trigger the bot unless you block them.</span>
+            </span>
+          </label>
+        </div>
+        <div className="pl-9">
+          <TriggerUserListEditor
+            mode={triggerAccessMode}
+            guardianGithubLogin={guardianGithubLogin}
+            value={triggerAccessMode === "blocklist" ? triggerBlocklist : triggerAllowlist}
+            disabled={controlsDisabled}
+            onChange={(next) => {
+              if (triggerAccessMode === "blocklist") {
+                setTriggerBlocklist(next);
+                void persistSettings({ triggerBlocklist: next });
+              } else {
+                setTriggerAllowlist(next);
+                void persistSettings({ triggerAllowlist: next });
+              }
+            }}
+          />
+        </div>
       </section>
 
       {/* 2 — Code reviews */}
@@ -948,7 +1032,9 @@ export function TriggerSettingsPage({
               initialTriggerOnReviewRequest={selectedSettings?.triggerOnReviewRequest ?? true}
               initialTriggerOnMention={selectedSettings?.triggerOnMention ?? true}
               initialTriggerOnPush={selectedSettings?.triggerOnPush ?? true}
+              initialTriggerAccessMode={selectedSettings?.triggerAccessMode ?? "allowlist"}
               initialTriggerAllowlist={selectedSettings?.triggerAllowlist ?? selectedSettings?.manualTriggerAllowlist ?? []}
+              initialTriggerBlocklist={selectedSettings?.triggerBlocklist ?? []}
               initialMentionTriggerPhrase={selectedSettings?.mentionTriggerPhrase ?? "PTAL"}
               initialSummaryTriggerPhrase={selectedSettings?.summaryTriggerPhrase ?? "summary"}
               initialCustomRules={selectedSettings?.customRules ?? ""}

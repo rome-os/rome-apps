@@ -1,4 +1,7 @@
 import type { RomeSessionRef } from "@rome-os/app-web-sdk";
+import type { TriggerAccessMode } from "../lib/trigger-access.js";
+
+export type { TriggerAccessMode } from "../lib/trigger-access.js";
 
 export interface RepositoryData {
   id: string;
@@ -42,8 +45,10 @@ export interface PRReviewSettingsData {
   triggerOnReviewRequest: boolean;
   triggerOnMention: boolean;
   triggerOnPush: boolean;
+  triggerAccessMode: TriggerAccessMode;
   triggerAllowlist: string[];
   manualTriggerAllowlist: string[];
+  triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
   customRules: string | null;
@@ -183,7 +188,9 @@ export interface TriggerSettingsPayload {
   triggerOnMention: boolean;
   triggerOnPush: boolean;
   customRules: string;
+  triggerAccessMode: TriggerAccessMode;
   triggerAllowlist: string[];
+  triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
 }
