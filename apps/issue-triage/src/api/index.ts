@@ -182,7 +182,6 @@ class IssueTriageApiHandler implements RomeAppApiHandler {
       }
     }
     if (request.method === "POST" && request.path.length === 3 && request.path[0] === "repositories" && request.path[2] === "provision") {
-      if (request.caller.kind !== "guardian") return json({ error: "forbidden" }, { status: 401 });
       const target = repo.getRepository(request.path[1]);
       if (!target) return json({ error: "not_found" }, { status: 404 });
       const body = readJson(request);
@@ -221,9 +220,8 @@ class IssueTriageApiHandler implements RomeAppApiHandler {
       return json({ settings });
     }
 
-    // --- connection repair (guardian-only) ---
+    // --- connection repair ---
     if (request.method === "POST" && route === "connection/repair") {
-      if (request.caller.kind !== "guardian") return json({ error: "forbidden" }, { status: 401 });
       try {
         const repair = await this._reconcileConnection(repo);
         const routineStatus = await this._readRoutineStatus();
