@@ -1,0 +1,14 @@
+name: issue-triage_triage-issue
+type: custom
+description: >
+  Triage a single GitHub issue. Fetches the issue and the repository's labels,
+  summons the issue-classifier agent to assign a type, priority, area labels,
+  and flags by concept, maps each concept to the repo's provisioned label, then
+  applies the final label set directly to the issue and records the result.
+  Never creates labels — labels are provisioned once when the repo is added.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: high
+sideEffects: write
+cancellable: true

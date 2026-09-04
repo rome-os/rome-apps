@@ -1,0 +1,27 @@
+formatVersion: 2
+id: issue-triage
+name: Issue Triage
+version: 0.2.0
+description: AI issue triage for GitHub — provisions each repo's labels once (reusing existing labels, creating missing recommended ones), then auto-labels new and edited issues without ever creating labels during triage, and lets you batch-triage from a dashboard.
+icon: assets/icon.svg
+appRoot: dist
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: Issue Triage
+  navLabel: Issue Triage
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: issue_triage
+
+actions:
+  - actions/triage-issue
+  - actions/issue-webhook
+
+agents:
+  - agents/issue-classifier.yaml
