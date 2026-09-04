@@ -14,6 +14,7 @@ on:
           - company-research
           - discord-digest
           - facebook
+          - issue-triage
           - learning
           - linkedin
           - memory
