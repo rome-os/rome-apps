@@ -23,6 +23,24 @@ import {
 const log = createAppLogger("code-review_api");
 const execFileAsync = promisify(execFile);
 
+/**
+ * Process-lifetime guard for the boot self-heal reconcile.
+ *
+ * `createApiHandler` builds a fresh `GuardianApiHandler` on EVERY request to
+ * `/api/apps/code-review/*` (the core dispatcher has no handler cache). The
+ * constructor's self-heal must therefore NOT run per-request: a dashboard tab
+ * polling every ~12s would otherwise fire a full webhook re-subscribe of every
+ * active repo on each poll — an unbounded storm of `connector_github_subscribe`
+ * + `search_routine` calls that hammers the GitHub API (risking secondary rate
+ * limits) and burns action-engine concurrency.
+ *
+ * Keyed by `appId@version` so the reconcile runs at most once per process, and
+ * re-runs exactly once after an app upgrade (whose new version may add GitHub
+ * events that need converging). Stores the in-flight promise so concurrent
+ * first requests share the single run.
+ */
+const reconcileOnce = new Map<string, Promise<void>>();
+
 function json(data: unknown, init?: ResponseInit): Response {
   return Response.json(data, init);
 }
@@ -227,7 +245,14 @@ class GuardianApiHandler implements RomeAppApiHandler {
     // GitHub event to GITHUB_EVENTS (e.g. `issues`): it re-subscribes the
     // webhook so GitHub delivers the new event, and creates/enables the matching
     // event-bus routine. Best-effort and fire-and-forget — errors are logged.
-    void this._ensureRoutinesIfNeeded();
+    //
+    // Guarded to run at most ONCE per process (per app version): handlers are
+    // rebuilt per request, so an unguarded reconcile here becomes a subscription
+    // storm under dashboard polling. See `reconcileOnce`.
+    const key = `${this.ctx.app.id}@${this.ctx.app.version}`;
+    if (!reconcileOnce.has(key)) {
+      reconcileOnce.set(key, this._ensureRoutinesIfNeeded());
+    }
   }
 
   /**
