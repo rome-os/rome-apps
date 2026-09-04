@@ -1,0 +1,23 @@
+/* Rome's design-token layer: Tailwind + tw-animate-css + the host theme
+   vocabulary (the `@theme inline` token set and base resets). The token
+   reference — every utility and what it means — lives in the design-system
+   canon (@rome-os/ui → src/styles.css).
+
+   The host mounts this bundle in a Shadow DOM, and the two imports below are
+   what put the token vocabulary inside it. Color and shadow values are the one
+   exception: those are host-owned, and they arrive as inherited custom
+   properties that cross the shadow boundary on their own. That is what makes a
+   UI built from the registered utilities follow light/dark and the active theme
+   with no `dark:` variants.
+
+   Only those host-owned values are promised. Inheritance cannot be narrowed, so
+   this bundle also reaches every other property the host page declares —
+   including names it never meant to expose. Reading one renders correctly in
+   the Rome dashboard and breaks against any other host, with nothing to catch
+   it. Paint with the tokens the imports below supply, and nothing else. */
+@import "@rome-os/app-web-sdk/styles";
+
+/* App-specific rules go below. Paint only with the registered tokens
+   (`bg-card`, `text-muted-foreground`, `rounded-lg`, …) — never raw shades
+   (`bg-gray-100`) or scrims (`bg-black/40`). To override a host token (e.g. pin
+   a corner radius), re-declare it in a `:root` block here. */

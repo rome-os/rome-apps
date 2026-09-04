@@ -1,0 +1,13 @@
+name: issue-triage_issue-webhook
+type: custom
+description: >
+  Event-bus handler for GitHub issue activity. Fired by a routine bound to
+  provider:event:github.issues, it applies per-repo settings (auto-triage on,
+  trigger-on-open / trigger-on-edit) and dispatches the triage-issue worker for
+  issues that are opened, edited, or reopened. Ignores pull requests and
+  de-duplicates re-fires on unchanged content.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write
