@@ -12,7 +12,7 @@ import { Separator } from "@rome-os/ui/separator";
 import { ArrowLeft, Wrench, Trash2, PlayCircle, Layers, Tag, RefreshCw } from "lucide-react";
 import type { DimensionsEnabled, GhAuthStatus, LabelMap, ProvisionResponse, RepoSettingsData, TriageResultData } from "@/types";
 import { GhAuthBanner, LabelChip, LabelChips, StatusBadge } from "./shared";
-import { actorLabel, relativeTime } from "@/lib/format";
+import { actorLabel, isGithubUrl, relativeTime } from "@/lib/format";
 
 interface Props {
   repoSlug: string;
@@ -174,7 +174,7 @@ export function SettingsPage(props: Props) {
     setTriaging(true);
     setError(null);
     try {
-      if (trimmed.includes("github.com")) {
+      if (isGithubUrl(trimmed)) {
         await props.onTriageSingle({ issueUrl: trimmed });
       } else if (/^\d+$/.test(trimmed)) {
         await props.onTriageSingle({ repo: repoSlug, issueNumber: parseInt(trimmed, 10) });

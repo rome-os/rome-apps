@@ -9,7 +9,7 @@ import { EmptyState, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } fr
 import { Skeleton } from "@rome-os/ui/skeleton";
 import { Plus, RefreshCw, Settings2, Tag, CheckCircle2, XCircle, Radio, ExternalLink } from "lucide-react";
 import type { AddRepositoryResponse, DashboardData, GhAuthStatus, ProvisionSummary, RepoSettingsData, TriageResultData } from "@/types";
-import { actorLabel, relativeTime } from "@/lib/format";
+import { actorLabel, isGithubUrl, relativeTime } from "@/lib/format";
 import { GhAuthBanner, LabelChips, StatusBadge } from "./shared";
 
 interface Props {
@@ -63,7 +63,7 @@ export function HomeDashboard(props: Props) {
     if (!trimmed) return;
     setTriaging(true);
     try {
-      if (trimmed.includes("github.com")) {
+      if (isGithubUrl(trimmed)) {
         await props.onTriageSingle({ issueUrl: trimmed });
       } else {
         setAddError("Enter a full issue URL, or triage from a repo's settings page.");

@@ -31,9 +31,17 @@ export function normalizeRepoSlug(input: string): string {
 
 /** Parse an issue URL into { repo, issueNumber } or null. */
 export function parseIssueUrl(url: string): { repo: string; issueNumber: number } | null {
-  const match = url.match(/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/);
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host !== "github.com" && !host.endsWith(".github.com")) return null;
+  const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/issues\/(\d+)(?:$|\/)/);
   if (!match) return null;
-  return { repo: match[1], issueNumber: parseInt(match[2], 10) };
+  return { repo: `${match[1]}/${match[2]}`, issueNumber: parseInt(match[3], 10) };
 }
 
 export interface GitHubIssue {

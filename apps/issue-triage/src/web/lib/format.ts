@@ -65,6 +65,24 @@ export function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+/**
+ * Whether `input` is an absolute URL whose host is GitHub (`github.com` or a
+ * subdomain like `www.github.com`). Parses the URL and checks the hostname
+ * exactly rather than doing a substring match, so hosts like
+ * `github.com.evil.com` or `evil.com/github.com` are rejected.
+ */
+export function isGithubUrl(input: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  const host = url.hostname.toLowerCase();
+  return host === "github.com" || host.endsWith(".github.com");
+}
+
 /** Short human label for the actor that triggered a triage. */
 export function actorLabel(actor: string): string {
   if (actor.startsWith("webhook:")) return `Auto · ${actor.slice("webhook:".length)}`;
