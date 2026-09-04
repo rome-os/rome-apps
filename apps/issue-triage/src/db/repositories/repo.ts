@@ -16,7 +16,6 @@ export interface RepoSettings {
   triggerOnEdit: boolean;
   applyMode: string;
   dimensionsEnabled: DimensionsEnabled;
-  createMissingLabels: boolean;
   autoCreateLabels: boolean;
   labelMap: LabelMap | null;
   provisionedAt: string | null;
@@ -210,7 +209,6 @@ export class TriageRepository {
       triggerOnEdit: !!row.triggerOnEdit,
       applyMode: row.applyMode || "apply",
       dimensionsEnabled: this.parseDimensions(row.dimensionsEnabled),
-      createMissingLabels: !!row.createMissingLabels,
       autoCreateLabels: row.autoCreateLabels === undefined || row.autoCreateLabels === null ? true : !!row.autoCreateLabels,
       labelMap: this.parseLabelMap(row.labelMap),
       provisionedAt: row.provisionedAt ?? null,
@@ -225,7 +223,7 @@ export class TriageRepository {
   private settingsColumns(): string {
     return `id, repo, auto_triage_enabled as autoTriageEnabled, trigger_on_open as triggerOnOpen,
       trigger_on_edit as triggerOnEdit, apply_mode as applyMode, dimensions_enabled as dimensionsEnabled,
-      create_missing_labels as createMissingLabels, auto_create_labels as autoCreateLabels,
+      auto_create_labels as autoCreateLabels,
       label_map as labelMap, provisioned_at as provisionedAt, custom_rules as customRules,
       github_webhook_id as githubWebhookId, webhook_channel_url as webhookChannelUrl,
       created_at as createdAt, updated_at as updatedAt`;
@@ -253,7 +251,6 @@ export class TriageRepository {
       triggerOnEdit?: boolean;
       applyMode?: string;
       dimensionsEnabled?: DimensionsEnabled;
-      createMissingLabels?: boolean;
       autoCreateLabels?: boolean;
       labelMap?: LabelMap | null;
       provisionedAt?: string | null;
@@ -273,7 +270,6 @@ export class TriageRepository {
         triggerOnEdit: settings.triggerOnEdit ?? existing.triggerOnEdit,
         applyMode: settings.applyMode ?? existing.applyMode,
         dimensionsEnabled: settings.dimensionsEnabled ?? existing.dimensionsEnabled,
-        createMissingLabels: settings.createMissingLabels ?? existing.createMissingLabels,
         autoCreateLabels: settings.autoCreateLabels ?? existing.autoCreateLabels,
         labelMap: settings.labelMap !== undefined ? settings.labelMap : existing.labelMap,
         provisionedAt: settings.provisionedAt !== undefined ? settings.provisionedAt : existing.provisionedAt,
@@ -284,7 +280,7 @@ export class TriageRepository {
       };
       this.run(
         `UPDATE "${this.t("repo_settings")}" SET auto_triage_enabled = ?, trigger_on_open = ?, trigger_on_edit = ?,
-           apply_mode = ?, dimensions_enabled = ?, create_missing_labels = ?, auto_create_labels = ?,
+           apply_mode = ?, dimensions_enabled = ?, auto_create_labels = ?,
            label_map = ?, provisioned_at = ?, custom_rules = ?,
            github_webhook_id = ?, webhook_channel_url = ?, updated_at = ? WHERE id = ?`,
         [
@@ -293,7 +289,6 @@ export class TriageRepository {
           merged.triggerOnEdit ? 1 : 0,
           merged.applyMode,
           JSON.stringify(merged.dimensionsEnabled),
-          merged.createMissingLabels ? 1 : 0,
           merged.autoCreateLabels ? 1 : 0,
           merged.labelMap ? JSON.stringify(merged.labelMap) : null,
           merged.provisionedAt,
@@ -316,7 +311,6 @@ export class TriageRepository {
       triggerOnEdit: settings.triggerOnEdit ?? true,
       applyMode: settings.applyMode ?? "apply",
       dimensionsEnabled: settings.dimensionsEnabled ?? { ...DEFAULT_DIMENSIONS },
-      createMissingLabels: settings.createMissingLabels ?? true,
       autoCreateLabels: settings.autoCreateLabels ?? true,
       labelMap: settings.labelMap ?? null,
       provisionedAt: settings.provisionedAt ?? null,
@@ -328,9 +322,9 @@ export class TriageRepository {
     };
     this.run(
       `INSERT INTO "${this.t("repo_settings")}" (id, repo, auto_triage_enabled, trigger_on_open, trigger_on_edit,
-         apply_mode, dimensions_enabled, create_missing_labels, auto_create_labels, label_map, provisioned_at,
+         apply_mode, dimensions_enabled, auto_create_labels, label_map, provisioned_at,
          custom_rules, github_webhook_id, webhook_channel_url,
-         created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         repo,
@@ -339,7 +333,6 @@ export class TriageRepository {
         created.triggerOnEdit ? 1 : 0,
         created.applyMode,
         JSON.stringify(created.dimensionsEnabled),
-        created.createMissingLabels ? 1 : 0,
         created.autoCreateLabels ? 1 : 0,
         created.labelMap ? JSON.stringify(created.labelMap) : null,
         created.provisionedAt,

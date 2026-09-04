@@ -26,7 +26,6 @@ export function createAppDbSchema(tablePrefix: string = "issue_triage") {
     applyMode: text("apply_mode").notNull().default("apply"),
     /** JSON: { type, priority, area, flags } booleans. */
     dimensionsEnabled: text("dimensions_enabled"),
-    createMissingLabels: integer("create_missing_labels").notNull().default(1),
     /** Whether add-repo/provisioning may auto-create missing recommended labels. */
     autoCreateLabels: integer("auto_create_labels").notNull().default(1),
     /** JSON: resolved LabelMap { type:{concept:label}, priority:{...}, flags:{...} }. */

@@ -15,6 +15,13 @@
       "when": 1788354250670,
       "tag": "0001_remarkable_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788520899936,
+      "tag": "0002_living_mojo",
+      "breakpoints": true
     }
   ]
 }

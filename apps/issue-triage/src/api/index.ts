@@ -247,7 +247,6 @@ class IssueTriageApiHandler implements RomeAppApiHandler {
       const enableAuto = !!body.autoTriageEnabled;
       const triggerOnOpen = body.triggerOnOpen !== undefined ? !!body.triggerOnOpen : undefined;
       const triggerOnEdit = body.triggerOnEdit !== undefined ? !!body.triggerOnEdit : undefined;
-      const createMissingLabels = body.createMissingLabels !== undefined ? !!body.createMissingLabels : undefined;
       const autoCreateLabels = body.autoCreateLabels !== undefined ? !!body.autoCreateLabels : undefined;
       const customRules = body.customRules !== undefined ? (body.customRules ?? null) : undefined;
       const dimensionsEnabled: DimensionsEnabled | undefined = body.dimensionsEnabled
@@ -295,7 +294,6 @@ class IssueTriageApiHandler implements RomeAppApiHandler {
           autoTriageEnabled: true,
           triggerOnOpen,
           triggerOnEdit,
-          createMissingLabels,
           autoCreateLabels,
           customRules,
           dimensionsEnabled,
@@ -320,7 +318,6 @@ class IssueTriageApiHandler implements RomeAppApiHandler {
         autoTriageEnabled: false,
         triggerOnOpen,
         triggerOnEdit,
-        createMissingLabels,
         autoCreateLabels,
         customRules,
         dimensionsEnabled,

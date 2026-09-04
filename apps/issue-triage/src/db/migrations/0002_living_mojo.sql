@@ -1,0 +1,1 @@
+ALTER TABLE `issue_triage__repo_settings` DROP COLUMN `create_missing_labels`;

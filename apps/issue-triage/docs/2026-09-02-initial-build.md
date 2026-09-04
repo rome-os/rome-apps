@@ -12,8 +12,7 @@ event-bus + agent + dashboard architecture.
   labels; honors enabled dimensions and per-repo custom rules.
 - **Worker action** `issue-triage_triage-issue` — fetches the issue + repo labels,
   summons the classifier via `system:summon`, maps output to a restricted label
-  set ({repo labels ∪ enabled built-in taxonomy}), creates missing built-in labels
-  (idempotent, honors `createMissingLabels`), replaces prior bot-owned
+  set ({repo labels ∪ enabled built-in taxonomy}), replaces prior bot-owned
   type/*/priority/* labels that changed, applies the final set, and records the
   result. Robust to summon `output` vs raw-text JSON fallback.
 - **Event handler** `issue-triage_issue-webhook` — event-bus handler for

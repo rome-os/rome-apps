@@ -38,7 +38,6 @@ export interface RepoSettingsData {
   triggerOnEdit: boolean;
   applyMode: string;
   dimensionsEnabled: DimensionsEnabled;
-  createMissingLabels: boolean;
   autoCreateLabels: boolean;
   labelMap: LabelMap | null;
   provisionedAt: string | null;
