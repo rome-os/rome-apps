@@ -1,0 +1,14 @@
+name: distill
+type: custom
+description: >-
+  Distill a YouTube video: fetch its transcript and generate the selected
+  artifacts (mindmap, summary, and/or web slides) in the video's original
+  language. Creates a history record and returns its id. If the same video was
+  distilled before, its stored transcript (and cached condensed outline) is
+  reused instead of scraping YouTube again; pass recordId to add artifacts to
+  an existing record.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write

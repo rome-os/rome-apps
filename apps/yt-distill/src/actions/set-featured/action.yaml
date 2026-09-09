@@ -1,0 +1,8 @@
+name: set_featured
+type: custom
+description: Mark or unmark a distillation as a public "sample" shown to anonymous visitors.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

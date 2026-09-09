@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788392134752,
+      "tag": "0000_jittery_princess_powerful",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788421781779,
+      "tag": "0001_clumsy_magik",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788561937220,
+      "tag": "0002_curious_payback",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788928893163,
+      "tag": "0003_sparkling_lord_hawal",
+      "breakpoints": true
+    }
+  ]
+}

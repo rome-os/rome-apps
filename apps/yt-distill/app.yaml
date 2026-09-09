@@ -1,0 +1,29 @@
+formatVersion: 2
+id: yt-distill
+name: YouTube Distill
+version: 0.5.0
+description: >-
+  Turn any YouTube video into a mind map, a key-point summary, and a web slide
+  deck — generated from the video's transcript in its original language.
+icon: assets/icon.svg
+appRoot: dist
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: YouTube Distill
+  navLabel: YouTube Distill
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: yt_distill
+
+actions:
+  - actions/distill
+  - actions/list
+  - actions/get
+  - actions/remove
+  - actions/set-featured

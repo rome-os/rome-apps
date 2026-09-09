@@ -1,0 +1,8 @@
+name: remove
+type: custom
+description: Delete a distillation history record by id.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

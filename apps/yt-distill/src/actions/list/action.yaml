@@ -1,0 +1,8 @@
+name: list
+type: custom
+description: List past distillations (history), newest first, with which artifacts each record has.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only
