@@ -16,9 +16,21 @@ import { loadScript, loadScriptsSequential } from "../lib/scriptLoader";
 import { SearchableMarkdown } from "./SearchableMarkdown";
 import { SearchBar } from "./SearchBar";
 
-const D3_SRC = "https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js";
-const MARKMAP_VIEW_SRC = "https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js";
-const MARKMAP_LIB_SRC = "https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.iife.js";
+// Exact versions + SRI hashes: the CDN cannot silently ship different bytes.
+// To upgrade, bump the version and recompute the hash:
+//   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
+const D3 = {
+  src: "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+  integrity: "sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i",
+};
+const MARKMAP_VIEW = {
+  src: "https://cdn.jsdelivr.net/npm/markmap-view@0.18.12/dist/browser/index.js",
+  integrity: "sha384-p+gyhsDIg0RmvIKRr9BBGSyJ9NDDkiFsbilRwdZd20Q8mUL2v7e8+orY4pvTV52w",
+};
+const MARKMAP_LIB = {
+  src: "https://cdn.jsdelivr.net/npm/markmap-lib@0.18.12/dist/browser/index.iife.js",
+  integrity: "sha384-ZlXKtR0wcZqxEYI8i3TPFFiOJR1MEdIzdVvnhSOonCrPsBup4dnkRw49FeYhfsHF",
+};
 
 interface MarkmapNode {
   content?: string;
@@ -62,11 +74,20 @@ interface MarkmapGlobal {
 }
 
 async function ensureMarkmap(): Promise<MarkmapGlobal> {
-  await loadScript(D3_SRC);
-  await loadScriptsSequential([MARKMAP_VIEW_SRC, MARKMAP_LIB_SRC]);
+  await loadScript(D3.src, D3.integrity);
+  await loadScriptsSequential([MARKMAP_VIEW, MARKMAP_LIB]);
   const mk = (window as unknown as { markmap?: MarkmapGlobal }).markmap;
   if (!mk?.Transformer || !mk?.Markmap) throw new Error("markmap failed to load");
   return mk;
+}
+
+/**
+ * markmap renders node labels as HTML. The Markdown comes from the model (fed
+ * an arbitrary YouTube transcript), so drop raw HTML tags before rendering;
+ * plain Markdown (bold, links, code) still works.
+ */
+function stripHtmlTags(md: string): string {
+  return md.replace(/<\/?[a-zA-Z][^>]*>/g, "");
 }
 
 /** Fold (collapse) or unfold (expand) every node with children; the root stays open. */
@@ -173,7 +194,7 @@ export function MarkmapView({ markdown }: { markdown: string }) {
         if (cancelled || !svgRef.current) return;
         svgRef.current.innerHTML = "";
         const transformer = new mk.Transformer();
-        const { root } = transformer.transform(markdown);
+        const { root } = transformer.transform(stripHtmlTags(markdown));
         rootRef.current = root;
         // Start with every branch collapsed (root + its top-level nodes visible).
         setFoldAll(root, true);

@@ -13,16 +13,10 @@
  * surfaced so the caller can show a friendly error status.
  */
 
+import { parseVideoId } from "./shared.js";
+
 const CDP_BASE = process.env.YT_CDP_BASE || "http://127.0.0.1:9222";
 const VISIT_TIMEOUT_MS = 120_000;
-
-const YOUTUBE_HOSTS = new Set([
-  "youtube.com",
-  "www.youtube.com",
-  "m.youtube.com",
-  "music.youtube.com",
-  "youtu.be",
-]);
 
 /**
  * Machine-readable reasons a transcript fetch can fail. Stored on the record
@@ -41,30 +35,7 @@ export interface OpenCliError {
   message?: string;
 }
 
-/** Parse a YouTube video id from a full URL or a bare id. */
-export function parseVideoId(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  if (!/^https?:\/\//i.test(trimmed)) {
-    return /^[A-Za-z0-9_-]{6,20}$/.test(trimmed) ? trimmed : null;
-  }
-  try {
-    const parsed = new URL(trimmed);
-    const host = parsed.hostname.toLowerCase();
-    if (!YOUTUBE_HOSTS.has(host)) return null;
-    const v = parsed.searchParams.get("v");
-    if (v) return v;
-    if (host === "youtu.be") {
-      const id = parsed.pathname.slice(1).split("/")[0];
-      return id || null;
-    }
-    const pathMatch = parsed.pathname.match(/^\/(shorts|embed|live|v)\/([^/?]+)/);
-    if (pathMatch) return pathMatch[2];
-    return null;
-  } catch {
-    return null;
-  }
-}
+export { parseVideoId };
 
 /** True when the input looks like a usable YouTube video link or id. */
 export function isYouTubeUrl(input: string): boolean {

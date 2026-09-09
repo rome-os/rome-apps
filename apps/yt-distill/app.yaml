@@ -1,7 +1,7 @@
 formatVersion: 2
 id: yt-distill
 name: YouTube Distill
-version: 0.4.0
+version: 0.5.0
 description: >-
   Turn any YouTube video into a mind map, a key-point summary, and a web slide
   deck — generated from the video's transcript in its original language.

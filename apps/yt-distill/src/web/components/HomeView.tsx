@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   distill,
   listHistory,
+  parseVideoId,
   removeDistillation,
   setFeatured as setFeaturedApi,
   SLIDE_STYLE_OPTIONS,
@@ -58,21 +59,6 @@ function ArtifactBadges({ artifacts }: { artifacts: HistoryItem["artifacts"] }) 
   );
 }
 
-/** Client-side mirror of the server's video-id parser (good enough for the reuse hint). */
-function parseVideoIdClient(raw: string): string | null {
-  const s = raw.trim();
-  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
-  try {
-    const u = new URL(s);
-    const v = u.searchParams.get("v");
-    if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
-    const m = u.pathname.match(/\/(?:embed|shorts|live|v)\/([A-Za-z0-9_-]{11})/) ??
-      (u.hostname.endsWith("youtu.be") ? u.pathname.match(/^\/([A-Za-z0-9_-]{11})/) : null);
-    return m ? m[1] : null;
-  } catch {
-    return null;
-  }
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -151,7 +137,7 @@ export function HomeView() {
 
   // A previous run of the same video with a saved transcript → no re-scrape.
   const reusable = (() => {
-    const vid = parseVideoIdClient(url);
+    const vid = parseVideoId(url);
     if (!vid) return null;
     return history.find((h) => h.videoId === vid && h.status === "ready") ?? null;
   })();
@@ -306,7 +292,7 @@ export function HomeView() {
           <div className="flex items-center gap-3">
             <Button onClick={() => void onGenerate()} disabled={generating}>
               {generating ? <Spinner size="sm" /> : null}
-              {generating ? "Distilling… (this can take a minute)" : "Generate"}
+              {generating ? "Starting…" : "Generate"}
             </Button>
             {generating ? (
               <span className="text-sm text-muted-foreground">

@@ -1,5 +1,7 @@
 import { fetchAppApi } from "@rome-os/app-web-sdk";
 
+export { SLIDE_STYLE_OPTIONS, parseVideoId } from "../../lib/shared";
+
 export type ArtifactType = "mindmap" | "summary" | "slides";
 export type DistillStatus = "pending" | "ready" | "error";
 
@@ -68,18 +70,6 @@ export interface DistillResponse {
   /** True when a previously stored transcript was reused (no YouTube scrape). */
   reused?: boolean;
 }
-
-/** Slide style options (mirrors src/lib/slides.ts SLIDE_STYLE_OPTIONS). */
-export const SLIDE_STYLE_OPTIONS: { id: string; name: string }[] = [
-  { id: "auto", name: "Auto (surprise me)" },
-  { id: "bold-signal", name: "Bold Signal — dark, high-impact" },
-  { id: "electric-studio", name: "Electric Studio — clean, corporate" },
-  { id: "dark-botanical", name: "Dark Botanical — elegant, premium" },
-  { id: "ink-editorial", name: "Ink Editorial — magazine, calm" },
-  { id: "indigo-porcelain", name: "Indigo Porcelain — technical, cool" },
-  { id: "neon-cyber", name: "Neon Cyber — energetic" },
-  { id: "swiss-grid", name: "Swiss Grid — serious typography" },
-];
 
 export async function distill(
   url: string,

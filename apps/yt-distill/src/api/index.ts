@@ -87,8 +87,11 @@ class YtDistillApiHandler implements RomeAppApiHandler {
       if (!hasRecord && (typeof url !== "string" || !url.trim())) {
         return json({ error: "url_required" }, { status: 400 });
       }
+      // A fresh video (scrape + generation) can take minutes: return the record
+      // id right away and let the page poll `get` until it is ready. Adding to
+      // an existing record only runs the model step, so it stays synchronous.
       const result = await this.ctx.runAction("yt-distill:distill", {
-        ...(hasRecord ? { recordId } : { url }),
+        ...(hasRecord ? { recordId } : { url, background: true }),
         types,
         style,
         ...(reuseTranscript === false ? { reuseTranscript: false } : {}),

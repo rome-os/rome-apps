@@ -1,3 +1,5 @@
+import { SLIDE_STYLE_OPTIONS } from "./shared.js";
+
 /**
  * Slide-deck generation, inspired by the "frontend-slides" skill
  * (github.com/zarazhangrui/frontend-slides) plus theme palettes from the
@@ -164,11 +166,6 @@ export const SLIDE_PRESETS: SlidePreset[] = [
 ];
 
 /** Style options exposed to the UI: "auto" (random each run) plus each preset. */
-export const SLIDE_STYLE_OPTIONS: { id: string; name: string }[] = [
-  { id: "auto", name: "Auto (surprise me)" },
-  ...SLIDE_PRESETS.map((p) => ({ id: p.id, name: p.name })),
-];
-
 const SLIDE_STYLE_IDS = new Set(SLIDE_STYLE_OPTIONS.map((o) => o.id));
 
 /** Normalize an incoming style value; unknown/empty falls back to "auto". */

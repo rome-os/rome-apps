@@ -6,7 +6,7 @@
  */
 const cache = new Map<string, Promise<void>>();
 
-export function loadScript(src: string): Promise<void> {
+export function loadScript(src: string, integrity?: string): Promise<void> {
   const existing = cache.get(src);
   if (existing) return existing;
 
@@ -14,6 +14,12 @@ export function loadScript(src: string): Promise<void> {
     const el = document.createElement("script");
     el.src = src;
     el.async = true;
+    if (integrity) {
+      // Subresource Integrity: the browser refuses to run the script if the
+      // bytes served do not match the pinned hash.
+      el.integrity = integrity;
+      el.crossOrigin = "anonymous";
+    }
     el.onload = () => resolve();
     el.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(el);
@@ -22,8 +28,8 @@ export function loadScript(src: string): Promise<void> {
   return promise;
 }
 
-export async function loadScriptsSequential(srcs: string[]): Promise<void> {
-  for (const src of srcs) {
-    await loadScript(src);
+export async function loadScriptsSequential(scripts: { src: string; integrity?: string }[]): Promise<void> {
+  for (const { src, integrity } of scripts) {
+    await loadScript(src, integrity);
   }
 }

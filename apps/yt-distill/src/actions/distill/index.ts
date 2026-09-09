@@ -9,14 +9,17 @@ import {
   createDistillationsRepository,
   type ArtifactType,
   type DistillationPatch,
+  type DistillationRow,
 } from "../../db/repositories/distillations.js";
 import {
   buildPrompt,
+  detectLanguage,
   normalizeTypes,
   stripCodeFences,
   truncateTranscript,
   TRANSCRIPT_LIMIT,
 } from "../../lib/artifacts.js";
+import { SLIDE_STYLE_OPTIONS } from "../../lib/shared.js";
 import { assembleSlidesHtml, normalizeSlideStyle } from "../../lib/slides.js";
 import { fetchTranscript, fetchVideoMetadata, parseVideoId } from "../../lib/youtube.js";
 
@@ -33,6 +36,8 @@ interface DistillInput {
   recordId?: unknown;
   /** Set false to force a fresh scrape even if a transcript is already stored. */
   reuseTranscript?: unknown;
+  /** When true, return the record id right away and finish the work off-request (poll `get`). */
+  background?: unknown;
 }
 
 /** Stored transcripts are timestamped paragraphs ("[12:34] text…"); the model gets plain text. */
@@ -107,8 +112,7 @@ export function createAction(config: ActionConfig, deps: DistillDeps): Action {
         },
         style: {
           type: "string",
-          description:
-            "Slide visual style: 'auto' (random preset each run) or a preset id (bold-signal, electric-studio, dark-botanical, ink-editorial, indigo-porcelain, neon-cyber, swiss-grid). Defaults to auto.",
+          description: `Slide visual style: 'auto' (random preset each run) or a preset id (${SLIDE_STYLE_OPTIONS.filter((o) => o.id !== "auto").map((o) => o.id).join(", ")}). Defaults to auto.`,
         },
         recordId: {
           type: "string",
@@ -120,13 +124,18 @@ export function createAction(config: ActionConfig, deps: DistillDeps): Action {
           description:
             "When true (default), reuse the transcript already stored for this video from a previous run instead of scraping YouTube again.",
         },
+        background: {
+          type: "boolean",
+          description:
+            "When true, create the record and return its id immediately (status 'pending'); scraping and generation continue in the background. Poll yt-distill:get until status is 'ready' or 'error'.",
+        },
       },
       required: [],
       additionalProperties: false,
     },
 
     execute: async (input: Record<string, unknown>): Promise<ActionResult> => {
-      const { url, types, style, recordId, reuseTranscript } = input as DistillInput;
+      const { url, types, style, recordId, reuseTranscript, background } = input as DistillInput;
       const slideStyle = normalizeSlideStyle(style);
       const repo = createDistillationsRepository(appContext.db);
 
@@ -187,11 +196,17 @@ export function createAction(config: ActionConfig, deps: DistillDeps): Action {
             condensedMd: previous.condensedMd,
           });
           log.info("reusing stored transcript", { id: row.id, from: previous.id, videoId });
-        } else {
+        }
+        // else: nothing stored → scraped in run() below.
+      }
+
+      // Everything from here on is the slow part (scrape + model calls).
+      const run = async (row: DistillationRow): Promise<ActionResult> => {
+        if (!source) {
           // Fetch metadata (best-effort) and transcript (required) in parallel.
           const [metadata, transcript] = await Promise.all([
-            fetchVideoMetadata(url).catch(() => ({ title: null, channel: null, videoId: null })),
-            fetchTranscript(url).catch(() => ({
+            fetchVideoMetadata(row.url).catch(() => ({ title: null, channel: null, videoId: null })),
+            fetchTranscript(row.url).catch(() => ({
               ok: false as const,
               text: "",
               formatted: "",
@@ -224,106 +239,119 @@ export function createAction(config: ActionConfig, deps: DistillDeps): Action {
           // Store the readable, timestamped transcript for display; the plain
           // text is only used transiently for the LLM prompt.
           const stored = transcript.formatted || transcript.text;
-          repo.patch(row.id, { title, channel, transcript: stored });
+          repo.patch(row.id, { title, channel, lang: detectLanguage(transcript.text), transcript: stored });
           source = { transcript: stored, condensedMd: null };
         }
-      }
 
-      const plainText = transcriptToPlain(source.transcript);
+        const plainText = transcriptToPlain(source.transcript);
 
-      // Short/medium videos go to the model whole. Very long ones are condensed
-      // via chunked map-reduce first, so the WHOLE video is covered — not just
-      // the opening (which would make a 3-hour talk yield a "Stage 1 only" map).
-      let promptSource = plainText;
-      let condensed = false;
-      if (plainText.length > TRANSCRIPT_LIMIT) {
-        let outline = source.condensedMd?.trim() ?? "";
-        if (outline) {
-          log.info("reusing cached condensed outline", { id: row.id, chars: outline.length });
-        } else {
-          outline = await condenseTranscript(
-            plainText,
-            appContext.runAction as RunAction,
-            row.id,
-          ).catch(() => "");
+        // Short/medium videos go to the model whole. Very long ones are condensed
+        // via chunked map-reduce first, so the WHOLE video is covered — not just
+        // the opening (which would make a 3-hour talk yield a "Stage 1 only" map).
+        let promptSource = plainText;
+        let condensed = false;
+        if (plainText.length > TRANSCRIPT_LIMIT) {
+          let outline = source.condensedMd?.trim() ?? "";
+          if (outline) {
+            log.info("reusing cached condensed outline", { id: row.id, chars: outline.length });
+          } else {
+            outline = await condenseTranscript(
+              plainText,
+              appContext.runAction as RunAction,
+              row.id,
+            ).catch(() => "");
+            if (outline && outline.length > 300) {
+              // Cache the expensive step so later runs on this video skip it.
+              repo.patch(row.id, { condensedMd: outline });
+              log.info("condensed long transcript", {
+                id: row.id,
+                fromChars: plainText.length,
+                toChars: outline.length,
+              });
+            }
+          }
           if (outline && outline.length > 300) {
-            // Cache the expensive step so later runs on this video skip it.
-            repo.patch(row.id, { condensedMd: outline });
-            log.info("condensed long transcript", {
-              id: row.id,
-              fromChars: plainText.length,
-              toChars: outline.length,
+            promptSource = outline;
+            condensed = true;
+          }
+        }
+        const { text: promptText, truncated } = truncateTranscript(promptSource);
+
+        const artifactPatch: DistillationPatch = {};
+        const generated: ArtifactType[] = [];
+        const failed: ArtifactType[] = [];
+
+        for (const type of requestedTypes) {
+          try {
+            const summon = await appContext.runAction("system:summon", {
+              agentName: "assistant:assistant",
+              prompt: buildPrompt(type, {
+                title,
+                transcript: promptText,
+                truncated,
+                condensed,
+                slideStyle,
+              }),
             });
+            if (summon.status !== "ok") {
+              const reason = summon.status === "error" ? summon.error : `summon returned ${summon.status}`;
+              throw new Error(reason);
+            }
+            const raw = readSummonResult(summon.data);
+            if (!raw || !raw.trim()) throw new Error("agent returned empty content");
+            if (type === "mindmap") artifactPatch.mindmapMd = stripCodeFences(raw);
+            else if (type === "summary") artifactPatch.summaryMd = stripCodeFences(raw);
+            else artifactPatch.slidesHtml = assembleSlidesHtml(raw, title);
+            generated.push(type);
+          } catch (err) {
+            failed.push(type);
+            log.error("artifact generation failed", { id: row.id, type, error: (err as Error).message });
           }
         }
-        if (outline && outline.length > 300) {
-          promptSource = outline;
-          condensed = true;
-        }
-      }
-      const { text: promptText, truncated } = truncateTranscript(promptSource);
 
-      const artifactPatch: DistillationPatch = {};
-      const generated: ArtifactType[] = [];
-      const failed: ArtifactType[] = [];
-
-      for (const type of requestedTypes) {
-        try {
-          const summon = await appContext.runAction("system:summon", {
-            agentName: "assistant:assistant",
-            prompt: buildPrompt(type, {
-              title,
-              transcript: promptText,
-              truncated,
-              condensed,
-              slideStyle,
-            }),
+        if (generated.length === 0) {
+          const message = "Generation failed — no content could be produced. Please try again.";
+          // Adding to an existing record that already has content: keep it
+          // usable and just surface the error message.
+          const keepReady =
+            typeof recordId === "string" && !!(row.mindmapMd || row.summaryMd || row.slidesHtml);
+          repo.patch(row.id, {
+            ...artifactPatch,
+            status: keepReady ? "ready" : "error",
+            errorMessage: message,
+            errorCode: keepReady ? null : "GENERATION_FAILED",
           });
-          if (summon.status !== "ok") {
-            const reason = summon.status === "error" ? summon.error : `summon returned ${summon.status}`;
-            throw new Error(reason);
-          }
-          const raw = readSummonResult(summon.data);
-          if (!raw || !raw.trim()) throw new Error("agent returned empty content");
-          if (type === "mindmap") artifactPatch.mindmapMd = stripCodeFences(raw);
-          else if (type === "summary") artifactPatch.summaryMd = stripCodeFences(raw);
-          else artifactPatch.slidesHtml = assembleSlidesHtml(raw, title);
-          generated.push(type);
-        } catch (err) {
-          failed.push(type);
-          log.error("artifact generation failed", { id: row.id, type, error: (err as Error).message });
+          return {
+            status: "ok",
+            data: { id: row.id, status: keepReady ? "ready" : "error", errorMessage: message, reused },
+          };
         }
-      }
 
-      if (generated.length === 0) {
-        const message = "Generation failed — no content could be produced. Please try again.";
-        // Adding to an existing record that already has content: keep it
-        // usable and just surface the error message.
-        const keepReady =
-          typeof recordId === "string" && !!(row.mindmapMd || row.summaryMd || row.slidesHtml);
-        repo.patch(row.id, {
-          ...artifactPatch,
-          status: keepReady ? "ready" : "error",
-          errorMessage: message,
-          errorCode: keepReady ? null : "GENERATION_FAILED",
-        });
+        const errorMessage =
+          failed.length > 0
+            ? `Some content failed to generate: ${failed.join(", ")}`
+            : null;
+        repo.patch(row.id, { ...artifactPatch, status: "ready", errorMessage, errorCode: null });
+        log.info("distillation ready", { id: row.id, generated, failed });
+
         return {
           status: "ok",
-          data: { id: row.id, status: keepReady ? "ready" : "error", errorMessage: message, reused },
+          data: { id: row.id, status: "ready", generated, failed, reused },
         };
-      }
-
-      const errorMessage =
-        failed.length > 0
-          ? `Some content failed to generate: ${failed.join(", ")}`
-          : null;
-      repo.patch(row.id, { ...artifactPatch, status: "ready", errorMessage, errorCode: null });
-      log.info("distillation ready", { id: row.id, generated, failed });
-
-      return {
-        status: "ok",
-        data: { id: row.id, status: "ready", generated, failed, reused },
       };
+
+      if (background === true) {
+        void run(row).catch((err: unknown) => {
+          log.error("background distill crashed", { id: row.id, error: (err as Error).message });
+          repo.patch(row.id, {
+            status: "error",
+            errorMessage: "Generation failed — no content could be produced. Please try again.",
+            errorCode: "GENERATION_FAILED",
+          });
+        });
+        return { status: "ok", data: { id: row.id, status: "pending", reused } };
+      }
+      return run(row);
     },
   };
 }

@@ -43,6 +43,13 @@ export function DetailView({ id }: { id: string }) {
     void load();
   }, [load]);
 
+  // Distilling runs in the background: poll while the record is still pending.
+  useEffect(() => {
+    if (record?.status !== "pending") return;
+    const timer = setInterval(() => void load(true), 3000);
+    return () => clearInterval(timer);
+  }, [record?.status, load]);
+
   const tabs = useMemo<{ value: string; label: string }[]>(() => {
     if (!record) return [];
     const list: { value: string; label: string }[] = [];
@@ -102,7 +109,7 @@ export function DetailView({ id }: { id: string }) {
             ) : record.status === "pending" ? (
               <Card>
                 <CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-                  <Spinner size="sm" /> Still processing — refresh in a moment.
+                  <Spinner size="sm" /> Fetching the transcript and generating — this page updates automatically.
                   <Button variant="ghost" size="sm" onClick={() => void load()}>
                     <RefreshCw className="size-4" /> Refresh
                   </Button>
