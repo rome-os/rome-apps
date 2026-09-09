@@ -83,11 +83,12 @@ async function ensureMarkmap(): Promise<MarkmapGlobal> {
 
 /**
  * markmap renders node labels as HTML. The Markdown comes from the model (fed
- * an arbitrary YouTube transcript), so drop raw HTML tags before rendering;
- * plain Markdown (bold, links, code) still works.
+ * an arbitrary YouTube transcript), so escape every "<" before rendering: no
+ * tag can survive, while plain Markdown (bold, links, code) still works and a
+ * literal "<" still displays as "<".
  */
-function stripHtmlTags(md: string): string {
-  return md.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+function escapeHtmlTags(md: string): string {
+  return md.replace(/</g, "&lt;");
 }
 
 /** Fold (collapse) or unfold (expand) every node with children; the root stays open. */
@@ -194,7 +195,7 @@ export function MarkmapView({ markdown }: { markdown: string }) {
         if (cancelled || !svgRef.current) return;
         svgRef.current.innerHTML = "";
         const transformer = new mk.Transformer();
-        const { root } = transformer.transform(stripHtmlTags(markdown));
+        const { root } = transformer.transform(escapeHtmlTags(markdown));
         rootRef.current = root;
         // Start with every branch collapsed (root + its top-level nodes visible).
         setFoldAll(root, true);
