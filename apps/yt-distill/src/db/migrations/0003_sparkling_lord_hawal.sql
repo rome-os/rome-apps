@@ -1,0 +1,1 @@
+ALTER TABLE `yt_distill__distillations` ADD `error_code` text;

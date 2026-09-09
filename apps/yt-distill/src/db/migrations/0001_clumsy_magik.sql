@@ -1,0 +1,1 @@
+ALTER TABLE `yt_distill__distillations` ADD `featured` integer DEFAULT false NOT NULL;

@@ -1,0 +1,8 @@
+name: get
+type: custom
+description: Get a single distillation by id, including full artifact contents.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only
