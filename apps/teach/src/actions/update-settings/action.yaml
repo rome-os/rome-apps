@@ -1,0 +1,13 @@
+name: teach_update_settings
+type: custom
+description: >-
+  Update the Teach app-global settings: the single notification channel for
+  review nudges (telegram/whatsapp/wechat/discord/webchat/email), the daily
+  review time, the timezone, and whether the daily review routine is enabled.
+  When the schedule or enabled flag is part of the update, the daily review
+  routine is reconciled to match. Backs the app's Settings panel.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

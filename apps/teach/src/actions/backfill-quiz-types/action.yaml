@@ -1,0 +1,12 @@
+name: teach_backfill_quiz_types
+type: custom
+description: >-
+  One-off, idempotent pass that classifies every card with no quiz_type yet into
+  mcq (discrete/factual) or qa (conceptual/open) and generates 3 distractors for
+  mcq cards. Safe to re-run — it only touches cards whose quiz_type is still
+  unset. Used to upgrade pre-existing / demo cards to active-recall review.
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: medium
+sideEffects: write

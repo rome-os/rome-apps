@@ -1,0 +1,13 @@
+name: teach_setup_review_routine
+type: custom
+description: >-
+  Create or update the daily review-nudge routine that runs teach_send_review_nudge
+  at the configured local time. Also updates the daily review time and timezone in
+  settings. The routine is created DISABLED by default — pass enabled:true to turn
+  it on. Idempotent: re-running replaces the existing routine. (The notification
+  channel is a separate app-global setting — use teach_update_settings.)
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

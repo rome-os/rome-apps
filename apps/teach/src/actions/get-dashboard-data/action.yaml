@@ -1,0 +1,10 @@
+name: teach_get_dashboard_data
+type: custom
+description: >-
+  Aggregate everything the dashboard needs: missions with lesson counts and
+  due-card counts, the overall review streak, totals, and app settings.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

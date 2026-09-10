@@ -1,0 +1,10 @@
+name: teach_add_resource
+type: custom
+description: >-
+  Add a curated external resource (title, url, note), optionally tied to a
+  mission. Used to capture citations and references for future lessons.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

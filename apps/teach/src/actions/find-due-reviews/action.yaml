@@ -1,0 +1,11 @@
+name: teach_find_due_reviews
+type: custom
+description: >-
+  Find review cards that are due now (due_at <= now), grouped by mission.
+  Returns the total due count and per-mission groups. Used by both the review
+  dashboard and the daily review-nudge routine.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

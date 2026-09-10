@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1782132114018,
+      "tag": "0000_dashing_ser_duncan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782135708796,
+      "tag": "0001_even_christian_walker",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782136167574,
+      "tag": "0002_lively_northstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1782148028983,
+      "tag": "0003_normal_wendell_rand",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1782226180551,
+      "tag": "0004_sticky_rictor",
+      "breakpoints": true
+    }
+  ]
+}

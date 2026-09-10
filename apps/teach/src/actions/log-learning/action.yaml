@@ -1,0 +1,11 @@
+name: teach_log_learning
+type: custom
+description: >-
+  Record a learning_record insight for a mission (optionally tied to a lesson) —
+  used by the tutor agent to capture what the learner understood or struggled
+  with during interactive teaching.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

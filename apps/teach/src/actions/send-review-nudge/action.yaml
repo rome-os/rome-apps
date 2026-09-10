@@ -1,0 +1,12 @@
+name: teach_send_review_nudge
+type: custom
+description: >-
+  Check for due review cards and, if any exist, send the guardian a nudge on
+  each mission's notify channel (falling back to the global default, then
+  webchat). Sends nothing when no cards are due. This is the action the daily
+  review routine invokes; pass dry_run to preview the message without sending.
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

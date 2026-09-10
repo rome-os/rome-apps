@@ -25,6 +25,7 @@ on:
           - stock-daily
           - survey
           - summary
+          - teach
           - utility
           - x-manager
           - xiaohongshu

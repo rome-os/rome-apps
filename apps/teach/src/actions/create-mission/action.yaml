@@ -1,0 +1,11 @@
+name: teach_create_mission
+type: custom
+description: >-
+  Create a learning Mission in the Teach app — what the guardian wants to learn
+  (title) and why (motivation), with a target level and optional notify channel.
+  Returns the created mission.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

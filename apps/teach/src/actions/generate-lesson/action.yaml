@@ -1,0 +1,13 @@
+name: teach_generate_lesson
+type: custom
+description: >-
+  Generate the next lesson for a mission. Creates a draft lesson, then runs the
+  lesson-author agent to research the topic (using web sources for current or
+  accuracy-critical material, citing them as resources) and produce a
+  self-contained HTML lesson plus 3-8 review cards. Returns the lesson id and
+  status. On web/LLM failure the lesson is left as a draft with an error note.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write
