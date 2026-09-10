@@ -10,6 +10,7 @@
 // script nor a code-split chunk could be fetched — everything mermaid needs is
 // inlined here and the global is assigned synchronously on load.
 
+import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 
 let renderSeq = 0;
@@ -46,8 +47,9 @@ async function render(root: ParentNode, dark: boolean): Promise<boolean> {
   mermaid.initialize({
     startOnLoad: false,
     theme: dark ? "dark" : "default",
-    securityLevel: "loose",
+    securityLevel: "strict",
     fontFamily: "inherit",
+    flowchart: { htmlLabels: false },
   });
 
   for (const holder of targets) {
@@ -56,7 +58,9 @@ async function render(root: ParentNode, dark: boolean): Promise<boolean> {
     const id = `teach-mermaid-${renderSeq++}`;
     try {
       const { svg } = await mermaid.render(id, src);
-      holder.innerHTML = svg;
+      holder.innerHTML = DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+      });
       holder.removeAttribute("data-teach-error");
     } catch (err) {
       holder.setAttribute("data-teach-error", "1");
