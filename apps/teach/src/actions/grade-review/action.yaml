@@ -1,0 +1,15 @@
+name: teach_grade_review
+type: custom
+description: >-
+  Submit an active-recall answer for a card and let the system grade it. For mcq
+  cards pass the picked option text (selected_option); for qa cards pass the
+  free-text answer (text), which an AI judge compares to the card's answer. The
+  derived verdict (correct/partial/wrong) maps to an SM-2 grade (Good/Hard/Again);
+  override_easy bumps a correct answer to Easy. Applies the SM-2 lite scheduler,
+  logs a review row, and returns the verdict, feedback, correct answer, and next
+  due date.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

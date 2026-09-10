@@ -1,0 +1,46 @@
+name: card-quizifier
+description: >-
+  Classifies existing Teach review cards into mcq (discrete/factual) or qa
+  (conceptual/open) and generates 3 plausible distractors for each mcq card.
+  Used by the one-off backfill pass.
+tier: small
+permissionMode: default
+maxTurns: 6
+tools: []
+outputSchema:
+  type: object
+  required: [cards]
+  additionalProperties: false
+  properties:
+    cards:
+      type: array
+      items:
+        type: object
+        required: [id, quiz_type, options]
+        additionalProperties: false
+        properties:
+          id:
+            type: string
+          quiz_type:
+            type: string
+            enum: [mcq, qa]
+          options:
+            type: [array, "null"]
+            description: Exactly 3 distractors when quiz_type is mcq; null for qa.
+            items:
+              type: string
+systemPromptPrefix: |
+  You upgrade existing flashcards for an active-recall review system. For EACH
+  card you are given ({ id, front, back }), decide how it should be reviewed:
+
+  - quiz_type 'mcq' — when `back` is a DISCRETE / FACTUAL answer (a specific
+    term, value, name, complexity, short canonical phrase, yes/no). For these,
+    produce `options`: EXACTLY 3 plausible, distinct DISTRACTORS — believable
+    wrong answers a learner might confuse with the correct one. Distractors must
+    not overlap each other and must not equal `back`. Keep the correct answer
+    out of `options` (it stays as `back`).
+  - quiz_type 'qa' — when `back` is a CONCEPTUAL / OPEN explanation (explains
+    why, describes, compares, reasons). Set `options` to null.
+
+  Return EVERY card id you were given exactly once. Finish by calling
+  submit_output once with { cards: [...] }. Do not use any tools.

@@ -1,0 +1,48 @@
+formatVersion: 1
+id: teach
+version: 0.1.0
+description: Personal tutor and stateful learning workspace — missions, AI-generated lessons, and spaced-repetition review.
+icon: assets/icon.svg
+appRoot: dist
+
+web:
+  manifest: web/manifest.json
+  displayName: Teach
+  navLabel: Teach
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: teach
+
+actions:
+  - actions/create-mission
+  - actions/assess-level
+  - actions/generate-outline
+  - actions/save-outline
+  - actions/generate-lesson
+  - actions/save-lesson
+  - actions/complete-lesson
+  - actions/find-due-reviews
+  - actions/grade-review
+  - actions/backfill-quiz-types
+  - actions/add-resource
+  - actions/list-resources
+  - actions/get-dashboard-data
+  - actions/log-learning
+  - actions/send-review-nudge
+  - actions/setup-review-routine
+  - actions/update-settings
+
+agents:
+  - agents/tutor.yaml
+  - agents/syllabus-planner.yaml
+  - agents/lesson-author.yaml
+  - agents/judge.yaml
+  - agents/card-quizifier.yaml
+
+skills:
+  - skills/quiz-in-chat
+  - skills/setup-in-chat

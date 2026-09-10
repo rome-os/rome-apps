@@ -1,0 +1,11 @@
+name: teach_assess_level
+type: custom
+description: >-
+  Record a mission's assessed target level and any notes from a level
+  assessment (zone of proximal development). Agent-side helper used after the
+  tutor probes the learner's current understanding.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

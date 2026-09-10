@@ -54,6 +54,7 @@ Each directory under [`apps/`](apps/) is an independent app package with an `app
 | [Stock Daily](apps/stock-daily/) | Generates and stores daily US stock-market close reports |
 | [Summary](apps/summary/) | Produces project summaries from Rome conversations, channels, and GitHub activity |
 | [AI Survey Builder](apps/survey/) | Turns research goals into conversational AI-native surveys |
+| [Teach](apps/teach/) | Provides personalized lessons, missions, and spaced-repetition review |
 | [Utility](apps/utility/) | Adds licensed visual design, frontend, MCP, skill-authoring, artifact, and testing skills |
 | [X Manager](apps/x-manager/) | Manages X content, replies, brand voice, and metrics |
 | [Xiaohongshu](apps/xiaohongshu/) | Automates Xiaohongshu research, engagement, drafts, and publishing |

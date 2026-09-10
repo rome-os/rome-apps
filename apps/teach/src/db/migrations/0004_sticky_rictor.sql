@@ -1,0 +1,1 @@
+ALTER TABLE `teach__mission` DROP COLUMN `notify_channel`;

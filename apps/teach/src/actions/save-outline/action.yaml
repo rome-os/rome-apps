@@ -1,0 +1,13 @@
+name: teach_save_outline
+type: custom
+description: >-
+  Persist a mission's two-level syllabus: a list of modules, each with an
+  ordered list of planned lessons (title + objective only, no content yet).
+  Called by the syllabus-planner agent after it designs the curriculum. When
+  regen is set, incomplete planned lessons are cleared and re-planned without
+  touching lessons the learner has already started or completed.
+entry: ./index.ts
+complexity: moderate
+speed: fast
+reliability: high
+sideEffects: write

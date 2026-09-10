@@ -1,0 +1,10 @@
+name: teach_complete_lesson
+type: custom
+description: >-
+  Mark a lesson as completed and record a learning_record note capturing what
+  was learned. Returns the updated lesson.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write

@@ -1,0 +1,18 @@
+/* Rome's design-token layer: Tailwind + tw-animate-css + the host theme
+   vocabulary (the `@theme inline` token set and base resets). The token
+   reference — every utility and what it means — lives in that file
+   (@rome-os/app-web-sdk → src/runtime/styles.css). The host mounts this bundle
+   in a Shadow DOM and the tokens are inherited from the live host theme, so a
+   UI built only from the registered utilities follows light/dark and the
+   active theme with no `dark:` variants. */
+@import "@rome-os/app-web-sdk/styles";
+
+/* App-specific rules go below. Paint only with the registered tokens
+   (`bg-card`, `text-muted-foreground`, `rounded-lg`, …) — never raw shades
+   (`bg-gray-100`) or scrims (`bg-black/40`). To override a host token (e.g. pin
+   a corner radius), re-declare it in a `:root` block here. */
+
+/* NOTE: Lesson typography and interactive-widget styles (the `.lesson-prose …`
+   rules) used to live here. They now ship inside the lesson runtime
+   (src/web/lesson-runtime/styles.ts) so they apply INSIDE the sandboxed lesson
+   iframe — keeping the host shell stylesheet to host chrome only. */

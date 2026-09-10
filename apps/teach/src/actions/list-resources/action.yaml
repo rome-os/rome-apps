@@ -1,0 +1,10 @@
+name: teach_list_resources
+type: custom
+description: >-
+  List curated resources, optionally filtered to a mission. Returns resources
+  newest first.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

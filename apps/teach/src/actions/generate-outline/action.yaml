@@ -1,0 +1,13 @@
+name: teach_generate_outline
+type: custom
+description: >-
+  Design a mission's learning syllabus by summoning the syllabus-planner agent,
+  which breaks the topic into 2-6 modules and 2-5 planned lessons each (titles +
+  objectives only — content is generated just-in-time later). Call this once
+  right after creating a mission. Pass regen=true to re-plan an existing mission
+  (clears incomplete planned lessons, keeps started/completed ones).
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: medium
+sideEffects: write
