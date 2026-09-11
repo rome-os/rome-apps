@@ -1,7 +1,9 @@
 formatVersion: 1
 id: summary
-version: 0.2.1
+name: Summary
+version: 0.2.2
 description: Work summary generator — aggregates webchat conversations, channel messages, and GitHub activity into structured reports by project.
+tagline: "Your week's chats, channels, and GitHub activity, summarized by project."
 appRoot: dist
 
 web:

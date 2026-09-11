@@ -1,7 +1,9 @@
 formatVersion: 1
 id: teach
-version: 0.1.0
+name: Teach
+version: 0.1.1
 description: Personal tutor and stateful learning workspace — missions, AI-generated lessons, and spaced-repetition review.
+tagline: "A personal tutor with missions, lessons, and spaced-repetition review."
 icon: assets/icon.svg
 appRoot: dist
 
