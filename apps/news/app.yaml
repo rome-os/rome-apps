@@ -1,7 +1,9 @@
 formatVersion: 1
 id: news
-version: 0.2.1
+name: News
+version: 0.2.2
 description: News and Reddit ingestion actions
+tagline: "News and Reddit sources pulled into one scheduled feed."
 appRoot: dist
 
 web:

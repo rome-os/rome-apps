@@ -1,8 +1,9 @@
 formatVersion: 1
 id: survey
 name: AI Survey Builder
-version: 0.3.1
+version: 0.3.2
 description: AINative survey builder — turns research goals into conversational, rich-interaction survey forms powered by AI agents.
+tagline: "Turn research goals into conversational surveys people finish."
 icon: assets/icon.svg
 appRoot: dist
 

@@ -1,8 +1,9 @@
 formatVersion: 1
 id: stock-daily
 name: Stock Daily
-version: 0.6.0
+version: 0.6.1
 description: "US stock market daily close report generator: create scheduled or manual English market recap reports and keep historical results."
+tagline: "A daily US market close report, written and kept for you."
 icon: assets/icon.svg
 appRoot: dist
 

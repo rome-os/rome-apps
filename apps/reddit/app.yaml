@@ -1,7 +1,9 @@
 formatVersion: 1
 id: reddit
-version: 0.2.1
+name: Reddit Radar
+version: 0.2.2
 description: AI agent Reddit radar with scheduled ingestion and a mounted web dashboard
+tagline: "Watch the subreddits you care about and see what matters daily."
 appRoot: dist
 
 web:

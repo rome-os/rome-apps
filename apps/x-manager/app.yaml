@@ -1,8 +1,9 @@
 formatVersion: 1
 id: x-manager
 name: X Manager
-version: 0.3.1
+version: 0.3.2
 description: X (Twitter) account management — check login, learn brand voice, create content, reply to comments, and poll metrics
+tagline: "Run your X account: brand voice, posts, replies, and metrics."
 icon: assets/icon.svg
 appRoot: dist
 
