@@ -11,15 +11,15 @@ actions:
 maxTurns: 200
 outputSchema:
   type: object
-  required: [markdown]
+  required: [markdown, messageCountEstimate]
   additionalProperties: false
   properties:
     markdown:
       type: string
       description: A Discord-ready markdown digest, concise enough to send as a single message.
     messageCountEstimate:
-      type: number
-      description: Estimated number of meaningful messages reviewed.
+      type: [number, "null"]
+      description: Estimated number of meaningful messages reviewed; null when not counted.
 systemPromptPrefix: |
   You summarize Discord channel history for a friendly community bot.
 
