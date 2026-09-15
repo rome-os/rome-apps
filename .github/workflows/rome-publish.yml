@@ -29,6 +29,7 @@ on:
           - utility
           - x-manager
           - xiaohongshu
+          - yt-distill
       dry_run:
         description: Package and compute hash, but don't upload
         type: boolean
