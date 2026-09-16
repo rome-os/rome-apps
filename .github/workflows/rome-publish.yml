@@ -20,6 +20,7 @@ on:
           - memory
           - news
           - reddit
+          - replay
           - rome-table
           - seo
           - stock-daily
