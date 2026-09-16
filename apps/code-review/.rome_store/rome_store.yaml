@@ -1,0 +1,56 @@
+# Store listing for romeos.cc/store/code-review. Published as a sidecar: it
+# never ships to installed instances and never changes the app's content hash,
+# so listing copy can be edited without prompting anyone to upgrade.
+
+title: Code Review
+description: A first-pass reviewer for every GitHub PR, with inline findings.
+
+# The share card for this listing's link. Relative path inside this directory.
+# Without it the listing falls back to the site-wide default image.
+image: assets/store-card.png
+image_alt: Code Review on the Rome App Store
+
+category: Developer
+keywords:
+  - code review
+  - github
+  - pull requests
+  - static analysis
+  - ci
+
+homepage: https://romeos.cc/store/code-review
+repository: https://github.com/rome-os/rome-apps/tree/main/apps/code-review
+
+# on = embed a live preview on the listing page; demo = link to the app running
+# on demo.romeos.cc; off = no preview link.
+preview: off
+
+long_description: |
+  Every pull request deserves a fast first pass. Code Review watches your
+  GitHub repositories, reviews each pull request with an agent, and posts the
+  result back to GitHub as an ordinary review with inline comments.
+
+  ## Why install it
+
+  - **Catch issues before review time is spent.** Bugs, risky edge cases,
+    security concerns, performance regressions, and maintainability problems
+    surface early.
+  - **Keep pull requests moving.** Solo projects and small teams get a second
+    set of eyes when nobody is immediately available.
+  - **Make reviews consistent.** The same baseline checks apply to every pull
+    request, so humans can focus on architecture and product judgment.
+  - **Stay inside GitHub.** Findings appear as inline comments with a verdict
+    and a summary, where the code discussion already happens.
+
+  ## What it does
+
+  - Monitors the repositories you add from the Rome dashboard.
+  - Runs automatically when pull requests open or receive new commits.
+  - Also runs on demand, on a GitHub review request, or on a mention command.
+  - Posts line-level findings plus a concise summary and verdict.
+  - Takes per-repository review instructions.
+  - Allows selected GitHub users, or everyone except the people you block.
+  - Keeps a review history dashboard in Rome for status and follow-up.
+
+  It does not replace human review. It handles the repetitive first pass so
+  people can spend their attention on decisions that need judgment.

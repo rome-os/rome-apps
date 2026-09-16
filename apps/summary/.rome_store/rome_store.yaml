@@ -1,0 +1,14 @@
+# Store listing for romeos.cc/store/summary. Published as a sidecar: it never
+# ships to installed instances and never changes the app's content hash, so
+# listing copy can be edited without prompting anyone to upgrade.
+#
+# Still to fill in per app: category, keywords, long_description, and media
+# (screenshots of the running app, shown in the listing's gallery).
+
+title: Summary
+description: "Your week's chats, channels, and GitHub activity, summarized by project."
+
+# Share card for this listing's link. Without it the listing falls back to the
+# site-wide default image.
+image: assets/store-card.png
+image_alt: "Summary on the Rome App Store"
