@@ -9,7 +9,6 @@ on:
         required: true
         options:
           - brainstorm
-          - chatgpt
           - code-review
           - company-research
           - discord-digest
