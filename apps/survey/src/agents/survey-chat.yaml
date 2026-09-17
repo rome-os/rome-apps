@@ -11,6 +11,8 @@ outputSchema:
   type: object
   required:
     - message
+    - uiBlock
+    - collectedData
     - done
   additionalProperties: false
   properties:
@@ -18,8 +20,19 @@ outputSchema:
       type: string
       description: "The agent's conversational message to the consumer"
     uiBlock:
-      type: object
-      description: "Optional rich UI component for the consumer to interact with"
+      type:
+        - object
+        - "null"
+      description: "Rich UI component for the consumer to interact with; null when the turn needs no input widget"
+      required:
+        - type
+        - options
+        - scale
+        - lowLabel
+        - midLabel
+        - highLabel
+        - fieldKey
+      additionalProperties: false
       properties:
         type:
           type: string
@@ -28,28 +41,42 @@ outputSchema:
             - multiple_choice
             - rating
         options:
-          type: array
+          type:
+            - array
+            - "null"
           items:
             type: string
-          description: "Choice options for single_choice or multiple_choice. MUST always include an 'Other' option as the LAST item."
+          description: "Choice options for single_choice or multiple_choice, null for rating. MUST always include an 'Other' option as the LAST item."
         scale:
-          type: integer
-          description: "Max rating value for rating type (always 10)"
+          type:
+            - integer
+            - "null"
+          description: "Max rating value for rating type (always 10), null for choice types"
         lowLabel:
-          type: string
-          description: "Label for the lowest rating value (e.g. 'Not sweet at all')"
+          type:
+            - string
+            - "null"
+          description: "Label for the lowest rating value (e.g. 'Not sweet at all'), null for choice types"
         midLabel:
-          type: string
-          description: "Label for the middle rating value (e.g. 'Just right')"
+          type:
+            - string
+            - "null"
+          description: "Label for the middle rating value (e.g. 'Just right'), null for choice types"
         highLabel:
-          type: string
-          description: "Label for the highest rating value (e.g. 'Way too sweet')"
+          type:
+            - string
+            - "null"
+          description: "Label for the highest rating value (e.g. 'Way too sweet'), null for choice types"
         fieldKey:
-          type: string
+          type:
+            - string
+            - "null"
           description: "The data field key this input maps to"
     collectedData:
-      type: object
-      description: "Key-value pairs of data extracted from the user's latest response"
+      type:
+        - string
+        - "null"
+      description: "JSON object, serialized as a string, of the data extracted from the user's latest response; null when this turn collected nothing"
     done:
       type: boolean
       description: "True when the survey conversation is complete"
@@ -66,7 +93,7 @@ systemPromptPrefix: |
   4. Evaluate `condition` fields dynamically based on the conversation so far.
      Skip questions whose conditions are not met.
   5. After structured questions, explore any open-ended topics with natural dialogue.
-  6. Extract and return `collectedData` from each user response.
+  6. Extract the data from each user response and return it in `collectedData` as a JSON object serialized to a string, for example "{\"sweetness\": 7}". Return null when a turn collects nothing.
   7. When all questions are covered, thank the user and set `done: true`.
   8. Keep your tone warm but efficient. Do not repeat or summarize unless asked.
   9. Always call submit_output. Never reply with plain text.

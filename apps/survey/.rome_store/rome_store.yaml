@@ -1,0 +1,14 @@
+# Store listing for romeos.cc/store/survey. Published as a sidecar: it never
+# ships to installed instances and never changes the app's content hash, so
+# listing copy can be edited without prompting anyone to upgrade.
+#
+# Still to fill in per app: category, keywords, long_description, and media
+# (screenshots of the running app, shown in the listing's gallery).
+
+title: AI Survey Builder
+description: "Turn research goals into conversational surveys people finish."
+
+# Share card for this listing's link. Without it the listing falls back to the
+# site-wide default image.
+image: assets/store-card.png
+image_alt: "AI Survey Builder on the Rome App Store"
