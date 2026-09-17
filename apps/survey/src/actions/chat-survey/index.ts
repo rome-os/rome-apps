@@ -26,7 +26,7 @@ interface ChatOutput {
     midLabel?: string;
     highLabel?: string;
     fieldKey?: string;
-  };
+  } | null;
   /** A JSON object serialized to a string; the portable output schema cannot
    *  express a free-form map. */
   collectedData?: string | null;
@@ -42,12 +42,13 @@ function parseCollectedData(raw: string | null | undefined): Record<string, unkn
   try {
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      log.warn("collectedData is not a JSON object", { raw });
+      log.warn("collectedData is not a JSON object", { length: raw.length });
       return null;
     }
     return parsed as Record<string, unknown>;
   } catch (err) {
-    log.warn("collectedData is not valid JSON", { raw, error: String(err) });
+    // The payload is the respondent's own answers, so log its shape only.
+    log.warn("collectedData is not valid JSON", { length: raw.length, error: String(err) });
     return null;
   }
 }
@@ -227,7 +228,7 @@ export function createAction(config: ActionConfig, deps: Deps): Action {
         responseId,
         done: structured.done,
         isFirstTurn,
-        fieldsCollected: structured.collectedData ? Object.keys(structured.collectedData) : [],
+        fieldsCollected: collected ? Object.keys(collected) : [],
       });
 
       return {

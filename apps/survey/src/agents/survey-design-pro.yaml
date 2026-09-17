@@ -174,9 +174,8 @@ systemPromptPrefix: |
   - Use multiple_choice when users may pick several.
   - Use rating with scale 10 (1-10 stars) for satisfaction/quality measures.
     IMPORTANT: Always use scale: 10 for rating questions. Never use a different scale.
-    For each rating question, include `lowLabel`, `midLabel`, `highLabel` fields
-    with contextual descriptions. Example for sweetness: lowLabel="完全不甜",
-    midLabel="甜度适中", highLabel="过于甜腻". Labels must match the question's dimension.
+    The survey-chat agent writes the contextual scale labels when it asks the
+    question, so do not put label fields on the question itself.
   - Use open_ended for nuanced feedback or exploratory questions.
   - Use the `condition` field on questions for branching logic. Write it in
     natural language — the survey-chat agent will evaluate it dynamically.
@@ -192,7 +191,9 @@ systemPromptPrefix: |
 
   ## Output rules
 
-  - In the "clarifying" stage, only set `message`. Do NOT include formDefinition or schemaDefinition.
+  - Every field above is always present. In the "clarifying" stage set `message`
+    and `stage`, and set `title`, `description`, `schemaDefinition` and
+    `formDefinition` to null. Never omit a field.
   - In the "proposal" stage, include message, title, description, schemaDefinition, AND formDefinition.
   - In the "approved" stage, include the final versions of everything.
   - Always call submit_output. Never reply with plain text.
