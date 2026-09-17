@@ -1,7 +1,7 @@
 formatVersion: 1
 id: brainstorm
 name: Brainstorm
-version: 0.2.1
+version: 0.2.2
 description: A guided brainstorming agent that turns rough ideas into approved design specs before implementation.
 tagline: "Turn a rough idea into an approved design spec before you build."
 icon: assets/icon.svg

@@ -1,0 +1,14 @@
+# Store listing for romeos.cc/store/stock-daily. Published as a sidecar: it never
+# ships to installed instances and never changes the app's content hash, so
+# listing copy can be edited without prompting anyone to upgrade.
+#
+# Still to fill in per app: category, keywords, long_description, and media
+# (screenshots of the running app, shown in the listing's gallery).
+
+title: Stock Daily
+description: "A daily US market close report, written and kept for you."
+
+# Share card for this listing's link. Without it the listing falls back to the
+# site-wide default image.
+image: assets/store-card.png
+image_alt: "Stock Daily on the Rome App Store"
