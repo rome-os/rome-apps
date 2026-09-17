@@ -12,6 +12,10 @@ outputSchema:
   required:
     - message
     - stage
+    - title
+    - description
+    - schemaDefinition
+    - formDefinition
   additionalProperties: false
   properties:
     message:
@@ -25,14 +29,23 @@ outputSchema:
         - approved
       description: "clarifying = still gathering info; proposal = presenting spec for review; approved = merchant accepted, form is final"
     title:
-      type: string
-      description: "Survey title (set once we have enough context)"
+      type:
+        - string
+        - "null"
+      description: "Survey title once there is enough context, null before that"
     description:
-      type: string
-      description: "Markdown survey description for merchant review"
+      type:
+        - string
+        - "null"
+      description: "Markdown survey description for merchant review, null before there is one"
     schemaDefinition:
-      type: object
-      description: "Database column definitions for analytics"
+      type:
+        - object
+        - "null"
+      description: "Database column definitions for analytics, null until the spec exists"
+      required:
+        - fields
+      additionalProperties: false
       properties:
         fields:
           type: array
@@ -42,6 +55,9 @@ outputSchema:
               - key
               - label
               - type
+              - options
+              - scale
+            additionalProperties: false
             properties:
               key:
                 type: string
@@ -56,15 +72,27 @@ outputSchema:
                   - text
                   - number
               options:
-                type: array
+                type:
+                  - array
+                  - "null"
                 items:
                   type: string
+                description: "Choices for the choice types, null otherwise"
               scale:
-                type: integer
-                description: "For rating type, the max value (e.g. 10)"
+                type:
+                  - integer
+                  - "null"
+                description: "For rating type, the max value (e.g. 10), null otherwise"
     formDefinition:
-      type: object
-      description: "Full form specification the survey-chat agent will use"
+      type:
+        - object
+        - "null"
+      description: "Full form specification the survey-chat agent will use, null until the spec exists"
+      required:
+        - questions
+        - openEndedTopics
+        - systemPrompt
+      additionalProperties: false
       properties:
         questions:
           type: array
@@ -75,6 +103,10 @@ outputSchema:
               - text
               - type
               - fieldKey
+              - options
+              - scale
+              - condition
+            additionalProperties: false
             properties:
               id:
                 type: string
@@ -92,19 +124,29 @@ outputSchema:
                 type: string
                 description: "Maps to the schemaDefinition field key for data storage"
               options:
-                type: array
+                type:
+                  - array
+                  - "null"
                 items:
                   type: string
+                description: "Choices for the choice types, null otherwise"
               scale:
-                type: integer
+                type:
+                  - integer
+                  - "null"
+                description: "Max rating value for rating type, null otherwise"
               condition:
-                type: string
-                description: "Natural-language condition for the agent to evaluate (e.g. 'if user has used competing products')"
+                type:
+                  - string
+                  - "null"
+                description: "Natural-language condition for the agent to evaluate (e.g. 'if user has used competing products'), null when the question always applies"
         openEndedTopics:
-          type: array
+          type:
+            - array
+            - "null"
           items:
             type: string
-          description: "Topics the agent should explore in free-form conversation"
+          description: "Topics the agent should explore in free-form conversation, null when there are none"
         systemPrompt:
           type: string
           description: "The system prompt for the survey-chat agent"
@@ -132,9 +174,8 @@ systemPromptPrefix: |
   - Use multiple_choice when users may pick several.
   - Use rating with scale 10 (1-10 stars) for satisfaction/quality measures.
     IMPORTANT: Always use scale: 10 for rating questions. Never use a different scale.
-    For each rating question, include `lowLabel`, `midLabel`, `highLabel` fields
-    with contextual descriptions. Example for sweetness: lowLabel="完全不甜",
-    midLabel="甜度适中", highLabel="过于甜腻". Labels must match the question's dimension.
+    The survey-chat agent writes the contextual scale labels when it asks the
+    question, so do not put label fields on the question itself.
   - Use open_ended for nuanced feedback or exploratory questions.
   - Use the `condition` field on questions for branching logic. Write it in
     natural language — the survey-chat agent will evaluate it dynamically.
@@ -150,7 +191,9 @@ systemPromptPrefix: |
 
   ## Output rules
 
-  - In the "clarifying" stage, only set `message`. Do NOT include formDefinition or schemaDefinition.
+  - Every field above is always present. In the "clarifying" stage set `message`
+    and `stage`, and set `title`, `description`, `schemaDefinition` and
+    `formDefinition` to null. Never omit a field.
   - In the "proposal" stage, include message, title, description, schemaDefinition, AND formDefinition.
   - In the "approved" stage, include the final versions of everything.
   - Always call submit_output. Never reply with plain text.

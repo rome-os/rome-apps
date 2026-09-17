@@ -26,9 +26,32 @@ interface ChatOutput {
     midLabel?: string;
     highLabel?: string;
     fieldKey?: string;
-  };
-  collectedData?: Record<string, unknown>;
+  } | null;
+  /** A JSON object serialized to a string; the portable output schema cannot
+   *  express a free-form map. */
+  collectedData?: string | null;
   done: boolean;
+}
+
+/**
+ * The agent returns `collectedData` as a JSON object serialized to a string.
+ * A malformed payload loses one turn's answers rather than failing the turn.
+ */
+function parseCollectedData(raw: string | null | undefined): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      log.warn("collectedData is not a JSON object", { length: raw.length });
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    // The payload is the respondent's own answers, so log its shape only.
+    // Node embeds a prefix of the input in the parse error, so it stays out.
+    log.warn("collectedData is not valid JSON", { length: raw.length });
+    return null;
+  }
 }
 
 type Deps = AppActionRuntimeDeps<{ agentRunner: AgentRunnerInterface }>;
@@ -191,8 +214,9 @@ export function createAction(config: ActionConfig, deps: Deps): Action {
       );
 
       // Merge collected data into response answers
-      if (structured.collectedData && Object.keys(structured.collectedData).length > 0) {
-        const merged = { ...currentAnswers, ...structured.collectedData };
+      const collected = parseCollectedData(structured.collectedData);
+      if (collected && Object.keys(collected).length > 0) {
+        const merged = { ...currentAnswers, ...collected };
         repo.updateResponse(responseId, { answers: JSON.stringify(merged) });
       }
 
@@ -205,7 +229,7 @@ export function createAction(config: ActionConfig, deps: Deps): Action {
         responseId,
         done: structured.done,
         isFirstTurn,
-        fieldsCollected: structured.collectedData ? Object.keys(structured.collectedData) : [],
+        fieldsCollected: collected ? Object.keys(collected) : [],
       });
 
       return {
