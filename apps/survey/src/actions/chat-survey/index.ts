@@ -46,9 +46,10 @@ function parseCollectedData(raw: string | null | undefined): Record<string, unkn
       return null;
     }
     return parsed as Record<string, unknown>;
-  } catch (err) {
+  } catch {
     // The payload is the respondent's own answers, so log its shape only.
-    log.warn("collectedData is not valid JSON", { length: raw.length, error: String(err) });
+    // Node embeds a prefix of the input in the parse error, so it stays out.
+    log.warn("collectedData is not valid JSON", { length: raw.length });
     return null;
   }
 }

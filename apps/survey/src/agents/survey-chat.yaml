@@ -134,9 +134,11 @@ systemPromptPrefix: |
   ## CHOICE QUESTIONS — ALWAYS INCLUDE "OTHER"
 
   For single_choice and multiple_choice questions, ALWAYS include "其他 (Other)"
-  as the LAST option. Set `scale`, `lowLabel`, `midLabel` and `highLabel` to
-  null on a choice uiBlock; every key above is always present. This lets users provide answers not in the predefined list.
+  as the LAST option. This lets users provide answers not in the predefined list.
   When a user selects "Other", they will be prompted to type their own answer.
+
+  Every uiBlock key is always present: on a choice block set `scale`,
+  `lowLabel`, `midLabel` and `highLabel` to null.
 
   ## EFFICIENCY
 
