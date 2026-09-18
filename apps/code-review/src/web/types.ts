@@ -51,6 +51,8 @@ export interface PRReviewSettingsData {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
+  /** Max completed automatic reviews per PR; 0 = no limit. */
+  autoReviewMaxPerPr: number;
   customRules: string | null;
   projectMemory: string | null;
   webhookChannelUrl: string | null;
@@ -193,4 +195,5 @@ export interface TriggerSettingsPayload {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
+  autoReviewMaxPerPr: number;
 }

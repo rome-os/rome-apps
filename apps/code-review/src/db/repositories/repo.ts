@@ -34,6 +34,17 @@ export interface RepoStat {
   trend: number[];
 }
 
+/**
+ * Default ceiling on how many completed auto-reviews a single PR may receive.
+ * A long-lived PR with many pushes used to accumulate an unbounded number of
+ * reviews (one real PR reached 16), which burns model budget and buries the
+ * discussion.
+ */
+export const DEFAULT_AUTO_REVIEW_MAX_PER_PR = 5;
+
+/** Upper bound accepted for the per-PR cap, so a typo can't become a runaway. */
+export const MAX_AUTO_REVIEW_MAX_PER_PR = 100;
+
 const ACTIVE_PR_REVIEW_STATUSES = [
   "queued",
   "fetching_pr_info",
@@ -59,6 +70,11 @@ export interface PRReviewSettings {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
+  /**
+   * Ceiling on how many times ONE pull request may be auto-reviewed (PR opened
+   * / new commits pushed). Only completed reviews count; 0 means no cap.
+   */
+  autoReviewMaxPerPr: number;
   customRules: string | null;
   projectMemory: string | null;
   webhookChannelUrl: string | null;
@@ -213,6 +229,19 @@ export class ScanRepository {
     if (typeof value !== "string") return "summary";
     const phrase = value.trim();
     return phrase || "summary";
+  }
+
+  /**
+   * Coerce the stored / submitted per-PR auto-review cap into a sane integer.
+   * Anything unparseable falls back to the default; negatives clamp to 0
+   * (= no cap) and the upper bound keeps a typo from becoming a runaway.
+   */
+  private normalizeAutoReviewMaxPerPr(value: unknown): number {
+    const n = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(n)) return DEFAULT_AUTO_REVIEW_MAX_PER_PR;
+    const floored = Math.floor(n);
+    if (floored <= 0) return 0;
+    return Math.min(floored, MAX_AUTO_REVIEW_MAX_PER_PR);
   }
 
   private newStageHistory(stage: string): string {
@@ -527,6 +556,34 @@ export class ScanRepository {
     ).map((row) => this.hydratePRReviewRow(row));
   }
 
+  /**
+   * How many reviews of this PR actually finished. Drives the per-PR auto-review
+   * cap: only a completed review consumed a full agent run and produced GitHub
+   * output, so failed / cancelled / skipped attempts must not burn quota.
+   */
+  countCompletedPRReviews(repo: string, prNumber: number): number {
+    const row = this.get<{ count: number }>(
+      `SELECT COUNT(*) as count FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND status = 'completed'`,
+      [repo, prNumber],
+    );
+    return row?.count ?? 0;
+  }
+
+  /**
+   * True when this exact commit already has a skipped row — used to keep a
+   * redelivered / duplicated webhook from stacking identical "limit reached"
+   * entries on the dashboard. A null head SHA can't be matched, so it never
+   * suppresses.
+   */
+  hasSkippedPRReviewForCommit(repo: string, prNumber: number, headSha: string | null): boolean {
+    if (!headSha) return false;
+    const row = this.get<{ count: number }>(
+      `SELECT COUNT(*) as count FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND head_sha = ? AND status = 'skipped'`,
+      [repo, prNumber, headSha],
+    );
+    return (row?.count ?? 0) > 0;
+  }
+
   countPRReviews(): number {
     const row = this.get<{ count: number }>(
       `SELECT COUNT(*) as count FROM "${this.t("pr_reviews")}"`,
@@ -634,7 +691,7 @@ export class ScanRepository {
 
   getPRReviewSettings(repo: string): PRReviewSettings | undefined {
     const row = this.get<any>(
-      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,
+      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, auto_review_max_per_pr as autoReviewMaxPerPr, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,
       [repo],
     );
     if (!row) return undefined;
@@ -653,12 +710,13 @@ export class ScanRepository {
       triggerBlocklist: this.parseLoginList(row.triggerBlocklist),
       mentionTriggerPhrase: this.normalizeMentionPhrase(row.mentionTriggerPhrase),
       summaryTriggerPhrase: this.normalizeSummaryPhrase(row.summaryTriggerPhrase),
+      autoReviewMaxPerPr: this.normalizeAutoReviewMaxPerPr(row.autoReviewMaxPerPr),
       projectMemory: row.projectMemory ?? null,
       githubWebhookId: row.githubWebhookId ?? null,
     };
   }
 
-  upsertPRReviewSettings(repo: string, settings: { autoReviewEnabled?: boolean; triggerOnCreate?: boolean; triggerOnRequest?: boolean; triggerOnReviewRequest?: boolean; triggerOnMention?: boolean; triggerOnPush?: boolean; triggerAccessMode?: TriggerAccessMode; triggerAllowlist?: unknown; manualTriggerAllowlist?: unknown; triggerBlocklist?: unknown; mentionTriggerPhrase?: string | null; summaryTriggerPhrase?: string | null; customRules?: string | null; projectMemory?: string | null; webhookChannelUrl?: string | null; githubWebhookId?: string | null }): PRReviewSettings {
+  upsertPRReviewSettings(repo: string, settings: { autoReviewEnabled?: boolean; triggerOnCreate?: boolean; triggerOnRequest?: boolean; triggerOnReviewRequest?: boolean; triggerOnMention?: boolean; triggerOnPush?: boolean; triggerAccessMode?: TriggerAccessMode; triggerAllowlist?: unknown; manualTriggerAllowlist?: unknown; triggerBlocklist?: unknown; mentionTriggerPhrase?: string | null; summaryTriggerPhrase?: string | null; autoReviewMaxPerPr?: number | null; customRules?: string | null; projectMemory?: string | null; webhookChannelUrl?: string | null; githubWebhookId?: string | null }): PRReviewSettings {
     const existing = this.getPRReviewSettings(repo);
     const now = new Date().toISOString();
 
@@ -677,15 +735,18 @@ export class ScanRepository {
       const triggerBlocklistRaw = this.serializeLoginList(triggerBlocklist);
       const mentionPhrase = settings.mentionTriggerPhrase !== undefined ? this.normalizeMentionPhrase(settings.mentionTriggerPhrase) : existing.mentionTriggerPhrase;
       const summaryPhrase = settings.summaryTriggerPhrase !== undefined ? this.normalizeSummaryPhrase(settings.summaryTriggerPhrase) : existing.summaryTriggerPhrase;
+      const maxPerPr = settings.autoReviewMaxPerPr !== undefined && settings.autoReviewMaxPerPr !== null
+        ? this.normalizeAutoReviewMaxPerPr(settings.autoReviewMaxPerPr)
+        : existing.autoReviewMaxPerPr;
       const rules = settings.customRules !== undefined ? settings.customRules : existing.customRules;
       const memory = settings.projectMemory !== undefined ? settings.projectMemory : existing.projectMemory;
       const webhook = settings.webhookChannelUrl !== undefined ? settings.webhookChannelUrl : existing.webhookChannelUrl;
       const webhookId = settings.githubWebhookId !== undefined ? settings.githubWebhookId : existing.githubWebhookId;
       this.run(
-        `UPDATE "${this.t("pr_review_settings")}" SET auto_review_enabled = ?, trigger_on_create = ?, trigger_on_request = ?, trigger_on_review_request = ?, trigger_on_mention = ?, trigger_on_push = ?, trigger_access_mode = ?, manual_trigger_allowlist = ?, trigger_blocklist = ?, mention_trigger_phrase = ?, summary_trigger_phrase = ?, custom_rules = ?, project_memory = ?, webhook_channel_url = ?, github_webhook_id = ?, updated_at = ? WHERE id = ?`,
-        [autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, existing.id],
+        `UPDATE "${this.t("pr_review_settings")}" SET auto_review_enabled = ?, trigger_on_create = ?, trigger_on_request = ?, trigger_on_review_request = ?, trigger_on_mention = ?, trigger_on_push = ?, trigger_access_mode = ?, manual_trigger_allowlist = ?, trigger_blocklist = ?, mention_trigger_phrase = ?, summary_trigger_phrase = ?, auto_review_max_per_pr = ?, custom_rules = ?, project_memory = ?, webhook_channel_url = ?, github_webhook_id = ?, updated_at = ? WHERE id = ?`,
+        [autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, maxPerPr, rules, memory, webhook, webhookId, now, existing.id],
       );
-      return { ...existing, autoReviewEnabled: !!autoReview, triggerOnCreate: !!onCreate, triggerOnRequest: !!onRequest, triggerOnReviewRequest: !!onReviewRequest, triggerOnMention: !!onMention, triggerOnPush: !!onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules ?? null, projectMemory: memory ?? null, webhookChannelUrl: webhook ?? null, githubWebhookId: webhookId ?? null, updatedAt: now };
+      return { ...existing, autoReviewEnabled: !!autoReview, triggerOnCreate: !!onCreate, triggerOnRequest: !!onRequest, triggerOnReviewRequest: !!onReviewRequest, triggerOnMention: !!onMention, triggerOnPush: !!onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, autoReviewMaxPerPr: maxPerPr, customRules: rules ?? null, projectMemory: memory ?? null, webhookChannelUrl: webhook ?? null, githubWebhookId: webhookId ?? null, updatedAt: now };
     }
 
     const id = crypto.randomUUID();
@@ -703,20 +764,23 @@ export class ScanRepository {
     const triggerBlocklistRaw = this.serializeLoginList(triggerBlocklist);
     const mentionPhrase = this.normalizeMentionPhrase(settings.mentionTriggerPhrase);
     const summaryPhrase = this.normalizeSummaryPhrase(settings.summaryTriggerPhrase);
+    const maxPerPr = this.normalizeAutoReviewMaxPerPr(
+      settings.autoReviewMaxPerPr ?? DEFAULT_AUTO_REVIEW_MAX_PER_PR,
+    );
     const rules = settings.customRules ?? null;
     const memory = settings.projectMemory ?? null;
     const webhook = settings.webhookChannelUrl ?? null;
     const webhookId = settings.githubWebhookId ?? null;
     this.run(
-      `INSERT INTO "${this.t("pr_review_settings")}" (id, repo, auto_review_enabled, trigger_on_create, trigger_on_request, trigger_on_review_request, trigger_on_mention, trigger_on_push, trigger_access_mode, manual_trigger_allowlist, trigger_blocklist, mention_trigger_phrase, summary_trigger_phrase, custom_rules, project_memory, webhook_channel_url, github_webhook_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, repo, autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, now],
+      `INSERT INTO "${this.t("pr_review_settings")}" (id, repo, auto_review_enabled, trigger_on_create, trigger_on_request, trigger_on_review_request, trigger_on_mention, trigger_on_push, trigger_access_mode, manual_trigger_allowlist, trigger_blocklist, mention_trigger_phrase, summary_trigger_phrase, auto_review_max_per_pr, custom_rules, project_memory, webhook_channel_url, github_webhook_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, repo, autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, maxPerPr, rules, memory, webhook, webhookId, now, now],
     );
-    return { id, repo, autoReviewEnabled: autoReview, triggerOnCreate: onCreate, triggerOnRequest: onRequest, triggerOnReviewRequest: onReviewRequest, triggerOnMention: onMention, triggerOnPush: onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules, projectMemory: memory, webhookChannelUrl: webhook, githubWebhookId: webhookId, createdAt: now, updatedAt: now };
+    return { id, repo, autoReviewEnabled: autoReview, triggerOnCreate: onCreate, triggerOnRequest: onRequest, triggerOnReviewRequest: onReviewRequest, triggerOnMention: onMention, triggerOnPush: onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, autoReviewMaxPerPr: maxPerPr, customRules: rules, projectMemory: memory, webhookChannelUrl: webhook, githubWebhookId: webhookId, createdAt: now, updatedAt: now };
   }
 
   listAllPRReviewSettings(): PRReviewSettings[] {
     return this.all<any>(
-      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
+      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, auto_review_max_per_pr as autoReviewMaxPerPr, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
     ).map((r: any) => ({
       ...r,
       autoReviewEnabled: !!r.autoReviewEnabled,
@@ -731,6 +795,7 @@ export class ScanRepository {
       triggerBlocklist: this.parseLoginList(r.triggerBlocklist),
       mentionTriggerPhrase: this.normalizeMentionPhrase(r.mentionTriggerPhrase),
       summaryTriggerPhrase: this.normalizeSummaryPhrase(r.summaryTriggerPhrase),
+      autoReviewMaxPerPr: this.normalizeAutoReviewMaxPerPr(r.autoReviewMaxPerPr),
       projectMemory: r.projectMemory ?? null,
       githubWebhookId: r.githubWebhookId ?? null,
     }));

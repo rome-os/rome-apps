@@ -56,6 +56,11 @@ export interface PRReviewTriggerSettings {
   triggerBlocklist?: string[];
   mentionTriggerPhrase?: string;
   summaryTriggerPhrase?: string;
+  /**
+   * Ceiling on how many times ONE pull request may be AUTO-reviewed. Undefined
+   * falls back to {@link DEFAULT_AUTO_REVIEW_MAX_PER_PR}; 0 disables the cap.
+   */
+  autoReviewMaxPerPr?: number;
 }
 
 export interface TriggerAccessPolicy {
@@ -65,6 +70,52 @@ export interface TriggerAccessPolicy {
 }
 
 export type PRReviewTriggerType = "pr_opened" | "pr_synchronize" | "review_requested" | "mention";
+
+/** Fallback cap when a repo has no stored value (pre-migration rows). */
+export const DEFAULT_AUTO_REVIEW_MAX_PER_PR = 5;
+
+/**
+ * Trigger types the bot decides to run on its own. Only these are capped — an
+ * explicit human request (`@bot PTAL`, a GitHub review request, or the
+ * dashboard button) always runs, however many reviews the PR already has.
+ */
+const AUTO_TRIGGER_TYPES: readonly PRReviewTriggerType[] = ["pr_opened", "pr_synchronize"];
+
+export function isAutoTriggerType(triggerType: PRReviewTriggerType): boolean {
+  return AUTO_TRIGGER_TYPES.includes(triggerType);
+}
+
+/**
+ * Decide whether an already-authorized auto trigger must be dropped because the
+ * PR has used up its review budget. Pure so the caller owns the DB read.
+ *
+ * `completedReviewCount` counts only reviews that finished successfully, so a
+ * failed or cancelled attempt never costs the PR a slot. A limit <= 0 (or a
+ * non-finite one) means "no cap".
+ */
+export function autoReviewLimitDecision(input: {
+  triggerType: PRReviewTriggerType;
+  completedReviewCount: number;
+  limit: number | undefined;
+}): { blocked: false } | { blocked: true; reason: string; limit: number; completedReviewCount: number } {
+  const { triggerType, completedReviewCount } = input;
+  if (!isAutoTriggerType(triggerType)) return { blocked: false };
+
+  const raw = input.limit === undefined ? DEFAULT_AUTO_REVIEW_MAX_PER_PR : input.limit;
+  const limit = Number.isFinite(raw) ? Math.floor(raw as number) : DEFAULT_AUTO_REVIEW_MAX_PER_PR;
+  if (limit <= 0) return { blocked: false };
+  if (completedReviewCount < limit) return { blocked: false };
+
+  return {
+    blocked: true,
+    limit,
+    completedReviewCount,
+    reason:
+      `This PR already has ${completedReviewCount} completed review${completedReviewCount === 1 ? "" : "s"}, ` +
+      `at or above the per-PR automatic limit of ${limit}. Automatic reviews are paused for it; ` +
+      `ask for one explicitly (comment the review phrase or request a review) to run another.`,
+  };
+}
 
 export type TriggerDecision =
   | {

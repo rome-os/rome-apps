@@ -94,3 +94,66 @@ describe("ScanRepository trigger access policy", () => {
     });
   });
 });
+
+describe("ScanRepository per-PR auto-review limit", () => {
+  let sqlite: Database.Database;
+  let appDb: AppDbContext;
+
+  beforeEach(() => {
+    ({ sqlite, appDb } = createTestContext());
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("defaults a new repo to 5 and round-trips an edited value", () => {
+    const repository = createScanRepository(appDb);
+    const repo = "rome-os/rome";
+
+    expect(repository.upsertPRReviewSettings(repo, {})).toMatchObject({ autoReviewMaxPerPr: 5 });
+
+    repository.upsertPRReviewSettings(repo, { autoReviewMaxPerPr: 3 });
+    expect(createScanRepository(appDb).getPRReviewSettings(repo)).toMatchObject({ autoReviewMaxPerPr: 3 });
+
+    // An unrelated partial update must not reset the cap.
+    repository.upsertPRReviewSettings(repo, { triggerOnPush: false });
+    expect(repository.getPRReviewSettings(repo)).toMatchObject({ autoReviewMaxPerPr: 3 });
+  });
+
+  it("floors, clamps, and treats non-positive input as no limit", () => {
+    const repository = createScanRepository(appDb);
+    const repo = "rome-os/rome";
+
+    repository.upsertPRReviewSettings(repo, { autoReviewMaxPerPr: 4.7 });
+    expect(repository.getPRReviewSettings(repo)).toMatchObject({ autoReviewMaxPerPr: 4 });
+
+    repository.upsertPRReviewSettings(repo, { autoReviewMaxPerPr: 9999 });
+    expect(repository.getPRReviewSettings(repo)).toMatchObject({ autoReviewMaxPerPr: 100 });
+
+    repository.upsertPRReviewSettings(repo, { autoReviewMaxPerPr: -1 });
+    expect(repository.getPRReviewSettings(repo)).toMatchObject({ autoReviewMaxPerPr: 0 });
+  });
+
+  it("counts only completed reviews toward the cap", () => {
+    const repository = createScanRepository(appDb);
+    const repo = "rome-os/rome";
+
+    const completed = repository.createQueuedPRReview({ repo, prNumber: 440, prUrl: null, prTitle: null, prAuthor: null, headSha: "aaa" });
+    repository.completePRReview(completed.id, "looks good", null);
+    const failed = repository.createQueuedPRReview({ repo, prNumber: 440, prUrl: null, prTitle: null, prAuthor: null, headSha: "bbb" });
+    repository.failPRReview(failed.id, "boom");
+    const skipped = repository.createQueuedPRReview({ repo, prNumber: 440, prUrl: null, prTitle: null, prAuthor: null, headSha: "ccc" });
+    repository.skipPRReview(skipped.id, "limit reached");
+    const otherPr = repository.createQueuedPRReview({ repo, prNumber: 441, prUrl: null, prTitle: null, prAuthor: null, headSha: "ddd" });
+    repository.completePRReview(otherPr.id, "fine", null);
+
+    expect(repository.countCompletedPRReviews(repo, 440)).toBe(1);
+    expect(repository.countCompletedPRReviews(repo, 441)).toBe(1);
+    expect(repository.countCompletedPRReviews("other/repo", 440)).toBe(0);
+
+    expect(repository.hasSkippedPRReviewForCommit(repo, 440, "ccc")).toBe(true);
+    expect(repository.hasSkippedPRReviewForCommit(repo, 440, "aaa")).toBe(false);
+    expect(repository.hasSkippedPRReviewForCommit(repo, 440, null)).toBe(false);
+  });
+});

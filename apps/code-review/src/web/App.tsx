@@ -308,6 +308,7 @@ export default function App({
             triggerBlocklist: blocklist,
             mentionTriggerPhrase: settings.mentionTriggerPhrase.trim() || "PTAL",
             summaryTriggerPhrase: settings.summaryTriggerPhrase.trim() || "summary",
+            autoReviewMaxPerPr: settings.autoReviewMaxPerPr,
             customRules: settings.customRules.trim() || null,
           }),
         });

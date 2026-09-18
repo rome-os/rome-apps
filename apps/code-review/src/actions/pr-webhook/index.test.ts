@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   db: {
     createQueuedPRReview: vi.fn(),
     getPRReviewSettings: vi.fn(),
+    countCompletedPRReviews: vi.fn(),
+    hasSkippedPRReviewForCommit: vi.fn(),
+    skipPRReview: vi.fn(),
   },
 }));
 
@@ -55,6 +58,8 @@ describe("pr-webhook action", () => {
     vi.clearAllMocks();
     enableAllTriggers();
     mocks.db.createQueuedPRReview.mockReturnValue({ id: "queued-review-id" });
+    mocks.db.countCompletedPRReviews.mockReturnValue(0);
+    mocks.db.hasSkippedPRReviewForCommit.mockReturnValue(false);
     mocks.execFileSync.mockReturnValue("rome-bot\n");
   });
 
@@ -444,5 +449,98 @@ describe("pr-webhook action", () => {
 
     expect(result.status).toBe("ok");
     expect(result.data).toMatchObject({ queued: true, prNumber: 79, triggerCommentId: 789 });
+  });
+  it("stops automatic reviews once the PR hits its per-PR limit", async () => {
+    enableAllTriggers({ autoReviewMaxPerPr: 5 });
+    mocks.db.countCompletedPRReviews.mockReturnValue(5);
+    const { createAction } = await import("./index.js");
+    const deps = makeDeps();
+    const action = createAction(config, deps);
+
+    const result = await action.execute({
+      githubEvent: "pull_request",
+      __triggerPayload: {
+        action: "synchronize",
+        repository: { full_name: "amantru/rome-apps" },
+        sender: { login: "rome-bot" },
+        pull_request: { number: 440, head: { sha: "cafe01" } },
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.data).toMatchObject({
+      skipped: true,
+      autoReviewLimitReached: true,
+      autoReviewLimit: 5,
+      completedReviewCount: 5,
+      prNumber: 440,
+    });
+    // The skip is visible in the dashboard, but no review is dispatched.
+    expect(mocks.db.skipPRReview).toHaveBeenCalledWith("queued-review-id", expect.stringContaining("5"));
+    expect(deps.appContext.runAction).not.toHaveBeenCalled();
+  });
+
+  it("does not stack duplicate skip rows for the same commit", async () => {
+    enableAllTriggers({ autoReviewMaxPerPr: 5 });
+    mocks.db.countCompletedPRReviews.mockReturnValue(9);
+    mocks.db.hasSkippedPRReviewForCommit.mockReturnValue(true);
+    const { createAction } = await import("./index.js");
+    const deps = makeDeps();
+    const action = createAction(config, deps);
+
+    const result = await action.execute({
+      githubEvent: "pull_request",
+      __triggerPayload: {
+        action: "synchronize",
+        repository: { full_name: "amantru/rome-apps" },
+        sender: { login: "rome-bot" },
+        pull_request: { number: 440, head: { sha: "cafe01" } },
+      },
+    });
+
+    expect(result.data).toMatchObject({ skipped: true, autoReviewLimitReached: true });
+    expect(mocks.db.createQueuedPRReview).not.toHaveBeenCalled();
+    expect(mocks.db.skipPRReview).not.toHaveBeenCalled();
+  });
+
+  it("still runs a mention-requested review past the limit", async () => {
+    enableAllTriggers({ autoReviewMaxPerPr: 5 });
+    mocks.db.countCompletedPRReviews.mockReturnValue(42);
+    const { createAction } = await import("./index.js");
+    const deps = makeDeps();
+    const action = createAction(config, deps);
+
+    const result = await action.execute({
+      githubEvent: "issue_comment",
+      __triggerPayload: {
+        action: "created",
+        repository: { full_name: "amantru/rome-apps" },
+        issue: { number: 440, pull_request: {} },
+        comment: { id: 5150, body: "@rome-bot PTAL", user: { login: "rome-bot" } },
+      },
+    });
+
+    expect(result.data).toMatchObject({ queued: true, prNumber: 440 });
+    expect(deps.appContext.runAction).toHaveBeenCalled();
+  });
+
+  it("treats a zero limit as no limit", async () => {
+    enableAllTriggers({ autoReviewMaxPerPr: 0 });
+    mocks.db.countCompletedPRReviews.mockReturnValue(30);
+    const { createAction } = await import("./index.js");
+    const deps = makeDeps();
+    const action = createAction(config, deps);
+
+    const result = await action.execute({
+      githubEvent: "pull_request",
+      __triggerPayload: {
+        action: "synchronize",
+        repository: { full_name: "amantru/rome-apps" },
+        sender: { login: "rome-bot" },
+        pull_request: { number: 440, head: { sha: "cafe02" } },
+      },
+    });
+
+    expect(result.data).toMatchObject({ queued: true });
   });
 });

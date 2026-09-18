@@ -47,6 +47,14 @@ export function createAppDbSchema(tablePrefix: string = "repo_guardian") {
      * mentionTriggerPhrase (PTAL) but routes to the pr-summary action.
      */
     summaryTriggerPhrase: text("summary_trigger_phrase").notNull().default("summary"),
+    /**
+     * Ceiling on how many times ONE pull request may be auto-reviewed. Only
+     * successfully completed reviews count toward it; failed / cancelled /
+     * skipped attempts do not burn quota, and manual triggers (@mention,
+     * GitHub review request, dashboard button) are never capped. 0 disables
+     * the cap.
+     */
+    autoReviewMaxPerPr: integer("auto_review_max_per_pr").notNull().default(5),
     customRules: text("custom_rules"),
     /**
      * Per-repo project memory: a short knowledge cache injected into every

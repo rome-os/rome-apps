@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  autoReviewLimitDecision,
   decidePRReviewTrigger,
   parseStrictCommand,
   isTriggerActorAllowed,
@@ -410,5 +411,44 @@ describe("pr-webhook decision", () => {
       kind: "error",
       error: "Missing pull_request in webhook payload.",
     });
+  });
+});
+
+describe("autoReviewLimitDecision", () => {
+  it("blocks an automatic trigger at or above the limit", () => {
+    for (const triggerType of ["pr_opened", "pr_synchronize"] as const) {
+      const decision = autoReviewLimitDecision({ triggerType, completedReviewCount: 5, limit: 5 });
+      expect(decision.blocked).toBe(true);
+      if (decision.blocked) {
+        expect(decision.limit).toBe(5);
+        expect(decision.reason).toContain("5");
+      }
+    }
+    expect(autoReviewLimitDecision({ triggerType: "pr_synchronize", completedReviewCount: 16, limit: 5 }).blocked).toBe(true);
+  });
+
+  it("allows an automatic trigger below the limit", () => {
+    expect(autoReviewLimitDecision({ triggerType: "pr_opened", completedReviewCount: 4, limit: 5 }).blocked).toBe(false);
+    expect(autoReviewLimitDecision({ triggerType: "pr_synchronize", completedReviewCount: 0, limit: 5 }).blocked).toBe(false);
+  });
+
+  it("never blocks an explicitly requested review", () => {
+    for (const triggerType of ["mention", "review_requested"] as const) {
+      expect(autoReviewLimitDecision({ triggerType, completedReviewCount: 99, limit: 5 }).blocked).toBe(false);
+    }
+  });
+
+  it("defaults to 5 when the repo has no stored limit", () => {
+    expect(autoReviewLimitDecision({ triggerType: "pr_synchronize", completedReviewCount: 4, limit: undefined }).blocked).toBe(false);
+    expect(autoReviewLimitDecision({ triggerType: "pr_synchronize", completedReviewCount: 5, limit: undefined }).blocked).toBe(true);
+  });
+
+  it("treats zero or negative as no limit", () => {
+    expect(autoReviewLimitDecision({ triggerType: "pr_synchronize", completedReviewCount: 500, limit: 0 }).blocked).toBe(false);
+    expect(autoReviewLimitDecision({ triggerType: "pr_synchronize", completedReviewCount: 500, limit: -3 }).blocked).toBe(false);
+  });
+
+  it("falls back to the default for a non-finite limit", () => {
+    expect(autoReviewLimitDecision({ triggerType: "pr_opened", completedReviewCount: 5, limit: Number.NaN }).blocked).toBe(true);
   });
 });

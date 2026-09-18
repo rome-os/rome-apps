@@ -9,6 +9,7 @@ import type {
 } from "@rome-os/app-runtime";
 import { createScanRepository } from "../../db/repositories/repo.js";
 import {
+  autoReviewLimitDecision,
   decidePRReviewTrigger,
   normalizeInput,
   repoFromPayload,
@@ -181,6 +182,58 @@ export function createAction(
             repo: decision.repo,
             prNumber: decision.prNumber,
             triggerCommentId: decision.triggerCommentId,
+          },
+        };
+      }
+
+      // Per-PR budget: a long-lived PR with many pushes would otherwise collect
+      // an unbounded number of automatic reviews. Only completed reviews count,
+      // and only automatic triggers are capped — an explicit human request still
+      // runs. Enforced here (not in the pure decision) because it needs a DB read.
+      const limitCheck = autoReviewLimitDecision({
+        triggerType: decision.triggerType,
+        completedReviewCount: db.countCompletedPRReviews(decision.repo, decision.prNumber),
+        limit: settings?.autoReviewMaxPerPr,
+      });
+      if (limitCheck.blocked) {
+        const headSha = decision.pr?.head?.sha || null;
+        log.info("Skipping automatic review — per-PR limit reached", {
+          repo: decision.repo,
+          prNumber: decision.prNumber,
+          triggerType: decision.triggerType,
+          completedReviewCount: limitCheck.completedReviewCount,
+          limit: limitCheck.limit,
+        });
+        // Leave one visible trace in the dashboard so a missing review is
+        // explainable, without commenting on the PR.
+        let reviewId: string | null = null;
+        try {
+          if (!db.hasSkippedPRReviewForCommit(decision.repo, decision.prNumber, headSha)) {
+            const skippedReview = db.createQueuedPRReview({
+              repo: decision.repo,
+              prNumber: decision.prNumber,
+              prUrl: decision.pr?.html_url || null,
+              prTitle: decision.pr?.title || null,
+              prAuthor: decision.pr?.user?.login || null,
+              headSha,
+            });
+            db.skipPRReview(skippedReview.id, limitCheck.reason);
+            reviewId = skippedReview.id;
+          }
+        } catch (err) {
+          log.warn("Could not record the limit-reached skip (continuing)", { error: String(err) });
+        }
+        return {
+          status: "ok",
+          data: {
+            skipped: true,
+            reason: limitCheck.reason,
+            repo: decision.repo,
+            prNumber: decision.prNumber,
+            autoReviewLimitReached: true,
+            autoReviewLimit: limitCheck.limit,
+            completedReviewCount: limitCheck.completedReviewCount,
+            ...(reviewId ? { reviewId } : {}),
           },
         };
       }

@@ -347,6 +347,7 @@ function TriggerSettingsForm({
   initialTriggerBlocklist,
   initialMentionTriggerPhrase,
   initialSummaryTriggerPhrase,
+  initialAutoReviewMaxPerPr,
   initialCustomRules,
   initialProjectMemory,
   guardianGithubLogin,
@@ -367,6 +368,7 @@ function TriggerSettingsForm({
   initialTriggerBlocklist: string[];
   initialMentionTriggerPhrase: string;
   initialSummaryTriggerPhrase: string;
+  initialAutoReviewMaxPerPr: number;
   initialCustomRules: string;
   initialProjectMemory: string | null;
   guardianGithubLogin: string | null;
@@ -390,6 +392,9 @@ function TriggerSettingsForm({
   );
   const [mentionTriggerPhrase, setMentionTriggerPhrase] = useState(initialMentionTriggerPhrase || "PTAL");
   const [summaryTriggerPhrase, setSummaryTriggerPhrase] = useState(initialSummaryTriggerPhrase || "summary");
+  const [autoReviewMaxPerPr, setAutoReviewMaxPerPr] = useState(initialAutoReviewMaxPerPr);
+  // Kept as text so the field can be emptied while typing without snapping to 0.
+  const [maxPerPrDraft, setMaxPerPrDraft] = useState(String(initialAutoReviewMaxPerPr));
   const [customRules, setCustomRules] = useState(initialCustomRules);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -440,6 +445,7 @@ function TriggerSettingsForm({
         triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
+        autoReviewMaxPerPr,
         ...overrides,
       });
     } catch (err: unknown) {
@@ -527,12 +533,26 @@ function TriggerSettingsForm({
         triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
+        autoReviewMaxPerPr,
       });
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
+  };
+
+  // Normalize the typed cap on blur: blank / bad input restores the current
+  // value, anything else is floored and clamped, and 0 means "no limit".
+  const commitMaxPerPr = () => {
+    const parsed = Number(maxPerPrDraft.trim());
+    const next = maxPerPrDraft.trim() === "" || !Number.isFinite(parsed) || parsed < 0
+      ? autoReviewMaxPerPr
+      : Math.min(Math.floor(parsed), 100);
+    setMaxPerPrDraft(String(next));
+    if (next === autoReviewMaxPerPr) return;
+    setAutoReviewMaxPerPr(next);
+    void persistSettings({ autoReviewMaxPerPr: next });
   };
 
   const mentionCommand = [
@@ -675,6 +695,31 @@ function TriggerSettingsForm({
                     onCheckedChange={(checked) => handleAutoTriggerChange(setTriggerOnPush, checked, triggerOnCreate)}
                     aria-label="Toggle new commits trigger"
                   />
+                </div>
+                <div className="rounded-md border bg-muted/30 p-2.5 sm:col-span-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label htmlFor="auto-review-max-per-pr" className="text-sm">
+                      Max automatic reviews per PR
+                    </label>
+                    <input
+                      id="auto-review-max-per-pr"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      inputMode="numeric"
+                      value={maxPerPrDraft}
+                      disabled={controlsDisabled}
+                      onChange={(e) => setMaxPerPrDraft(e.target.value)}
+                      onBlur={commitMaxPerPr}
+                      className="w-20 rounded-md border border-input bg-background px-2 py-1 text-right text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {autoReviewMaxPerPr > 0
+                      ? `After ${autoReviewMaxPerPr} completed review${autoReviewMaxPerPr === 1 ? "" : "s"}, this PR stops being reviewed automatically — you can still ask for one by hand. Failed runs don't count. 0 = no limit.`
+                      : "No limit — every push starts another review. Set a number to cap it."}
+                  </p>
                 </div>
               </div>
             )}
@@ -1037,6 +1082,7 @@ export function TriggerSettingsPage({
               initialTriggerBlocklist={selectedSettings?.triggerBlocklist ?? []}
               initialMentionTriggerPhrase={selectedSettings?.mentionTriggerPhrase ?? "PTAL"}
               initialSummaryTriggerPhrase={selectedSettings?.summaryTriggerPhrase ?? "summary"}
+              initialAutoReviewMaxPerPr={selectedSettings?.autoReviewMaxPerPr ?? 5}
               initialCustomRules={selectedSettings?.customRules ?? ""}
               initialProjectMemory={selectedSettings?.projectMemory ?? null}
               guardianGithubLogin={selectedSettings?.guardianGithubLogin ?? ghAuth?.login ?? null}

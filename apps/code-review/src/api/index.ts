@@ -678,6 +678,16 @@ class GuardianApiHandler implements RomeAppApiHandler {
           ? body.summaryTriggerPhrase.trim() || "summary"
           : undefined;
       const triggerOnPush = body.triggerOnPush !== undefined ? !!body.triggerOnPush : undefined;
+      // Per-PR automatic review cap. Absent = leave as-is; 0 = no cap. The
+      // repository layer clamps and floors the value.
+      let autoReviewMaxPerPr: number | undefined;
+      if (body.autoReviewMaxPerPr !== undefined && body.autoReviewMaxPerPr !== null) {
+        const parsed = Number(body.autoReviewMaxPerPr);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return json({ error: "autoReviewMaxPerPr must be a non-negative number (0 = no limit)." }, { status: 400 });
+        }
+        autoReviewMaxPerPr = parsed;
+      }
       const customRules = body.customRules ?? null;
       const existingSettings = repo.getPRReviewSettings(repoName);
       const guardianGithubLogin = await this._readGitHubLogin();
@@ -762,6 +772,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
           triggerBlocklist,
           mentionTriggerPhrase,
           summaryTriggerPhrase,
+          autoReviewMaxPerPr,
           customRules,
           webhookChannelUrl: null,
           githubWebhookId: hookId,
@@ -805,6 +816,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
         triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
+        autoReviewMaxPerPr,
         customRules,
         webhookChannelUrl: null,
         githubWebhookId: null,
