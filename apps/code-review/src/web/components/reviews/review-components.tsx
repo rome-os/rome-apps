@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Ban, CheckCircle, Clock, XCircle } from "lucide-react";
-import { Streamdown } from "streamdown";
+import { Badge, type BadgeProps } from "@rome-os/ui/badge";
+import { Markdown } from "@rome-os/ui/markdown";
+import { Spinner } from "@rome-os/ui/spinner";
 import { Timeline, TimelineItem } from "@/components/ui/timeline";
 import type { PRReviewData } from "@/types";
 
@@ -15,43 +17,38 @@ export const ACTIVE_REVIEW_STATUSES = new Set([
 ]);
 
 export function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    completed:
-      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-    running: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    queued: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    fetching_pr_info:
-      "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    cloning: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    reviewing: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    posting: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    pending:
-      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-    failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-    cancelled: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
-    skipped: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
-    open: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-    done: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+  const variants: Record<string, BadgeProps["variant"]> = {
+    completed: "success",
+    running: "info",
+    queued: "info",
+    fetching_pr_info: "info",
+    cloning: "info",
+    reviewing: "info",
+    posting: "info",
+    pending: "warning",
+    failed: "destructive",
+    cancelled: "muted",
+    skipped: "muted",
+    open: "warning",
+    done: "muted",
   };
   const icons: Record<string, ReactNode> = {
     completed: <CheckCircle className="inline w-3 h-3 mr-1" />,
-    running: <Clock className="inline w-3 h-3 mr-1 animate-spin" />,
-    queued: <Clock className="inline w-3 h-3 mr-1 animate-spin" />,
-    fetching_pr_info: <Clock className="inline w-3 h-3 mr-1 animate-spin" />,
-    cloning: <Clock className="inline w-3 h-3 mr-1 animate-spin" />,
-    reviewing: <Clock className="inline w-3 h-3 mr-1 animate-spin" />,
-    posting: <Clock className="inline w-3 h-3 mr-1 animate-spin" />,
+    running: <Spinner size="xs" />,
+    queued: <Spinner size="xs" />,
+    fetching_pr_info: <Spinner size="xs" />,
+    cloning: <Spinner size="xs" />,
+    reviewing: <Spinner size="xs" />,
+    posting: <Spinner size="xs" />,
     pending: <Clock className="inline w-3 h-3 mr-1" />,
     failed: <XCircle className="inline w-3 h-3 mr-1" />,
     cancelled: <Ban className="inline w-3 h-3 mr-1" />,
   };
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.done}`}
-    >
+    <Badge variant={variants[status] ?? "muted"} className="gap-1">
       {icons[status] || null}
       {status}
-    </span>
+    </Badge>
   );
 }
 
@@ -198,14 +195,8 @@ export function MarkdownBlock({
   className?: string;
 }) {
   return (
-    <Streamdown
-      mode="static"
-      // Disable Streamdown's "Open external link?" confirmation modal — links
-      // (GitHub PRs/comments) should open directly in a new tab.
-      linkSafety={{ enabled: false }}
-      className={`sd-markdown text-sm leading-7 ${className}`}
-    >
+    <Markdown compact className={className}>
       {children}
-    </Streamdown>
+    </Markdown>
   );
 }

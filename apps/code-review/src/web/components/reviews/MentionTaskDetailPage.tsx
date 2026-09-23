@@ -1,7 +1,13 @@
 import { ArrowLeft, Bot, Brain, ExternalLink, MessageSquare, RefreshCw, Wrench } from "lucide-react";
 import { navigateRome } from "@rome-os/app-web-sdk";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@rome-os/ui/alert";
+import { Badge } from "@rome-os/ui/badge";
+import { Button } from "@rome-os/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@rome-os/ui/card";
+import { EmptyState, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@rome-os/ui/empty-state";
+import { PageActions, PageDescription, PageHeader, PageHeaderNav, PageHeading, PageTitle } from "@rome-os/ui/page";
+import { Spinner } from "@rome-os/ui/spinner";
+import { Timestamp } from "@rome-os/ui/timestamp";
 import type { MentionTaskData } from "@/types";
 import { formatDate } from "@/lib/helpers";
 import { GenericStageTimeline, MarkdownBlock, StatusBadge } from "./review-components";
@@ -57,63 +63,66 @@ export function MentionTaskDetailPage({
 
   return (
     <>
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <PageHeader>
+        <PageHeaderNav>
           <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
+        </PageHeaderNav>
+        <PageHeading>
           <div className="flex items-center gap-3">
             {meta ? <meta.Icon className="h-7 w-7 text-primary" /> : <Bot className="h-7 w-7 text-primary" />}
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight truncate">
+              <PageTitle className="truncate">
                 {selectedTask ? `${meta?.label} · ${selectedTask.surface === "pr" ? "PR" : "Issue"} #${selectedTask.number}` : "Activity"}
-              </h1>
+              </PageTitle>
               {selectedTask && (
-                <p className="text-sm text-muted-foreground truncate">
+                <PageDescription className="truncate">
                   {selectedTask.repo} · {formatDate(selectedTask.createdAt)}
-                </p>
+                </PageDescription>
               )}
             </div>
           </div>
-        </div>
+        </PageHeading>
+        <PageActions>
         <Button onClick={onRefresh} disabled={refreshing} variant="outline" size="sm">
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? <Spinner size="sm" label="Refreshing activity" /> : <RefreshCw />}
           Refresh
         </Button>
-      </div>
+        </PageActions>
+      </PageHeader>
 
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive mb-5 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={onDismissError} className="ml-3 underline text-xs shrink-0">
-            dismiss
-          </button>
-        </div>
+        <Alert variant="destructive" className="mb-5">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button onClick={onDismissError} variant="ghost" size="xs">Dismiss</Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       {loading && !selectedTask ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">Loading…</CardContent>
-        </Card>
+        <EmptyState>
+          <EmptyStateIcon><Spinner label="Loading activity" /></EmptyStateIcon>
+          <EmptyStateTitle>Loading activity</EmptyStateTitle>
+        </EmptyState>
       ) : selectedTask ? (
         <div className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                  <Badge variant="brand" className="gap-1">
                     {meta && <meta.Icon className="h-3 w-3" />}
                     {meta?.label}
-                  </span>
+                  </Badge>
                   <StatusBadge status={selectedTask.status} />
                   {selectedTask.actorLogin && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                      by {selectedTask.actorLogin}
-                    </span>
+                    <Badge variant="muted">by {selectedTask.actorLogin}</Badge>
                   )}
                   {selectedTask.completedAt && (
-                    <span className="text-xs text-muted-foreground">completed {formatDate(selectedTask.completedAt)}</span>
+                    <span className="text-xs text-muted-foreground">completed <Timestamp value={selectedTask.completedAt} format="datetime" /></span>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -173,9 +182,7 @@ export function MentionTaskDetailPage({
                   {result.kind === "code-task" ? "Reply" : "Reply posted to GitHub"}
                 </p>
                 {result.error ? (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-                    {result.error}
-                  </div>
+                  <Alert variant="destructive"><AlertDescription>{result.error}</AlertDescription></Alert>
                 ) : result.body ? (
                   <div className="rounded-lg border bg-muted/30 p-4">
                     <MarkdownBlock>{result.body}</MarkdownBlock>
@@ -204,9 +211,11 @@ export function MentionTaskDetailPage({
                     </a>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
-                    {ACTIVE_MENTION_STATUSES.has(selectedTask.status) ? "In progress…" : "No result recorded."}
-                  </div>
+                  <EmptyState className="min-h-32">
+                    <EmptyStateIcon>{ACTIVE_MENTION_STATUSES.has(selectedTask.status) ? <Spinner label="Task in progress" /> : <MessageSquare />}</EmptyStateIcon>
+                    <EmptyStateTitle>{ACTIVE_MENTION_STATUSES.has(selectedTask.status) ? "In progress" : "No result recorded"}</EmptyStateTitle>
+                    <EmptyStateDescription>{ACTIVE_MENTION_STATUSES.has(selectedTask.status) ? "The agent is still working on this task." : "This task has no recorded output."}</EmptyStateDescription>
+                  </EmptyState>
                 )}
               </div>
             </CardContent>
