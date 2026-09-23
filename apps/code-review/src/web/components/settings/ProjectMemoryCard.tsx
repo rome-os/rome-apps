@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { History, Loader2, Save } from "lucide-react";
+import { History, Save } from "lucide-react";
 import { fetchAppApi } from "@rome-os/app-web-sdk";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@rome-os/ui/alert";
+import { Button } from "@rome-os/ui/button";
+import { List, ListRow, ListRowContent, ListRowDescription, ListRowTitle } from "@rome-os/ui/list-row";
+import { Spinner } from "@rome-os/ui/spinner";
+import { Textarea } from "@rome-os/ui/textarea";
+import { Timestamp } from "@rome-os/ui/timestamp";
 import type { MemoryEditData } from "@/types";
 
 /**
@@ -74,21 +79,18 @@ export function ProjectMemoryCard({
 
   return (
     <div className="space-y-2">
-      <textarea
+      <Textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={`Project knowledge, e.g.\n- We intentionally use default exports in src/legacy/\n- Don't flag console.log under scripts/\n- Deploy via the release workflow, never by hand`}
         rows={5}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
       />
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-          {error}
-        </div>
+        <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void save()} disabled={saving}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? <Spinner size="sm" label="Saving project memory" /> : <Save />}
           Save memory
         </Button>
         <Button size="sm" variant="ghost" onClick={toggleHistory}>
@@ -101,24 +103,28 @@ export function ProjectMemoryCard({
       {showHistory && (
         <div className="mt-2 space-y-2">
           {loadingEdits ? (
-            <p className="text-xs text-muted-foreground">Loading history…</p>
+            <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner size="xs" /> Loading history…</p>
           ) : edits.length === 0 ? (
             <p className="text-xs text-muted-foreground">No changes recorded yet.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <List asChild>
+              <ul>
               {edits.map((edit) => (
-                <li key={edit.id} className="rounded-md border bg-background/60 p-2 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">
-                      {edit.actor === "agent" ? "🤖 Agent" : "🧑 You"}
-                      <span className="ml-1 text-muted-foreground">· {edit.source}{edit.sourceRef ? ` (${edit.sourceRef})` : ""}</span>
-                    </span>
-                    <span className="text-muted-foreground">{new Date(edit.createdAt).toLocaleString()}</span>
-                  </div>
-                  {edit.summary && <p className="mt-1 text-muted-foreground">{edit.summary}</p>}
-                </li>
+                <ListRow key={edit.id} asChild size="sm">
+                  <li className="text-xs">
+                    <ListRowContent>
+                      <ListRowTitle>
+                        {edit.actor === "agent" ? "Agent" : "You"}
+                        <span className="ml-1 font-normal text-muted-foreground">· {edit.source}{edit.sourceRef ? ` (${edit.sourceRef})` : ""}</span>
+                      </ListRowTitle>
+                      {edit.summary && <ListRowDescription>{edit.summary}</ListRowDescription>}
+                    </ListRowContent>
+                    <Timestamp value={edit.createdAt} format="datetime" className="shrink-0 text-muted-foreground" />
+                  </li>
+                </ListRow>
               ))}
-            </ul>
+              </ul>
+            </List>
           )}
         </div>
       )}

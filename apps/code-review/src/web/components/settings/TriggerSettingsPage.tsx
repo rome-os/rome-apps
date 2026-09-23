@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, AtSign, Ban, Brain, CheckCircle, Clock, Eye, ExternalLink, Github, GitPullRequest, Loader2, MessageSquare, Plug, Plus, RefreshCw, Settings, Trash2, Users, Wrench, X, XCircle, type LucideIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
+import { ArrowLeft, AtSign, Ban, Brain, CheckCircle, Clock, Eye, ExternalLink, Github, GitPullRequest, MessageSquare, Plug, Plus, RefreshCw, Settings, Trash2, Users, Wrench, X, XCircle, type LucideIcon } from "lucide-react";
+import { Alert, AlertDescription } from "@rome-os/ui/alert";
+import { Badge } from "@rome-os/ui/badge";
+import { Button } from "@rome-os/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@rome-os/ui/card";
+import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@rome-os/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@rome-os/ui/field";
+import { IconButton } from "@rome-os/ui/icon-button";
+import { Input } from "@rome-os/ui/input";
+import { PageActions, PageDescription, PageHeader, PageHeaderNav, PageHeading, PageTitle } from "@rome-os/ui/page";
+import { RadioGroup, RadioGroupItem } from "@rome-os/ui/radio-group";
+import { Spinner } from "@rome-os/ui/spinner";
+import { Switch } from "@rome-os/ui/switch";
+import { Textarea } from "@rome-os/ui/textarea";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
 import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
@@ -37,8 +47,6 @@ function AddAccessUserDialog({
       setError(null);
     }
   }, [open]);
-
-  if (!open) return null;
 
   const lookup = async () => {
     const login = normalizeGithubLoginInput(loginInput);
@@ -77,24 +85,17 @@ function AddAccessUserDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border bg-background p-5 shadow-lg">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold">
+    <Dialog open={open} onClose={onClose} size="md">
+      <DialogHeader onClose={onClose}>
+        <DialogTitle>
               {mode === "blocklist" ? "Block GitHub user" : "Allow GitHub user"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Look up a GitHub ID, verify the avatar and name, then confirm.
-            </p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        </DialogTitle>
+        <DialogDescription>Look up a GitHub ID, verify the avatar and name, then confirm.</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit}>
+        <DialogBody>
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               value={loginInput}
               onChange={(event) => {
@@ -104,22 +105,20 @@ function AddAccessUserDialog({
               }}
               placeholder="github-login"
               autoFocus
-              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex-1"
             />
             <Button type="button" variant="outline" onClick={() => void lookup()} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Lookup"}
+              {loading ? <Spinner size="sm" label="Looking up GitHub user" /> : "Lookup"}
             </Button>
           </div>
 
           {error && (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
+            <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
           )}
 
           {profile && (
-            <div className="rounded-lg border bg-muted/30 p-3">
-              <div className="flex items-center gap-3">
+            <Card>
+              <CardContent className="flex items-center gap-3">
                 <GithubUserAvatar login={profile.login} profile={profile} className="h-12 w-12" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
@@ -138,21 +137,20 @@ function AddAccessUserDialog({
                     GitHub
                   </a>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
-
-          <div className="flex justify-end gap-2">
+        </DialogBody>
+        <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={!profile || loading}>
               {mode === "blocklist" ? "Block user" : "Allow user"}
             </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </DialogFooter>
+      </form>
+    </Dialog>
   );
 }
 
@@ -251,39 +249,32 @@ function TriggerUserListEditor({
               profile={profiles[guardianLogin]}
               className="h-10 w-10 ring-2 ring-primary/40"
             />
-            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-medium text-primary-foreground">
-              You
-            </span>
+            <Badge className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px]">You</Badge>
           </div>
         ) : mode === "allowlist" ? (
-          <span className="rounded-full border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
-            GitHub account not connected
-          </span>
+          <Badge variant="outline">GitHub account not connected</Badge>
         ) : null}
         {value.map((login) => (
           <div key={login} className="group relative">
             <GithubUserAvatar login={login} profile={profiles[login]} className="h-10 w-10" />
-            <button
-              type="button"
+            <IconButton
+              label={`Remove @${login}`}
+              icon={<X />}
+              size="xs"
               onClick={() => removeLogin(login)}
               disabled={disabled}
-              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label={`Remove @${login}`}
-            >
-              <X className="h-3 w-3" />
-            </button>
+              className="absolute -right-1 -top-1 rounded-full border bg-background text-destructive"
+            />
           </div>
         ))}
-        <button
-          type="button"
+        <IconButton
+          label={mode === "blocklist" ? "Add GitHub user to blocklist" : "Add GitHub user to allowlist"}
+          icon={<Plus />}
+          size="md"
           onClick={() => setDialogOpen(true)}
           disabled={disabled}
-          className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed bg-background text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label={mode === "blocklist" ? "Add GitHub user to blocklist" : "Add GitHub user to allowlist"}
-          title={mode === "blocklist" ? "Block GitHub user" : "Allow GitHub user"}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+          className="rounded-full border-2 border-dashed"
+        />
       </div>
       <p className="text-xs text-muted-foreground">
         {mode === "blocklist"
@@ -319,18 +310,18 @@ function SectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <CardHeader className="flex-row items-start justify-between gap-3 px-0">
       <div className="flex min-w-0 items-start gap-2.5">
         <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <Icon className="h-4 w-4" />
         </span>
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{title}</h3>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+          <CardTitle className="text-sm">{title}</CardTitle>
+          {description && <CardDescription className="mt-0.5 text-xs">{description}</CardDescription>}
         </div>
       </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </div>
+      {action && <CardAction>{action}</CardAction>}
+    </CardHeader>
   );
 }
 
@@ -555,7 +546,7 @@ function TriggerSettingsForm({
           <span className="truncate font-medium text-foreground">{repoName}</span>
           {autoSaving && (
             <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Spinner size="xs" label="Saving settings" />
               Saving
             </span>
           )}
@@ -565,9 +556,7 @@ function TriggerSettingsForm({
         </Button>
       </div>
       {saveError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {saveError}
-        </div>
+        <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>
       )}
 
       {/* 1 — Who can use it */}
@@ -577,19 +566,23 @@ function TriggerSettingsForm({
           title="Who can use it"
           description="Choose a default, then add the exceptions. Your connected account is always allowed."
         />
-        <div className="grid gap-2 pl-9 sm:grid-cols-2" role="radiogroup" aria-label="Who can trigger the bot">
+        <RadioGroup
+          className="grid gap-2 pl-9 sm:grid-cols-2"
+          aria-label="Who can trigger the bot"
+          value={triggerAccessMode}
+          disabled={controlsDisabled}
+          orientation="horizontal"
+          onValueChange={(value) => {
+            const mode = value as TriggerAccessMode;
+            setTriggerAccessMode(mode);
+            void persistSettings({ triggerAccessMode: mode });
+          }}
+        >
           <label className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${triggerAccessMode === "allowlist" ? "border-primary bg-primary/5" : "bg-background/60 hover:bg-muted/40"}`}>
-            <input
-              type="radio"
-              name="trigger-access-mode"
+            <RadioGroupItem
               value="allowlist"
-              checked={triggerAccessMode === "allowlist"}
-              disabled={controlsDisabled}
-              onChange={() => {
-                setTriggerAccessMode("allowlist");
-                void persistSettings({ triggerAccessMode: "allowlist" });
-              }}
-              className="mt-1 h-4 w-4 accent-primary"
+              aria-label="Selected people only"
+              className="mt-1"
             />
             <span>
               <span className="block text-sm font-medium">Selected people only</span>
@@ -597,24 +590,17 @@ function TriggerSettingsForm({
             </span>
           </label>
           <label className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${triggerAccessMode === "blocklist" ? "border-primary bg-primary/5" : "bg-background/60 hover:bg-muted/40"}`}>
-            <input
-              type="radio"
-              name="trigger-access-mode"
+            <RadioGroupItem
               value="blocklist"
-              checked={triggerAccessMode === "blocklist"}
-              disabled={controlsDisabled}
-              onChange={() => {
-                setTriggerAccessMode("blocklist");
-                void persistSettings({ triggerAccessMode: "blocklist" });
-              }}
-              className="mt-1 h-4 w-4 accent-primary"
+              aria-label="Everyone except blocked"
+              className="mt-1"
             />
             <span>
               <span className="flex items-center gap-1.5 text-sm font-medium"><Ban className="h-3.5 w-3.5" />Everyone except blocked</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">Start open. Any GitHub user can trigger the bot unless you block them.</span>
             </span>
           </label>
-        </div>
+        </RadioGroup>
         <div className="pl-9">
           <TriggerUserListEditor
             mode={triggerAccessMode}
@@ -695,17 +681,17 @@ function TriggerSettingsForm({
           <p className="text-xs text-muted-foreground">
             You can also start a review by commenting the review phrase — set up under <span className="font-medium text-foreground">@mention assistant</span> below.
           </p>
-          <div className="pt-1">
-            <label className="mb-1 block text-sm font-medium">Custom review rules</label>
-            <textarea
+          <Field className="pt-1">
+            <FieldLabel htmlFor="custom-review-rules">Custom review rules</FieldLabel>
+            <Textarea
+              id="custom-review-rules"
               value={customRules}
               onChange={(e) => setCustomRules(e.target.value)}
               placeholder={`Extra rules the reviewer must also check, e.g.\n- Check error handling\n- Require JSDoc for new functions\n- Flag direct DOM manipulation`}
               rows={4}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
             />
-            <p className="mt-1 text-xs text-muted-foreground">Applied on top of the reviewer's defaults. Save with the button below.</p>
-          </div>
+            <FieldDescription>Applied on top of the reviewer's defaults. Save with the button below.</FieldDescription>
+          </Field>
         </div>
       </section>
 
@@ -751,32 +737,36 @@ function TriggerSettingsForm({
                 </li>
               </ul>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">Review phrase</label>
-              <input
+            <Field>
+              <FieldLabel htmlFor="review-phrase">Review phrase</FieldLabel>
+              <Input
+                id="review-phrase"
                 type="text"
                 value={mentionTriggerPhrase}
                 onChange={(e) => setMentionTriggerPhrase(e.target.value)}
                 placeholder="PTAL"
-                className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                size="sm"
+                className="w-full max-w-xs"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
+              <FieldDescription>
                 e.g. <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">{mentionCommand || `${botHandle} ${mentionTriggerPhrase || "PTAL"}`}</code> runs a full review.
-              </p>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">Summary phrase</label>
-              <input
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="summary-phrase">Summary phrase</FieldLabel>
+              <Input
+                id="summary-phrase"
                 type="text"
                 value={summaryTriggerPhrase}
                 onChange={(e) => setSummaryTriggerPhrase(e.target.value)}
                 placeholder="summary"
-                className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                size="sm"
+                className="w-full max-w-xs"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
+              <FieldDescription>
                 e.g. <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">{summaryCommand || `${botHandle} ${summaryTriggerPhrase || "summary"}`}</code> posts a discussion summary (PR only).
-              </p>
-            </div>
+              </FieldDescription>
+            </Field>
           </div>
         ) : (
           <p className="pl-9 text-xs text-muted-foreground">
@@ -809,15 +799,15 @@ function TriggerSettingsForm({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">GitHub webhook:</span>
               {webhookInfo?.webhookConnected ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                  <CheckCircle className="inline w-3 h-3 mr-1" />
+                <Badge variant="success" className="gap-1">
+                  <CheckCircle className="h-3 w-3" />
                   Connected
-                </span>
+                </Badge>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                  <Clock className="inline w-3 h-3 mr-1" />
+                <Badge variant="warning" className="gap-1">
+                  <Clock className="h-3 w-3" />
                   Not subscribed
-                </span>
+                </Badge>
               )}
               {webhookInfo?.githubWebhookId && (
                 <span className="text-xs font-mono text-muted-foreground">#{webhookInfo.githubWebhookId}</span>
@@ -826,20 +816,20 @@ function TriggerSettingsForm({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Event routines:</span>
               {webhookInfo?.eventRoutinesReady === true ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                  <CheckCircle className="inline w-3 h-3 mr-1" />
+                <Badge variant="success" className="gap-1">
+                  <CheckCircle className="h-3 w-3" />
                   Ready
-                </span>
+                </Badge>
               ) : webhookInfo?.eventRoutinesReady === false ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                  <XCircle className="inline w-3 h-3 mr-1" />
+                <Badge variant="destructive" className="gap-1">
+                  <XCircle className="h-3 w-3" />
                   Missing or disabled
-                </span>
+                </Badge>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                  <Clock className="inline w-3 h-3 mr-1" />
+                <Badge variant="warning" className="gap-1">
+                  <Clock className="h-3 w-3" />
                   Unknown
-                </span>
+                </Badge>
               )}
             </div>
             {webhookInfo?.eventRoutineStatus && !webhookInfo.eventRoutineStatus.ready && (
@@ -849,9 +839,7 @@ function TriggerSettingsForm({
               </p>
             )}
             {!webhookInfo?.webhookConnected && (autoReview || triggerOnRequest) && (
-              <p className="text-xs text-blue-800 dark:text-blue-200">
-                On save, Rome registers its own GitHub webhook on this repo. Event routines are tracked separately and must also be ready.
-              </p>
+              <Alert variant="info"><AlertDescription>On save, Rome registers its own GitHub webhook on this repo. Event routines are tracked separately and must also be ready.</AlertDescription></Alert>
             )}
             {(autoReview || triggerOnRequest) &&
               (webhookInfo?.eventRoutinesReady === false || !webhookInfo?.webhookConnected) && (
@@ -863,7 +851,7 @@ function TriggerSettingsForm({
                     disabled={repairing || controlsDisabled}
                   >
                     {repairing ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      <Spinner size="sm" label="Repairing connection" />
                     ) : (
                       <Wrench className="h-4 w-4 mr-1" />
                     )}
@@ -899,7 +887,7 @@ function TriggerSettingsForm({
               >
                 {removing ? (
                   <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    <Spinner size="sm" label="Removing repository" />
                     Removing...
                   </>
                 ) : (
@@ -980,32 +968,34 @@ export function TriggerSettingsPage({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <PageHeader>
+        <PageHeaderNav>
           <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
+        </PageHeaderNav>
+        <PageHeading>
           <div className="flex items-center gap-3">
             <Settings className="h-7 w-7 text-primary" />
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Automation</h1>
-              <p className="text-sm text-muted-foreground">
+              <PageTitle>Automation</PageTitle>
+              <PageDescription>
                 When and how the assistant reviews PRs and responds to @mentions.
-              </p>
+              </PageDescription>
             </div>
           </div>
-        </div>
+        </PageHeading>
+        <PageActions>
         <Button onClick={onRefresh} disabled={refreshing} variant="outline" size="sm">
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? <Spinner size="sm" label="Refreshing settings" /> : <RefreshCw />}
           Refresh
         </Button>
-      </div>
+        </PageActions>
+      </PageHeader>
 
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive mb-5">
-          {error}
-        </div>
+        <Alert variant="destructive" className="mb-5"><AlertDescription>{error}</AlertDescription></Alert>
       )}
 
       {!dashboard ? (

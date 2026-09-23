@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { Bot, Brain, CheckCircle, ChevronDown, ExternalLink, Eye, Github, ListFilter, MessageSquare, Plus, RefreshCw, Wrench, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@rome-os/ui/button";
+import { Card, CardContent } from "@rome-os/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@rome-os/ui/alert";
+import { Badge, type BadgeProps } from "@rome-os/ui/badge";
+import { EmptyState, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@rome-os/ui/empty-state";
+import { FilterChipGroup } from "@rome-os/ui/filter-chip-group";
+import { IconButton } from "@rome-os/ui/icon-button";
+import { Input } from "@rome-os/ui/input";
+import { List, ListRow, ListRowContent } from "@rome-os/ui/list-row";
+import { Spinner } from "@rome-os/ui/spinner";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@rome-os/ui/skeleton";
 import { CodeReviewAppIcon } from "@/components/app/CodeReviewAppIcon";
 import type { ActivityCounts, ActivityItem, DashboardData, GhAuthStatus, PRReviewSettingsData } from "@/types";
 import { buildPageList, formatRelative } from "@/lib/helpers";
@@ -45,23 +53,21 @@ function statusMeta(status: string): { tone: StatusTone; label: string } {
   }
 }
 
-const STATUS_TONE: Record<StatusTone, { dot: string; text: string; ring: string }> = {
-  success: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300", ring: "border-emerald-200 dark:border-emerald-900" },
-  active: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-300", ring: "border-amber-200 dark:border-amber-900" },
-  danger: { dot: "bg-red-500", text: "text-red-700 dark:text-red-300", ring: "border-red-200 dark:border-red-900" },
-  info: { dot: "bg-sky-500", text: "text-sky-700 dark:text-sky-300", ring: "border-sky-200 dark:border-sky-900" },
-  muted: { dot: "bg-muted-foreground/40", text: "text-muted-foreground", ring: "border-border" },
+const STATUS_VARIANT: Record<StatusTone, BadgeProps["variant"]> = {
+  success: "success",
+  active: "warning",
+  danger: "destructive",
+  info: "info",
+  muted: "muted",
 };
 
 function MiniStatusBadge({ status }: { status: string }) {
   const { tone, label } = statusMeta(status);
-  const c = STATUS_TONE[tone];
-  const pulse = tone === "active" ? "animate-pulse" : "";
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs font-medium ${c.ring} ${c.text}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${c.dot} ${pulse}`} />
+    <Badge variant={STATUS_VARIANT[tone]} className="shrink-0 gap-1.5">
+      {tone === "active" ? <Spinner size="xs" /> : null}
       {label}
-    </span>
+    </Badge>
   );
 }
 
@@ -69,10 +75,8 @@ function ActivityRow({ item, onOpen }: { item: ActivityItem; onOpen: (item: Acti
   const meta = TYPE_META[item.type] ?? { Icon: Bot, dot: "text-muted-foreground" };
   const surfaceLabel = item.surface === "pr" ? "PR" : "Issue";
   return (
-    <button
-      onClick={() => onOpen(item)}
-      className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50"
-    >
+    <ListRow asChild interactive size="md">
+      <button onClick={() => onOpen(item)} type="button">
       {/* Actor avatar with a type-icon badge overlaid at the bottom-right. */}
       <div className="relative shrink-0">
         <GithubAvatar login={item.actor} size={40} rounded="rounded-full" />
@@ -82,7 +86,7 @@ function ActivityRow({ item, onOpen }: { item: ActivityItem; onOpen: (item: Acti
       </div>
 
       {/* Two rows: (surface #num · title) then (repo · time). */}
-      <div className="min-w-0 flex-1">
+      <ListRowContent>
         <div className="min-w-0 truncate text-sm">
           <span className="font-medium text-muted-foreground">
             {item.type === "review" ? `${surfaceLabel} #${item.number}` : item.tag}
@@ -94,20 +98,21 @@ function ActivityRow({ item, onOpen }: { item: ActivityItem; onOpen: (item: Acti
           <span className="truncate">{item.repo}</span>
           <span className="shrink-0 whitespace-nowrap">· {formatRelative(item.createdAt)}</span>
         </div>
-      </div>
+      </ListRowContent>
 
       <div className="flex shrink-0 items-center gap-2">
         {item.hasSession && <Bot className="h-3.5 w-3.5 text-muted-foreground" aria-label="Has agent session" />}
         <MiniStatusBadge status={item.status} />
       </div>
-    </button>
+      </button>
+    </ListRow>
   );
 }
 
 /** Placeholder repo card matching RepoCard's footprint (avatar, name, badge, sparkline). */
 function RepoCardSkeleton() {
   return (
-    <div className="flex flex-col rounded-xl border bg-card p-4">
+    <Card className="flex flex-col">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Skeleton className="h-9 w-9 rounded-lg" />
@@ -119,7 +124,7 @@ function RepoCardSkeleton() {
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-6 w-[92px] rounded" />
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -231,15 +236,20 @@ export function HomeDashboard({
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {ghAuth?.loggedIn && (
-              <a
+              <Badge
+                asChild
+                variant="success"
+              >
+                <a
                 href="/settings/integrations"
                 title="Manage GitHub connection in Settings → Integrations"
-                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                className="gap-1.5"
               >
                 <Github className="h-4 w-4" />
                 <CheckCircle className="h-3.5 w-3.5" />
                 {ghAuth.login ? `@${ghAuth.login}` : "GitHub connected"}
-              </a>
+                </a>
+              </Badge>
             )}
             <Button onClick={onRefresh} disabled={refreshing} variant="outline" size="sm">
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -249,33 +259,31 @@ export function HomeDashboard({
         </div>
 
         {error && (
-          <div className="mx-5 mb-4 flex items-center justify-between rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive sm:mx-6">
-            <span>{error}</span>
-            <button onClick={onDismissError} className="ml-3 shrink-0 text-xs underline">
-              dismiss
-            </button>
-          </div>
+          <Alert variant="destructive" className="mx-5 mb-4 sm:mx-6">
+            <AlertDescription className="flex items-center justify-between gap-3">
+              <span>{error}</span>
+              <Button onClick={onDismissError} variant="ghost" size="xs">Dismiss</Button>
+            </AlertDescription>
+          </Alert>
         )}
 
         {ghAuth && !ghAuth.loggedIn && (
-          <div className="mx-5 mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40 sm:mx-6">
-            <div className="flex items-start gap-3">
-              <Github className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-amber-900 dark:text-amber-100">GitHub is not connected</p>
-                <p className="mt-0.5 text-sm text-amber-800/90 dark:text-amber-200/90">
+          <Alert variant="warning" className="mx-5 mb-4 sm:mx-6">
+              <Github />
+              <AlertTitle>GitHub is not connected</AlertTitle>
+              <AlertDescription>
+                <p>
                   Code Review uses the GitHub CLI to read PRs and post reviews. Connect your GitHub account to enable reviews.
                 </p>
                 <a
                   href="/settings/integrations"
-                  className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-amber-900 underline underline-offset-2 hover:no-underline dark:text-amber-100"
+                  className="mt-2 inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:no-underline"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Connect GitHub in Settings → Integrations
                 </a>
-              </div>
-            </div>
-          </div>
+              </AlertDescription>
+          </Alert>
         )}
 
         {/* Repositories */}
@@ -303,28 +311,28 @@ export function HomeDashboard({
 
           {showAddRepo && (
             <div className="mb-4 flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={repoUrl}
                 onChange={(e) => onRepoUrlChange(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && onAddRepository()}
                 placeholder="https://github.com/owner/repo or owner/repo"
                 autoFocus
-                className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                size="sm"
+                className="flex-1"
               />
               <Button onClick={onAddRepository} disabled={addingRepo || !repoUrl.trim()} size="sm">
-                {addingRepo ? "Adding..." : "Add"}
+                {addingRepo ? <><Spinner size="sm" /> Adding...</> : "Add"}
               </Button>
-              <Button
-                variant="ghost"
+              <IconButton
+                label="Cancel adding repository"
+                icon={<X />}
                 size="sm"
                 onClick={() => {
                   onShowAddRepoChange(false);
                   onRepoUrlChange("");
                 }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              />
             </div>
           )}
 
@@ -335,9 +343,11 @@ export function HomeDashboard({
               ))}
             </div>
           ) : repositories.length === 0 ? (
-            <p className="py-2 text-sm text-muted-foreground">
-              No repositories added yet. Click "Add" to monitor a GitHub repository.
-            </p>
+            <EmptyState className="min-h-32">
+              <EmptyStateIcon><Github /></EmptyStateIcon>
+              <EmptyStateTitle>No repositories yet</EmptyStateTitle>
+              <EmptyStateDescription>Click Add to monitor a GitHub repository.</EmptyStateDescription>
+            </EmptyState>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {repositories.map((r) => (
@@ -355,29 +365,31 @@ export function HomeDashboard({
 
         {/* Collapsible manual review */}
         <div className="border-t">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            align="between"
             onClick={() => setManualOpen((v) => !v)}
-            className="flex w-full items-center gap-2.5 px-5 py-3.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/40 sm:px-6"
+            className="h-auto w-full rounded-none px-5 py-3.5 text-muted-foreground sm:px-6"
           >
             <Eye className="h-4 w-4 shrink-0" />
             <span className="flex-1">Run a manual review on a specific PR</span>
             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
-          </button>
+          </Button>
           {manualOpen && (
             <div className="flex gap-2 px-5 pb-4 sm:px-6">
-              <input
+              <Input
                 type="text"
                 value={prInput}
                 onChange={(e) => onPrInputChange(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && onTriggerPRReview()}
                 placeholder="https://github.com/owner/repo/pull/123"
                 autoFocus
-                className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex-1"
               />
               <Button onClick={() => onTriggerPRReview()} disabled={triggeringReview || !prInput.trim()}>
                 <Eye className="mr-1 h-4 w-4" />
-                {triggeringReview ? "Starting..." : "Review"}
+                {triggeringReview ? <><Spinner size="sm" /> Starting...</> : "Review"}
               </Button>
             </div>
           )}
@@ -396,29 +408,17 @@ export function HomeDashboard({
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted/60 p-1">
-            {ACTIVITY_FILTERS.map((f) => {
-              const active = activityFilter === f.value;
-              const count = countFor(f.value);
-              return (
-                <button
-                  key={f.value}
-                  onClick={() => onActivityFilterChange(f.value)}
-                  disabled={loadingActivity}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
-                    active
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {f.label}
-                  {count !== null && (
-                    <span className={active ? "text-muted-foreground" : "text-muted-foreground/70"}>{count}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <FilterChipGroup
+            aria-label="Filter activity"
+            value={activityFilter}
+            onValueChange={onActivityFilterChange}
+            disabled={loadingActivity}
+            options={ACTIVITY_FILTERS.map((filter) => ({
+              value: filter.value,
+              label: filter.label,
+              count: countFor(filter.value) ?? undefined,
+            }))}
+          />
         </div>
 
         <CardContent className="p-0">
@@ -429,17 +429,21 @@ export function HomeDashboard({
               ))}
             </div>
           ) : activityItems.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-              {activityFilter === "all"
-                ? "No activity yet. Run a manual review above, or @mention the bot on a PR/issue to ask a question, give feedback, or request a code task."
-                : "No activity of this type yet."}
-            </p>
+            <EmptyState>
+              <EmptyStateIcon><ListFilter /></EmptyStateIcon>
+              <EmptyStateTitle>No activity yet</EmptyStateTitle>
+              <EmptyStateDescription>
+                {activityFilter === "all"
+                  ? "Run a manual review above, or @mention the bot on a PR or issue."
+                  : "No activity of this type yet."}
+              </EmptyStateDescription>
+            </EmptyState>
           ) : (
-            <div className="divide-y">
+            <List>
               {activityItems.map((item) => (
                 <ActivityRow key={`${item.kind}:${item.id}`} item={item} onOpen={onOpenActivityItem} />
               ))}
-            </div>
+            </List>
           )}
           {activityTotal > ACTIVITY_PAGE_SIZE && (
             <div className="border-t px-4 py-3">
