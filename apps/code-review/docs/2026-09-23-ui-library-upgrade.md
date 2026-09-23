@@ -15,6 +15,7 @@
 - The shared Markdown component is used despite its larger optional renderer bundle because the goal is maximum convergence on the Rome UI library and consistent Markdown behavior.
 - The full shared Markdown stylesheet currently cannot be mounted by the Rome app host because its KaTeX font URLs pass through an app-relative CSS URL rewriter. Until that host path is fixed, the app imports Streamdown's font-free stylesheet, scans the same renderer packages, and keeps only the base shared typography rules locally.
 - Semantic status presentation now uses shared `Badge` and `Alert` variants instead of app-owned color recipes.
+- The Dashboard, Automation Settings, and Review Detail routes now compose the shared `PageHeader`, `Section`, list-layout, form-row, and reading-measure primitives. This removes card-within-card layout, establishes a consistent 24px page rhythm, and keeps actions aligned with the content hierarchy at narrow and wide widths.
 
 ## Validation
 

@@ -3,12 +3,33 @@ import { ArrowLeft, AtSign, Ban, Brain, CheckCircle, Clock, Eye, ExternalLink, G
 import { Alert, AlertDescription } from "@rome-os/ui/alert";
 import { Badge } from "@rome-os/ui/badge";
 import { Button } from "@rome-os/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@rome-os/ui/card";
+import { Card, CardContent } from "@rome-os/ui/card";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@rome-os/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@rome-os/ui/field";
 import { IconButton } from "@rome-os/ui/icon-button";
 import { Input } from "@rome-os/ui/input";
-import { PageActions, PageDescription, PageHeader, PageHeaderNav, PageHeading, PageTitle } from "@rome-os/ui/page";
+import {
+  FormRow,
+  FormRowControl,
+  FormRowDescription,
+  FormRowHeading,
+  FormRowLabel,
+  FormRows,
+} from "@rome-os/ui/layout-form";
+import {
+  PageActions,
+  PageDescription,
+  PageHeader,
+  PageHeaderNav,
+  PageHeading,
+  PageTitle,
+  Section,
+  SectionActions,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@rome-os/ui/page";
 import { RadioGroup, RadioGroupItem } from "@rome-os/ui/radio-group";
 import { Spinner } from "@rome-os/ui/spinner";
 import { Switch } from "@rome-os/ui/switch";
@@ -298,7 +319,7 @@ function TriggerUserListEditor({
 // --- Trigger Settings ---
 
 /** A section header with a semantic icon and an optional right-aligned action (e.g. a master switch). */
-function SectionHeader({
+function SettingsSectionHeader({
   icon: Icon,
   title,
   description,
@@ -310,18 +331,16 @@ function SectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <CardHeader className="flex-row items-start justify-between gap-3 px-0">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <CardTitle className="text-sm">{title}</CardTitle>
-          {description && <CardDescription className="mt-0.5 text-xs">{description}</CardDescription>}
-        </div>
-      </div>
-      {action && <CardAction>{action}</CardAction>}
-    </CardHeader>
+    <SectionHeader>
+      <SectionHeading>
+        <SectionTitle className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-primary" />
+          {title}
+        </SectionTitle>
+        {description && <SectionDescription>{description}</SectionDescription>}
+      </SectionHeading>
+      {action && <SectionActions>{action}</SectionActions>}
+    </SectionHeader>
   );
 }
 
@@ -560,14 +579,16 @@ function TriggerSettingsForm({
       )}
 
       {/* 1 — Who can use it */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
+      <Section>
+        <SettingsSectionHeader
           icon={Users}
           title="Who can use it"
           description="Choose a default, then add the exceptions. Your connected account is always allowed."
         />
+        <Card>
+          <CardContent className="space-y-4">
         <RadioGroup
-          className="grid gap-2 pl-9 sm:grid-cols-2"
+          className="grid gap-2 sm:grid-cols-2"
           aria-label="Who can trigger the bot"
           value={triggerAccessMode}
           disabled={controlsDisabled}
@@ -601,7 +622,7 @@ function TriggerSettingsForm({
             </span>
           </label>
         </RadioGroup>
-        <div className="pl-9">
+        <div>
           <TriggerUserListEditor
             mode={triggerAccessMode}
             guardianGithubLogin={guardianGithubLogin}
@@ -618,69 +639,79 @@ function TriggerSettingsForm({
             }}
           />
         </div>
-      </section>
+          </CardContent>
+        </Card>
+      </Section>
 
       {/* 2 — Code reviews */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
+      <Section>
+        <SettingsSectionHeader
           icon={GitPullRequest}
           title="Code reviews"
           description="The bot reviews pull requests and posts inline findings. Choose when it runs."
         />
-        <div className="space-y-2 pl-9">
-          {/* Automatically */}
-          <div className="rounded-md border bg-background/60 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span className="text-sm font-medium">Automatically</span>
-                <p className="text-xs text-muted-foreground">Review on PR activity — no mention needed.</p>
-              </div>
+        <FormRows className="max-w-none">
+          <FormRow>
+            <FormRowHeading>
+              <FormRowLabel>Automatically</FormRowLabel>
+              <FormRowDescription>Review on PR activity — no mention needed.</FormRowDescription>
+            </FormRowHeading>
+            <FormRowControl>
               <Switch
                 checked={autoReview}
                 disabled={controlsDisabled}
                 onCheckedChange={handleAutoReviewChange}
                 aria-label="Toggle automatic reviews"
               />
-            </div>
-            {autoReview && (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-2.5">
-                  <span className="text-sm">When a PR is opened</span>
+            </FormRowControl>
+          </FormRow>
+          {autoReview && (
+            <>
+              <FormRow className="bg-surface-muted/30 pl-7">
+                <FormRowHeading>
+                  <FormRowLabel>When a PR is opened</FormRowLabel>
+                </FormRowHeading>
+                <FormRowControl>
                   <Switch
                     checked={triggerOnCreate}
                     disabled={controlsDisabled}
                     onCheckedChange={(checked) => handleAutoTriggerChange(setTriggerOnCreate, checked, triggerOnPush)}
                     aria-label="Toggle PR opened trigger"
                   />
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-2.5">
-                  <span className="text-sm">When new commits are pushed</span>
+                </FormRowControl>
+              </FormRow>
+              <FormRow className="bg-surface-muted/30 pl-7">
+                <FormRowHeading>
+                  <FormRowLabel>When new commits are pushed</FormRowLabel>
+                </FormRowHeading>
+                <FormRowControl>
                   <Switch
                     checked={triggerOnPush}
                     disabled={controlsDisabled}
                     onCheckedChange={(checked) => handleAutoTriggerChange(setTriggerOnPush, checked, triggerOnCreate)}
                     aria-label="Toggle new commits trigger"
                   />
-                </div>
-              </div>
-            )}
-          </div>
-          {/* On review request */}
-          <div className="flex items-center justify-between gap-3 rounded-md border bg-background/60 p-3">
-            <div className="min-w-0">
-              <span className="text-sm font-medium">On GitHub review request</span>
-              <p className="text-xs text-muted-foreground">When someone requests a review from {botHandle}.</p>
-            </div>
+                </FormRowControl>
+              </FormRow>
+            </>
+          )}
+          <FormRow>
+            <FormRowHeading>
+              <FormRowLabel>On GitHub review request</FormRowLabel>
+              <FormRowDescription>When someone requests a review from {botHandle}.</FormRowDescription>
+            </FormRowHeading>
+            <FormRowControl>
             <Switch
               checked={triggerOnReviewRequest}
               disabled={controlsDisabled}
               onCheckedChange={(checked) => handleManualSubTriggerChange(setTriggerOnReviewRequest, checked, triggerOnMention)}
               aria-label="Toggle review request trigger"
             />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            You can also start a review by commenting the review phrase — set up under <span className="font-medium text-foreground">@mention assistant</span> below.
-          </p>
+            </FormRowControl>
+          </FormRow>
+        </FormRows>
+        <Card>
+          <CardContent>
           <Field className="pt-1">
             <FieldLabel htmlFor="custom-review-rules">Custom review rules</FieldLabel>
             <Textarea
@@ -692,12 +723,13 @@ function TriggerSettingsForm({
             />
             <FieldDescription>Applied on top of the reviewer's defaults. Save with the button below.</FieldDescription>
           </Field>
-        </div>
-      </section>
+          </CardContent>
+        </Card>
+      </Section>
 
       {/* 3 — @mention assistant */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
+      <Section>
+        <SettingsSectionHeader
           icon={AtSign}
           title="@mention assistant"
           description={`Comment ${botHandle} on any PR or issue and it works out what you need. This one switch controls all of it.`}
@@ -711,8 +743,9 @@ function TriggerSettingsForm({
           }
         />
         {triggerOnMention ? (
-          <div className="space-y-3 pl-9">
-            <div className="rounded-md border bg-background/60 p-3">
+          <Card>
+            <CardContent className="space-y-4">
+            <div className="rounded-8 bg-surface-muted p-3">
               <p className="mb-1.5 text-xs font-medium">What it does with your comment:</p>
               <ul className="space-y-1.5 text-xs text-muted-foreground">
                 <li className="flex items-start gap-2">
@@ -767,37 +800,42 @@ function TriggerSettingsForm({
                 e.g. <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">{summaryCommand || `${botHandle} ${summaryTriggerPhrase || "summary"}`}</code> posts a discussion summary (PR only).
               </FieldDescription>
             </Field>
-          </div>
+            </CardContent>
+          </Card>
         ) : (
-          <p className="pl-9 text-xs text-muted-foreground">
-            Off — the bot ignores @mentions entirely: no questions, feedback, code tasks, or phrase reviews.
-          </p>
+          <Alert variant="info">
+            <AlertDescription>Off — the bot ignores @mentions entirely: no questions, feedback, code tasks, or phrase reviews.</AlertDescription>
+          </Alert>
         )}
-      </section>
+      </Section>
 
       {/* Project memory — shared knowledge for every task the bot runs here */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
+      <Section>
+        <SettingsSectionHeader
           icon={Brain}
           title="Project memory"
           description="Shared knowledge the bot uses for everything it does here — reviews, questions, feedback and code tasks. It also writes here from your feedback."
         />
-        <div className="pl-9">
+        <div>
           <ProjectMemoryCard repoName={repoName} initialProjectMemory={initialProjectMemory} />
         </div>
-      </section>
+      </Section>
 
       {/* 5 — Connection (read-only) */}
       {(autoReview || triggerOnRequest || webhookInfo?.githubWebhookId || webhookInfo?.eventRoutineStatus) && (
-        <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-          <SectionHeader
+        <Section>
+          <SettingsSectionHeader
             icon={Plug}
             title="Connection"
             description="The GitHub webhook and event routines that deliver these triggers."
           />
-          <div className="space-y-2 pl-9">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">GitHub webhook:</span>
+          <FormRows className="max-w-none">
+            <FormRow>
+              <FormRowHeading>
+                <FormRowLabel>GitHub webhook</FormRowLabel>
+                <FormRowDescription>Receives pull request events from GitHub.</FormRowDescription>
+              </FormRowHeading>
+              <FormRowControl>
               {webhookInfo?.webhookConnected ? (
                 <Badge variant="success" className="gap-1">
                   <CheckCircle className="h-3 w-3" />
@@ -812,9 +850,14 @@ function TriggerSettingsForm({
               {webhookInfo?.githubWebhookId && (
                 <span className="text-xs font-mono text-muted-foreground">#{webhookInfo.githubWebhookId}</span>
               )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Event routines:</span>
+              </FormRowControl>
+            </FormRow>
+            <FormRow>
+              <FormRowHeading>
+                <FormRowLabel>Event routines</FormRowLabel>
+                <FormRowDescription>Routes webhook events to the review workflow.</FormRowDescription>
+              </FormRowHeading>
+              <FormRowControl>
               {webhookInfo?.eventRoutinesReady === true ? (
                 <Badge variant="success" className="gap-1">
                   <CheckCircle className="h-3 w-3" />
@@ -831,7 +874,10 @@ function TriggerSettingsForm({
                   Unknown
                 </Badge>
               )}
-            </div>
+              </FormRowControl>
+            </FormRow>
+          </FormRows>
+          <div className="space-y-2">
             {webhookInfo?.eventRoutineStatus && !webhookInfo.eventRoutineStatus.ready && (
               <p className="text-xs text-muted-foreground">
                 Missing: {webhookInfo.eventRoutineStatus.missing.join(", ") || "none"};
@@ -863,17 +909,18 @@ function TriggerSettingsForm({
                 </div>
               )}
           </div>
-        </section>
+        </Section>
       )}
 
       {/* Danger zone — remove this repository */}
-      <section className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-        <SectionHeader
+      <Section>
+        <SettingsSectionHeader
           icon={Trash2}
           title="Danger zone"
           description="Remove this repository from Code Review. This deletes its automation settings here — it does not touch the GitHub repository."
         />
-        <div className="pl-9">
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent>
           {confirmingRemove ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-muted-foreground">
@@ -917,8 +964,9 @@ function TriggerSettingsForm({
               Remove repository
             </Button>
           )}
-        </div>
-      </section>
+          </CardContent>
+        </Card>
+      </Section>
 
     </div>
   );

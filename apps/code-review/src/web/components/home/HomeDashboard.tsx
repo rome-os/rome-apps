@@ -8,7 +8,21 @@ import { EmptyState, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } fr
 import { FilterChipGroup } from "@rome-os/ui/filter-chip-group";
 import { IconButton } from "@rome-os/ui/icon-button";
 import { Input } from "@rome-os/ui/input";
+import { ListCollection, ListFooter, ListGrid } from "@rome-os/ui/layout-list";
 import { List, ListRow, ListRowContent } from "@rome-os/ui/list-row";
+import {
+  PageActions,
+  PageDescription,
+  PageHeader,
+  PageHeading,
+  PageTitle,
+  Section,
+  SectionActions,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@rome-os/ui/page";
 import { Spinner } from "@rome-os/ui/spinner";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Skeleton } from "@rome-os/ui/skeleton";
@@ -217,30 +231,26 @@ export function HomeDashboard({
 
   return (
     <>
-      {/* ---------- Top panel: header + repositories + manual review ---------- */}
-      <Card className="mb-6 overflow-hidden p-0">
-        {/* Header */}
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <PageHeader align="start">
+        <PageHeading>
           <div className="flex min-w-0 items-center gap-3">
             <CodeReviewAppIcon />
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight">Code Review</h1>
+              <PageTitle>Code Review</PageTitle>
               {dashboard ? (
-                <div className="mt-0.5 text-sm text-muted-foreground">
+                <PageDescription>
                   {dashboard.stats.totalRepos} repo{dashboard.stats.totalRepos !== 1 ? "s" : ""} · {dashboard.stats.totalPRReviews} review{dashboard.stats.totalPRReviews !== 1 ? "s" : ""}
-                </div>
+                </PageDescription>
               ) : showSkeleton ? (
                 <Skeleton className="mt-1.5 h-4 w-36" />
               ) : null}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {ghAuth?.loggedIn && (
-              <Badge
-                asChild
-                variant="success"
-              >
-                <a
+        </PageHeading>
+        <PageActions>
+          {ghAuth?.loggedIn && (
+            <Badge asChild variant="success">
+              <a
                 href="/settings/integrations"
                 title="Manage GitHub connection in Settings → Integrations"
                 className="gap-1.5"
@@ -248,56 +258,55 @@ export function HomeDashboard({
                 <Github className="h-4 w-4" />
                 <CheckCircle className="h-3.5 w-3.5" />
                 {ghAuth.login ? `@${ghAuth.login}` : "GitHub connected"}
-                </a>
-              </Badge>
-            )}
-            <Button onClick={onRefresh} disabled={refreshing} variant="outline" size="sm">
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
-          </div>
-        </div>
+              </a>
+            </Badge>
+          )}
+          <Button onClick={onRefresh} disabled={refreshing} variant="outline" size="sm">
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </Button>
+        </PageActions>
+      </PageHeader>
 
-        {error && (
-          <Alert variant="destructive" className="mx-5 mb-4 sm:mx-6">
-            <AlertDescription className="flex items-center justify-between gap-3">
-              <span>{error}</span>
-              <Button onClick={onDismissError} variant="ghost" size="xs">Dismiss</Button>
-            </AlertDescription>
-          </Alert>
-        )}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button onClick={onDismissError} variant="ghost" size="xs">Dismiss</Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
-        {ghAuth && !ghAuth.loggedIn && (
-          <Alert variant="warning" className="mx-5 mb-4 sm:mx-6">
-              <Github />
-              <AlertTitle>GitHub is not connected</AlertTitle>
-              <AlertDescription>
-                <p>
-                  Code Review uses the GitHub CLI to read PRs and post reviews. Connect your GitHub account to enable reviews.
-                </p>
-                <a
-                  href="/settings/integrations"
-                  className="mt-2 inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:no-underline"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Connect GitHub in Settings → Integrations
-                </a>
-              </AlertDescription>
-          </Alert>
-        )}
+      {ghAuth && !ghAuth.loggedIn && (
+        <Alert variant="warning">
+          <Github />
+          <AlertTitle>GitHub is not connected</AlertTitle>
+          <AlertDescription>
+            <p>Code Review uses the GitHub CLI to read PRs and post reviews. Connect your GitHub account to enable reviews.</p>
+            <a
+              href="/settings/integrations"
+              className="mt-2 inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:no-underline"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Connect GitHub in Settings → Integrations
+            </a>
+          </AlertDescription>
+        </Alert>
+      )}
 
-        {/* Repositories */}
-        <div className="border-t px-5 py-5 sm:px-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-medium">
+      <Section>
+        <SectionHeader>
+          <SectionHeading>
+            <SectionTitle className="flex items-center gap-2">
               <Github className="h-4 w-4 text-muted-foreground" />
               Repositories
               {!showSkeleton && (
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
-                  {repositories.length}
-                </span>
+                <Badge variant="muted">{repositories.length}</Badge>
               )}
-            </div>
+            </SectionTitle>
+            <SectionDescription>Repositories monitored by the review agent.</SectionDescription>
+          </SectionHeading>
+          <SectionActions>
             <Button
               variant="outline"
               size="sm"
@@ -307,10 +316,12 @@ export function HomeDashboard({
               <Plus className="mr-1 h-4 w-4" />
               Add
             </Button>
-          </div>
+          </SectionActions>
+        </SectionHeader>
 
-          {showAddRepo && (
-            <div className="mb-4 flex gap-2">
+        {showAddRepo && (
+          <Card>
+            <CardContent className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="text"
                 value={repoUrl}
@@ -333,23 +344,24 @@ export function HomeDashboard({
                   onRepoUrlChange("");
                 }}
               />
-            </div>
-          )}
+            </CardContent>
+          </Card>
+        )}
 
-          {showSkeleton ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+        {showSkeleton ? (
+          <ListGrid className="xl:grid-cols-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <RepoCardSkeleton key={i} />
               ))}
-            </div>
-          ) : repositories.length === 0 ? (
-            <EmptyState className="min-h-32">
-              <EmptyStateIcon><Github /></EmptyStateIcon>
-              <EmptyStateTitle>No repositories yet</EmptyStateTitle>
-              <EmptyStateDescription>Click Add to monitor a GitHub repository.</EmptyStateDescription>
-            </EmptyState>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+          </ListGrid>
+        ) : repositories.length === 0 ? (
+          <EmptyState className="min-h-32">
+            <EmptyStateIcon><Github /></EmptyStateIcon>
+            <EmptyStateTitle>No repositories yet</EmptyStateTitle>
+            <EmptyStateDescription>Click Add to monitor a GitHub repository.</EmptyStateDescription>
+          </EmptyState>
+        ) : (
+          <ListGrid className="xl:grid-cols-2">
               {repositories.map((r) => (
                 <RepoCard
                   key={r.id}
@@ -359,25 +371,23 @@ export function HomeDashboard({
                   onOpenSettings={onOpenTriggerSettings}
                 />
               ))}
-            </div>
-          )}
-        </div>
+          </ListGrid>
+        )}
 
-        {/* Collapsible manual review */}
-        <div className="border-t">
+        <Card className="overflow-hidden p-0">
           <Button
             type="button"
             variant="ghost"
             align="between"
             onClick={() => setManualOpen((v) => !v)}
-            className="h-auto w-full rounded-none px-5 py-3.5 text-muted-foreground sm:px-6"
+            className="h-auto w-full rounded-none px-4 py-3.5 text-muted-foreground"
           >
             <Eye className="h-4 w-4 shrink-0" />
             <span className="flex-1">Run a manual review on a specific PR</span>
             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
           </Button>
           {manualOpen && (
-            <div className="flex gap-2 px-5 pb-4 sm:px-6">
+            <CardContent className="flex flex-col gap-2 pb-4 sm:flex-row">
               <Input
                 type="text"
                 value={prInput}
@@ -391,23 +401,24 @@ export function HomeDashboard({
                 <Eye className="mr-1 h-4 w-4" />
                 {triggeringReview ? <><Spinner size="sm" /> Starting...</> : "Review"}
               </Button>
-            </div>
+            </CardContent>
           )}
-        </div>
-      </Card>
+        </Card>
+      </Section>
 
-      {/* ---------- Activity ---------- */}
-      <Card className="overflow-hidden p-0">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-          <div className="flex items-center gap-2 text-sm font-medium">
+      <Section>
+        <SectionHeader>
+          <SectionHeading>
+            <SectionTitle className="flex items-center gap-2">
             <ListFilter className="h-4 w-4 text-muted-foreground" />
             Activity
             {!showSkeleton && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
-                {activityAll}
-              </span>
+                <Badge variant="muted">{activityAll}</Badge>
             )}
-          </div>
+            </SectionTitle>
+            <SectionDescription>Reviews and assistant work across monitored repositories.</SectionDescription>
+          </SectionHeading>
+          <SectionActions>
           <FilterChipGroup
             aria-label="Filter activity"
             value={activityFilter}
@@ -419,9 +430,11 @@ export function HomeDashboard({
               count: countFor(filter.value) ?? undefined,
             }))}
           />
-        </div>
+          </SectionActions>
+        </SectionHeader>
 
-        <CardContent className="p-0">
+        <Card className="overflow-hidden p-0">
+          <ListCollection>
           {showSkeleton ? (
             <div className="divide-y">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -445,8 +458,9 @@ export function HomeDashboard({
               ))}
             </List>
           )}
+          </ListCollection>
           {activityTotal > ACTIVITY_PAGE_SIZE && (
-            <div className="border-t px-4 py-3">
+            <ListFooter className="border-t px-4 py-3">
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
@@ -473,10 +487,10 @@ export function HomeDashboard({
               <p className="mt-1 text-center text-xs text-muted-foreground">
                 Page {activityPage} of {totalPages} · {activityTotal} total
               </p>
-            </div>
+            </ListFooter>
           )}
-        </CardContent>
-      </Card>
+        </Card>
+      </Section>
     </>
   );
 }

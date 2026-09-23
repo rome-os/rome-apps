@@ -3,9 +3,23 @@ import { navigateRome } from "@rome-os/app-web-sdk";
 import { Alert, AlertDescription } from "@rome-os/ui/alert";
 import { Badge } from "@rome-os/ui/badge";
 import { Button } from "@rome-os/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@rome-os/ui/card";
+import { Card, CardContent } from "@rome-os/ui/card";
 import { EmptyState, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@rome-os/ui/empty-state";
-import { PageActions, PageDescription, PageHeader, PageHeaderNav, PageHeading, PageTitle } from "@rome-os/ui/page";
+import {
+  Measure,
+  PageActions,
+  PageDescription,
+  PageHeader,
+  PageHeaderNav,
+  PageHeading,
+  PageTitle,
+  Section,
+  SectionActions,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@rome-os/ui/page";
 import { Spinner } from "@rome-os/ui/spinner";
 import { Timestamp } from "@rome-os/ui/timestamp";
 import type { PRReviewData } from "@/types";
@@ -92,19 +106,23 @@ export function ReviewDetailPage({
         </EmptyState>
       ) : selectedReview ? (
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
+          <Section>
+            <SectionHeader>
+              <SectionHeading>
+                <SectionTitle className="flex flex-wrap items-center gap-2">
+                  Review run
                   <StatusBadge status={selectedReview.status} />
                   {selectedReview.prAuthor && (
                     <Badge variant="muted">{selectedReview.prAuthor}</Badge>
                   )}
+                </SectionTitle>
+                <SectionDescription>
                   {selectedReview.completedAt && (
-                    <span className="text-xs text-muted-foreground">completed <Timestamp value={selectedReview.completedAt} format="datetime" /></span>
+                    <>Completed <Timestamp value={selectedReview.completedAt} format="datetime" /></>
                   )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
+                </SectionDescription>
+              </SectionHeading>
+              <SectionActions>
                   <a
                     href={selectedReview.prUrl}
                     target="_blank"
@@ -155,26 +173,32 @@ export function ReviewDetailPage({
                     {triggeringReview ? <Spinner size="sm" label="Starting review" /> : <RefreshCw />}
                     Re-review
                   </Button>
-                </div>
-              </div>
-            </CardHeader>
+              </SectionActions>
+            </SectionHeader>
+            <Card>
             <CardContent>
               <StageTimeline review={selectedReview} orientation="horizontal" />
             </CardContent>
-          </Card>
+            </Card>
+          </Section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Section>
+            <SectionHeader>
+              <SectionHeading>
+                <SectionTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
                 Details
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+                </SectionTitle>
+                <SectionDescription>The review summary and actionable findings posted by the agent.</SectionDescription>
+              </SectionHeading>
+            </SectionHeader>
+            <Measure className="max-w-4xl">
               {selectedReview.reviewComment ? (
-                <div className="rounded-lg border bg-muted/30 p-4 max-h-[70vh] overflow-y-auto">
+                <Card>
+                  <CardContent className="max-h-[70vh] overflow-y-auto">
                   <MarkdownBlock>{selectedReview.reviewComment}</MarkdownBlock>
-                </div>
+                  </CardContent>
+                </Card>
               ) : ACTIVE_REVIEW_STATUSES.has(selectedReview.status) ? (
                 <EmptyState>
                   <EmptyStateIcon><Spinner label="Review in progress" /></EmptyStateIcon>
@@ -193,8 +217,8 @@ export function ReviewDetailPage({
                   <EmptyStateTitle>No details yet</EmptyStateTitle>
                 </EmptyState>
               )}
-            </CardContent>
-          </Card>
+            </Measure>
+          </Section>
         </div>
       ) : null}
     </>

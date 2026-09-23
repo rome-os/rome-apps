@@ -1,7 +1,7 @@
 formatVersion: 1
 id: code-review
 name: Code Review
-version: 0.30.4
+version: 0.30.5
 icon: assets/icon.svg
 description: AI first-pass reviewer for GitHub PRs — posts inline findings, summarizes risk, and tracks review history in Rome.
 tagline: "A first-pass reviewer for every GitHub PR, with inline findings."
