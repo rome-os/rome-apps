@@ -1,3 +1,50 @@
 @import "@rome-os/ui/styles.css";
 @import "@rome-os/app-web-sdk/styles";
-@import "@rome-os/ui/markdown.css";
+@import "streamdown/styles.css";
+
+/*
+ * The shared Markdown stylesheet also imports KaTeX fonts. Rome's current app
+ * CSS loader cannot mount a stylesheet containing relative font URLs, so scan
+ * the shared renderer sources directly while keeping the font-free Streamdown
+ * animation layer. The Markdown component itself still comes from
+ * `@rome-os/ui`; this compatibility shim can be removed when the host's asset
+ * URL rewriter accepts app-relative stylesheet URLs.
+ */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
+.rome-markdown {
+  display: flow-root;
+  font-size: var(--markdown-body-font-size);
+  line-height: var(--markdown-body-line-height);
+}
+
+.rome-markdown > * {
+  margin-block: 0;
+}
+
+.rome-markdown > * + * {
+  margin-block-start: var(--markdown-block-space-between);
+}
+
+.rome-markdown [data-streamdown^="heading-"] {
+  font-weight: var(--markdown-heading-font-weight);
+  letter-spacing: var(--markdown-heading-letter-spacing);
+}
+
+.rome-markdown [data-streamdown="heading-1"] {
+  font-size: var(--markdown-heading-1-font-size);
+  line-height: var(--markdown-heading-1-line-height);
+}
+
+.rome-markdown [data-streamdown="heading-2"] {
+  font-size: var(--markdown-heading-2-font-size);
+  line-height: var(--markdown-heading-2-line-height);
+}
+
+.rome-markdown [data-streamdown="heading-3"] {
+  font-size: var(--markdown-heading-3-font-size);
+  line-height: var(--markdown-heading-3-line-height);
+}
