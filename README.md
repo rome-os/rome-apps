@@ -1,7 +1,7 @@
 <h1 align="center">Rome Apps</h1>
 
 <p align="center">
-  <strong>Official apps for Rome, the agentic OS for humans and agents.</strong>
+  <strong>Official apps for Rome, a compounding agent OS for recursive agents.</strong>
 </p>
 
 <p align="center">
