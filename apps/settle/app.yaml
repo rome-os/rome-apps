@@ -1,0 +1,44 @@
+formatVersion: 2
+id: settle
+name: Settle
+version: 0.1.0
+description: >-
+  Collect favors for work already done. The owner creates a favor request (what
+  the work was, who it was for, and a favor amount from fixed price tiers); Settle
+  generates a private shareable pay link. The public pay page shows the owner's
+  profile and lets a Rome Cloud visitor pay with favors. The owner's dashboard
+  tracks each request's progress — sent, viewed, payment started, paid — and can
+  void, reopen or mark requests paid by hand. Each tier is a favor-gated
+  settle:pay_<amount> action started only by the pay page.
+tagline: Send a polished favor request for work you've done, and see who's paid.
+icon: assets/icon.svg
+appRoot: dist
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: Settle
+  navLabel: Settle
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: settle
+
+actions:
+  - actions/pay-1
+  - actions/pay-10
+  - actions/pay-25
+  - actions/pay-50
+  - actions/pay-100
+  - actions/pay-250
+  - actions/pay-500
+  - actions/pay-1000
+  - actions/pay-2500
+  - actions/pay-5000
+  - actions/pay-10000
+  - actions/pay-25000
+  - actions/pay-50000
+  - actions/pay-100000

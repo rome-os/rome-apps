@@ -1,0 +1,57 @@
+@import "@rome-os/app-web-sdk/styles";
+
+/* The display face is registered at runtime (web/lib/fonts.ts). */
+@theme {
+  --font-display: "Settle Display", "Instrument Serif", Georgia, "Times New Roman", serif;
+}
+
+/*
+ * Brand constants for the payer-facing page: a warm ember accent used for
+ * small details (eyebrows, rules, the paid stamp ring). Chrome and surfaces
+ * still paint with host tokens. Each value has a dark pair.
+ */
+:root {
+  --st-accent: #b4532a;
+  --st-accent-soft: color-mix(in oklab, #b4532a 10%, transparent);
+  --st-paid: #2f7a55;
+  --st-paid-soft: color-mix(in oklab, #2f7a55 10%, transparent);
+}
+
+.dark {
+  --st-accent: #f08a5d;
+  --st-accent-soft: color-mix(in oklab, #f08a5d 14%, transparent);
+  --st-paid: #5cc58f;
+  --st-paid-soft: color-mix(in oklab, #5cc58f 14%, transparent);
+}
+
+@keyframes st-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes st-stamp {
+  0% {
+    opacity: 0;
+    transform: rotate(-12deg) scale(1.6);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-12deg) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-12deg) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-motion {
+    animation: none !important;
+  }
+}
