@@ -26,6 +26,8 @@ The source material is adapted to the Rome App package layout.
 
 `apps/utility/skills/canvas-design/canvas-fonts/` includes fonts under the SIL Open Font License 1.1. Each font family retains an adjacent `*-OFL.txt` license file with its copyright and reserved-font-name terms.
 
+`apps/settle/src/web/lib/font-data.ts` embeds the latin subset of Instrument Serif (regular and italic, from [`@fontsource/instrument-serif`](https://github.com/fontsource/font-files/tree/main/fonts/google/instrument-serif) 5.3.0) as base64 data URLs, unmodified. Copyright 2022 The Instrument Serif Project Authors (https://github.com/Instrument/instrument-serif), SIL Open Font License 1.1; the license file is kept at `apps/settle/src/web/lib/InstrumentSerif-OFL.txt`.
+
 ## Icon Sources
 
 App icons incorporate vector glyphs from the open-source icon sets listed below. Each glyph is delivered through the [Iconify](https://iconify.design) project but is licensed by its original author.
