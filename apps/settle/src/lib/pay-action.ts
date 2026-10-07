@@ -34,8 +34,14 @@ export function createPayAction(config: ActionConfig, deps: AppActionRuntimeDeps
       if (payment.amount !== tier) {
         return { status: "error", error: `This payment is for ${payment.amount} favors, not ${tier}.` };
       }
+      // Only the favor dispatcher (after Rome Cloud collected the favors) may settle. `visibility: explicit`
+      // hides the action from discovery but doesn't stop a direct call, so require its context.
       const shared = getCurrentActionContext()?.sharedContext ?? {};
       const favorRequestId = typeof shared.favorActionRequestId === "string" ? shared.favorActionRequestId : null;
+      if (!favorRequestId) return { status: "error", error: "Settle payments are recorded only by Rome Cloud's favor dispatch." };
+      if (payment.favorRequestId && payment.favorRequestId !== favorRequestId) {
+        return { status: "error", error: "This charge belongs to a different Rome Cloud request." };
+      }
       const outcome = await settlePayment(ctx, repo, paymentId, favorRequestId);
       if (outcome === "missing") return { status: "error", error: "Request not found." };
       return { status: "ok", data: { paymentId, requestId: payment.requestId, outcome } };

@@ -186,9 +186,9 @@ export class LedgerRepository {
 
   /**
    * Whether a payer may still complete a Rome Cloud checkout for this request.
-   * Cloud expires an unapproved favor request 30 minutes after it is created,
-   * so an older `awaiting` row (an abandoned checkout) no longer locks the
-   * request. A charge approved in time but reported late is still caught by
+   * Cloud expires an unapproved favor request 30 minutes after it is issued or
+   * renewed. Every (re)request touches the payment's `updatedAt` first, so a row
+   * untouched for longer (an abandoned checkout) no longer locks the request. A charge approved in time but reported late is still caught by
    * settlement's amount/status guard and flagged to the owner.
    */
   hasActiveCheckout(requestId: string, at: Date = new Date()): boolean {
@@ -200,7 +200,7 @@ export class LedgerRepository {
         and(
           eq(this.t.payments.requestId, requestId),
           eq(this.t.payments.status, "awaiting"),
-          gt(this.t.payments.createdAt, cutoff),
+          gt(this.t.payments.updatedAt, cutoff),
         ),
       )
       .get();

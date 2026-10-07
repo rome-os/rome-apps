@@ -3,9 +3,10 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { readdirSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppDbContext, DrizzleDb, RomeAppApiRequest, RomeAppContext } from "@rome-os/app-runtime";
+import { setCurrentActionContextResolver, type ActionConfig, type AppDbContext, type CurrentActionContext, type DrizzleDb, type RomeAppApiRequest, type RomeAppContext } from "@rome-os/app-runtime";
 import { createApiHandler } from "../api/index.js";
 import { LedgerRepository } from "../db/repositories/ledger.js";
+import { createPayAction } from "./pay-action.js";
 import { settlePayment } from "./settle.js";
 
 function appDb(): AppDbContext {
@@ -50,7 +51,7 @@ function newRequest(amount = 10) {
 
 function age(paymentId: string, minutes: number) {
   const at = new Date(Date.now() - minutes * 60_000).toISOString();
-  db.connection.run(sql`UPDATE settle__payments SET created_at = ${at} WHERE id = ${paymentId}`);
+  db.connection.run(sql`UPDATE settle__payments SET created_at = ${at}, updated_at = ${at} WHERE id = ${paymentId}`);
 }
 
 async function call(method: string, path: string[], caller: RomeAppApiRequest["caller"], payload?: unknown, headers: Record<string, string> = {}) {
@@ -142,6 +143,41 @@ describe("abandoned checkouts", () => {
     age(payment.id, 40);
     expect((await call("PATCH", ["requests", row.id], guardian, { amount: 25 })).status).toBe(200);
     expect((await call("DELETE", ["requests", row.id], guardian)).status).toBe(200);
+  });
+
+  it("stay locked when Cloud renews consent for an old checkout", async () => {
+    const row = newRequest(10);
+    const payment = repo.createPayment({ requestId: row.id, accountId: "acct-1", email: null, amount: 10 });
+    age(payment.id, 40);
+    favorResults = [{ status: "pending_consent", requestId: "fr-1", authorizationUrl: "https://cloud.example/a" }];
+
+    expect((await call("POST", ["p", row.id, "sync"], visitor, { paymentId: payment.id })).data).toMatchObject({ status: "pending_consent" });
+    expect((await call("DELETE", ["requests", row.id], guardian)).status).toBe(409);
+  });
+});
+
+describe("pay_<amount> actions", () => {
+  async function runPay(paymentId: string, favorActionRequestId?: string) {
+    setCurrentActionContextResolver(() => ({ sharedContext: favorActionRequestId ? { favorActionRequestId } : {} }) as unknown as CurrentActionContext);
+    try {
+      const action = createPayAction({ name: "pay_10" } as ActionConfig, { appContext: ctx } as never);
+      return await action.execute({ paymentId });
+    } finally {
+      setCurrentActionContextResolver(null);
+    }
+  }
+
+  it("settle only when run by Rome Cloud's favor dispatch for this payment's request", async () => {
+    const row = newRequest(10);
+    const payment = repo.createPayment({ requestId: row.id, accountId: "acct-1", email: null, amount: 10 });
+    repo.updatePayment(payment.id, { favorRequestId: "fr-1" });
+
+    expect(await runPay(payment.id)).toMatchObject({ status: "error" });
+    expect(await runPay(payment.id, "fr-other")).toMatchObject({ status: "error" });
+    expect(repo.request(row.id)?.status).toBe("open");
+
+    expect(await runPay(payment.id, "fr-1")).toMatchObject({ status: "ok", data: { outcome: "settled" } });
+    expect(repo.request(row.id)?.status).toBe("paid");
   });
 });
 

@@ -316,8 +316,10 @@ class SettleApi implements RomeAppApiHandler {
       this.repo.log(row.id, "payment_started", `${caller.email} started paying ${formatFavors(row.amount)} ${favorWord(row.amount)}`);
     }
 
-    const request = (p: PaymentRow) =>
-      this.ctx.favors.requestAction({ ...this.favorRequest(p, row), returnTo: `${payPath(row.id)}?payment=${p.id}` });
+    const request = (p: PaymentRow) => {
+      this.repo.updatePayment(p.id, {}); // renew the edit/delete lock before Cloud can (re)issue consent
+      return this.ctx.favors.requestAction({ ...this.favorRequest(p, row), returnTo: `${payPath(row.id)}?payment=${p.id}` });
+    };
     let favor = await request(payment);
     if (favor.status === "error" && isTerminalFavorError(favor.error)) {
       // The earlier checkout expired on Rome Cloud and its idempotency key can't be reused. Close it and
@@ -346,6 +348,7 @@ class SettleApi implements RomeAppApiHandler {
       throw new HttpError(404, "Payment not found.");
     }
     if (payment.status !== "awaiting") return json({ status: payment.status });
+    this.repo.updatePayment(payment.id, {}); // renew the edit/delete lock before Cloud can renew consent
     const favor = await this.ctx.favors.requestAction(this.favorRequest(payment, row));
     return this.favorResponse(payment, favor);
   }
