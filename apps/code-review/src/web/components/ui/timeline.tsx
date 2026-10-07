@@ -1,6 +1,7 @@
 import * as React from "react";
-import { CheckCircle, Circle, Loader2, XCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { CheckCircle, Circle, XCircle } from "lucide-react";
+import { cn } from "@rome-os/ui/cn";
+import { Spinner } from "@rome-os/ui/spinner";
 
 type TimelineStatus = "completed" | "in-progress" | "pending" | "error";
 
@@ -214,7 +215,7 @@ const TimelineIcon = ({
     status === "completed" ? (
       <CheckCircle />
     ) : status === "in-progress" ? (
-      <Loader2 className="animate-spin" />
+      <Spinner size="sm" />
     ) : status === "error" ? (
       <XCircle />
     ) : (
@@ -227,7 +228,7 @@ const TimelineIcon = ({
         "relative z-10 flex items-center justify-center rounded-full ring-4 ring-background",
         sizeClasses[iconSize],
         status === "completed" && "bg-primary text-primary-foreground",
-        status === "in-progress" && "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
+        status === "in-progress" && "bg-accent text-accent-foreground",
         status === "pending" && "bg-muted text-muted-foreground",
         status === "error" && "bg-destructive text-destructive-foreground",
       )}

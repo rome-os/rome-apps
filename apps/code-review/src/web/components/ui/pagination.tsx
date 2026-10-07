@@ -1,8 +1,8 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import { type ButtonProps, buttonVariants } from "@/components/ui/button";
+import { cn } from "@rome-os/ui/cn";
+import { Button } from "@rome-os/ui/button";
 
 const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => (
   <nav
@@ -37,33 +37,25 @@ PaginationItem.displayName = "PaginationItem";
 type PaginationLinkProps = {
   isActive?: boolean;
   disabled?: boolean;
-} & Pick<ButtonProps, "size"> &
-  Omit<React.ComponentProps<"button">, "disabled">;
+} & Omit<React.ComponentProps<typeof Button>, "disabled" | "variant">;
 
 const PaginationLink = ({
   className,
   isActive,
   disabled,
-  size = "icon",
+  size = "icon-sm",
   type = "button",
   onClick,
   ...props
 }: PaginationLinkProps) => (
-  <button
+  <Button
     type={type}
     disabled={disabled}
     aria-current={isActive ? "page" : undefined}
     onClick={disabled ? undefined : onClick}
-    className={cn(
-      "inline-flex items-center justify-center rounded-md text-sm font-medium transition-all duration-150",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-      size === "icon" ? "h-8 w-8" : "h-8 px-3",
-      isActive
-        ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-        : "hover:bg-accent hover:text-accent-foreground",
-      disabled && "pointer-events-none opacity-40",
-      className,
-    )}
+    variant={isActive ? "default" : "ghost"}
+    size={size}
+    className={cn("text-xs", className)}
     {...props}
   />
 );

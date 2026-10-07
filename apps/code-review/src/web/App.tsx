@@ -1,7 +1,8 @@
 import "./styles.css";
-import "streamdown/styles.css";
+
 import { useCallback, useEffect, useState } from "react";
 import { fetchAppApi, getBootstrap, type RomeAppBootstrap } from "@rome-os/app-web-sdk";
+import { Page } from "@rome-os/ui/page";
 import { HomeDashboard } from "@/components/home/HomeDashboard";
 import { ReviewDetailPage } from "@/components/reviews/ReviewDetailPage";
 import { MentionTaskDetailPage } from "@/components/reviews/MentionTaskDetailPage";
@@ -437,7 +438,7 @@ export default function App({
   };
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
+    <Page className="mx-auto max-w-6xl">
       {routeIsTriggerSettings ? (
         <TriggerSettingsPage
           dashboard={dashboard}
@@ -511,6 +512,6 @@ export default function App({
           onGoToActivityPage={goToActivityPage}
         />
       )}
-    </main>
+    </Page>
   );
 }

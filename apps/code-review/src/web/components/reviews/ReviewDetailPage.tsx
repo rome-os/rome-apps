@@ -1,7 +1,27 @@
 import { ArrowLeft, Bot, CircleStop, Clock, ExternalLink, MessageSquare, RefreshCw } from "lucide-react";
 import { navigateRome } from "@rome-os/app-web-sdk";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@rome-os/ui/alert";
+import { Badge } from "@rome-os/ui/badge";
+import { Button } from "@rome-os/ui/button";
+import { Card, CardContent } from "@rome-os/ui/card";
+import { EmptyState, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@rome-os/ui/empty-state";
+import {
+  Measure,
+  PageActions,
+  PageDescription,
+  PageHeader,
+  PageHeaderNav,
+  PageHeading,
+  PageTitle,
+  Section,
+  SectionActions,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@rome-os/ui/page";
+import { Spinner } from "@rome-os/ui/spinner";
+import { Timestamp } from "@rome-os/ui/timestamp";
 import type { PRReviewData } from "@/types";
 import { formatDate } from "@/lib/helpers";
 import { ACTIVE_REVIEW_STATUSES, MarkdownBlock, StageTimeline, StatusBadge } from "./review-components";
@@ -33,73 +53,76 @@ export function ReviewDetailPage({
 }) {
   return (
     <>
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <PageHeader>
+        <PageHeaderNav>
           <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
+        </PageHeaderNav>
+        <PageHeading>
           <div className="flex items-center gap-3">
             <MessageSquare className="h-7 w-7 text-primary" />
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight truncate">
+              <PageTitle className="truncate">
                 {selectedReview
                   ? `#${selectedReview.prNumber} ${selectedReview.prTitle}`
                   : "Review Details"}
-              </h1>
+              </PageTitle>
               {selectedReview && (
-                <p className="text-sm text-muted-foreground truncate">
+                <PageDescription className="truncate">
                   {selectedReview.repo} · {formatDate(selectedReview.startedAt)}
-                </p>
+                </PageDescription>
               )}
             </div>
           </div>
-        </div>
+        </PageHeading>
+        <PageActions>
         <Button
           onClick={onRefresh}
           disabled={refreshing}
           variant="outline"
           size="sm"
         >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? <Spinner size="sm" label="Refreshing review" /> : <RefreshCw />}
           Refresh
         </Button>
-      </div>
+        </PageActions>
+      </PageHeader>
 
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive mb-5 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={onDismissError} className="ml-3 underline text-xs shrink-0">
-            dismiss
-          </button>
-        </div>
+        <Alert variant="destructive" className="mb-5">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button onClick={onDismissError} variant="ghost" size="xs">Dismiss</Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       {loadingReviewDetail && !selectedReview ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Loading review...
-          </CardContent>
-        </Card>
+        <EmptyState>
+          <EmptyStateIcon><Spinner label="Loading review" /></EmptyStateIcon>
+          <EmptyStateTitle>Loading review</EmptyStateTitle>
+        </EmptyState>
       ) : selectedReview ? (
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
+          <Section>
+            <SectionHeader>
+              <SectionHeading>
+                <SectionTitle className="flex flex-wrap items-center gap-2">
+                  Review run
                   <StatusBadge status={selectedReview.status} />
                   {selectedReview.prAuthor && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                      {selectedReview.prAuthor}
-                    </span>
+                    <Badge variant="muted">{selectedReview.prAuthor}</Badge>
                   )}
+                </SectionTitle>
+                <SectionDescription>
                   {selectedReview.completedAt && (
-                    <span className="text-xs text-muted-foreground">
-                      completed {formatDate(selectedReview.completedAt)}
-                    </span>
+                    <>Completed <Timestamp value={selectedReview.completedAt} format="datetime" /></>
                   )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
+                </SectionDescription>
+              </SectionHeading>
+              <SectionActions>
                   <a
                     href={selectedReview.prUrl}
                     target="_blank"
@@ -147,46 +170,55 @@ export function ReviewDetailPage({
                     onClick={() => onTriggerReview(selectedReview.prUrl)}
                     disabled={triggeringReview}
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 mr-1 ${triggeringReview ? "animate-spin" : ""}`} />
+                    {triggeringReview ? <Spinner size="sm" label="Starting review" /> : <RefreshCw />}
                     Re-review
                   </Button>
-                </div>
-              </div>
-            </CardHeader>
+              </SectionActions>
+            </SectionHeader>
+            <Card>
             <CardContent>
               <StageTimeline review={selectedReview} orientation="horizontal" />
             </CardContent>
-          </Card>
+            </Card>
+          </Section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Section>
+            <SectionHeader>
+              <SectionHeading>
+                <SectionTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
                 Details
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+                </SectionTitle>
+                <SectionDescription>The review summary and actionable findings posted by the agent.</SectionDescription>
+              </SectionHeading>
+            </SectionHeader>
+            <Measure className="max-w-4xl">
               {selectedReview.reviewComment ? (
-                <div className="rounded-lg border bg-muted/30 p-4 max-h-[70vh] overflow-y-auto">
+                <Card>
+                  <CardContent className="max-h-[70vh] overflow-y-auto">
                   <MarkdownBlock>{selectedReview.reviewComment}</MarkdownBlock>
-                </div>
+                  </CardContent>
+                </Card>
               ) : ACTIVE_REVIEW_STATUSES.has(selectedReview.status) ? (
-                <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-                  <Clock className="h-8 w-8 mx-auto mb-2 opacity-40 animate-spin" />
-                  <MarkdownBlock>{`Review in progress: **${selectedReview.status}**`}</MarkdownBlock>
-                </div>
+                <EmptyState>
+                  <EmptyStateIcon><Spinner label="Review in progress" /></EmptyStateIcon>
+                  <EmptyStateTitle>Review in progress</EmptyStateTitle>
+                  <EmptyStateDescription>{selectedReview.status}</EmptyStateDescription>
+                </EmptyState>
               ) : selectedReview.status === "completed" && selectedReview.githubCommentUrl ? (
-                <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-                  <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  <MarkdownBlock>{`Review posted to GitHub: ${selectedReview.githubCommentUrl}`}</MarkdownBlock>
-                </div>
+                <EmptyState>
+                  <EmptyStateIcon><MessageSquare /></EmptyStateIcon>
+                  <EmptyStateTitle>Review posted to GitHub</EmptyStateTitle>
+                  <EmptyStateDescription>{selectedReview.githubCommentUrl}</EmptyStateDescription>
+                </EmptyState>
               ) : (
-                <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-                  <MarkdownBlock>No markdown details yet.</MarkdownBlock>
-                </div>
+                <EmptyState>
+                  <EmptyStateIcon><Clock /></EmptyStateIcon>
+                  <EmptyStateTitle>No details yet</EmptyStateTitle>
+                </EmptyState>
               )}
-            </CardContent>
-          </Card>
+            </Measure>
+          </Section>
         </div>
       ) : null}
     </>

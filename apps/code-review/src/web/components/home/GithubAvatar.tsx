@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@rome-os/ui/avatar";
 import { fetchGithubUserProfile, peekGithubAvatarUrl, withAvatarSize } from "@/lib/helpers";
 
 /** Retina pixel size we request from the avatar CDN (one canonical size → one cache entry). */
@@ -55,11 +56,9 @@ export function GithubAvatar({
 }) {
   const clean = (login || "").trim();
   const [src, setSrc] = useState<string | null>(() => (clean ? peekGithubAvatarUrl(clean, AVATAR_CDN_SIZE) : null));
-  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setFailed(false);
     const seeded = clean ? peekGithubAvatarUrl(clean, AVATAR_CDN_SIZE) : null;
     setSrc(seeded);
     if (!clean || seeded) return; // nothing to resolve, or already cached
@@ -76,24 +75,20 @@ export function GithubAvatar({
     };
   }, [clean]);
 
-  const showImg = !!src && !failed;
-
   return (
-    <div
+    <Avatar
       style={{ width: size, height: size }}
-      className={`relative shrink-0 overflow-hidden bg-muted ${rounded} ${className}`}
+      className={`${rounded} ${className}`}
     >
-      <DefaultAvatarGlyph />
-      {showImg && (
-        <img
+      {src && (
+        <AvatarImage
           src={src}
           alt={`@${clean}`}
           loading="lazy"
           decoding="async"
-          onError={() => setFailed(true)}
-          className="absolute inset-0 h-full w-full object-cover"
         />
       )}
-    </div>
+      <AvatarFallback><DefaultAvatarGlyph /></AvatarFallback>
+    </Avatar>
   );
 }

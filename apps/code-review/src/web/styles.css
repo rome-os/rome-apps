@@ -1,50 +1,50 @@
+@import "@rome-os/ui/styles.css";
 @import "@rome-os/app-web-sdk/styles";
+@import "streamdown/styles.css";
 
-.sd-markdown :where(h1, h2, h3, h4) {
-  font-weight: 600;
-  line-height: 1.25;
-  margin: 1rem 0 0.5rem;
+/*
+ * The shared Markdown stylesheet also imports KaTeX fonts. Rome's current app
+ * CSS loader cannot mount a stylesheet containing relative font URLs, so scan
+ * the shared renderer sources directly while keeping the font-free Streamdown
+ * animation layer. The Markdown component itself still comes from
+ * `@rome-os/ui`; this compatibility shim can be removed when the host's asset
+ * URL rewriter accepts app-relative stylesheet URLs.
+ */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
+.rome-markdown {
+  display: flow-root;
+  font-size: var(--markdown-body-font-size);
+  line-height: var(--markdown-body-line-height);
 }
 
-.sd-markdown :where(p, ul, ol, pre, table, blockquote) {
-  margin: 0.65rem 0;
+.rome-markdown > * {
+  margin-block: 0;
 }
 
-.sd-markdown :where(ul, ol) {
-  padding-left: 1.25rem;
+.rome-markdown > * + * {
+  margin-block-start: var(--markdown-block-space-between);
 }
 
-.sd-markdown :where(ul) {
-  list-style: disc;
+.rome-markdown [data-streamdown^="heading-"] {
+  font-weight: var(--markdown-heading-font-weight);
+  letter-spacing: var(--markdown-heading-letter-spacing);
 }
 
-.sd-markdown :where(ol) {
-  list-style: decimal;
+.rome-markdown [data-streamdown="heading-1"] {
+  font-size: var(--markdown-heading-1-font-size);
+  line-height: var(--markdown-heading-1-line-height);
 }
 
-.sd-markdown :where(code) {
-  font-size: 0.875em;
+.rome-markdown [data-streamdown="heading-2"] {
+  font-size: var(--markdown-heading-2-font-size);
+  line-height: var(--markdown-heading-2-line-height);
 }
 
-.sd-markdown :where(pre) {
-  overflow-x: auto;
-  border-radius: 0.5rem;
-}
-
-.sd-markdown :where(table) {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.sd-markdown :where(th, td) {
-  border: 1px solid hsl(var(--border));
-  padding: 0.4rem 0.55rem;
-  vertical-align: top;
-}
-
-.sd-markdown :where(blockquote) {
-  border-left: 3px solid hsl(var(--border));
-  padding-left: 0.75rem;
-  color: hsl(var(--muted-foreground));
+.rome-markdown [data-streamdown="heading-3"] {
+  font-size: var(--markdown-heading-3-font-size);
+  line-height: var(--markdown-heading-3-line-height);
 }
