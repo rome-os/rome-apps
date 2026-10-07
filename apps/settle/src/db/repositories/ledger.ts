@@ -46,6 +46,11 @@ export class LedgerRepository {
     this.t = createAppDbSchema(ctx.tablePrefix);
   }
 
+  /** Run synchronous ledger writes as one SQLite transaction (all or nothing). */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(() => fn());
+  }
+
   // ── Requests ─────────────────────────────────────────────────────────
 
   request(id: string): RequestRow | undefined {
@@ -73,7 +78,20 @@ export class LedgerRepository {
     return this.request(id);
   }
 
-  deleteRequest(id: string): void {
+  /**
+   * Delete a request and its history. Refused (returns false) while a payer
+   * is in Rome Cloud checkout: that charge can still settle and must find
+   * its payment row to get a receipt or a refund notice.
+   */
+  deleteRequest(id: string): boolean {
+    return this.transaction(() => {
+      if (this.hasAwaitingPayment(id)) return false;
+      this.deleteRequestRows(id);
+      return true;
+    });
+  }
+
+  private deleteRequestRows(id: string): void {
     this.db.delete(this.t.events).where(eq(this.t.events.requestId, id)).run();
     this.db.delete(this.t.payments).where(eq(this.t.payments.requestId, id)).run();
     this.db.delete(this.t.requests).where(eq(this.t.requests.id, id)).run();
@@ -98,11 +116,12 @@ export class LedgerRepository {
 
   /**
    * Mark a request paid exactly once. Returns false when it was already paid
-   * or void, so concurrent settlements can't both win.
+   * or void — or, with `amount`, when the request no longer asks for that
+   * amount — so concurrent settlements can't both win.
    */
   markPaid(
     id: string,
-    input: { via: PaidVia; payerAccountId?: string | null; payerEmail?: string | null; paymentId?: string | null },
+    input: { via: PaidVia; payerAccountId?: string | null; payerEmail?: string | null; paymentId?: string | null; amount?: number },
   ): boolean {
     const at = now();
     const result = this.db
@@ -116,9 +135,27 @@ export class LedgerRepository {
         paidAt: at,
         updatedAt: at,
       })
-      .where(and(eq(this.t.requests.id, id), eq(this.t.requests.status, "open")))
+      .where(
+        and(
+          eq(this.t.requests.id, id),
+          eq(this.t.requests.status, "open"),
+          input.amount === undefined ? undefined : eq(this.t.requests.amount, input.amount),
+        ),
+      )
       .run() as unknown as { changes?: number };
     return (result?.changes ?? 0) > 0;
+  }
+
+  /**
+   * Change a request's amount unless a payer is mid-checkout at the current
+   * price. Check and write share one transaction. Returns false when blocked.
+   */
+  changeAmount(id: string, amount: number, patch: Partial<Omit<RequestRow, "id" | "createdAt">>): boolean {
+    return this.transaction(() => {
+      if (this.hasAwaitingPayment(id)) return false;
+      this.updateRequest(id, { ...patch, amount });
+      return true;
+    });
   }
 
   // ── Payments ─────────────────────────────────────────────────────────

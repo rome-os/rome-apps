@@ -66,6 +66,8 @@ export function PayPage({ id }: { id: string }) {
       } else if (res.status === "processing") {
         setNotice({ tone: "info", text: "Payment received — confirming with Rome Cloud. This takes a few seconds." });
         await load();
+      } else if (res.status === "expired") {
+        setNotice({ tone: "warning", text: "That checkout expired on Rome Cloud, so nothing was charged. Pay again to start a new one." });
       } else if (res.status === "declined") {
         setNotice({ tone: "warning", text: "The payment was declined, so nothing was charged." });
       } else {
@@ -100,6 +102,7 @@ export function PayPage({ id }: { id: string }) {
         try {
           const res = await api<{ status: string }>(`p/${id}/sync`, { body: { paymentId } });
           if (res.status === "paid") setJustPaid(true);
+          else if (res.status === "expired") setNotice({ tone: "warning", text: "That checkout expired on Rome Cloud, so nothing was charged. You can pay again anytime." });
           else if (res.status === "declined" || favor === "declined") setNotice({ tone: "warning", text: "The payment was declined, so nothing was charged. You can pay anytime." });
           else if (res.status === "processing" || res.status === "awaiting") setNotice({ tone: "info", text: "Payment received — confirming with Rome Cloud. This takes a few seconds." });
           await load();

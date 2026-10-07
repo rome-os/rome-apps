@@ -8,7 +8,7 @@ import {
 import { createLedgerRepository, isToken, type LedgerRepository, type PaymentRow, type RequestRow } from "../db/repositories/ledger.js";
 import { HttpError, body, date, email, json, text, url, type Json } from "../lib/http.js";
 import { avatarResponse, readProfile, removeAvatar, saveAvatar, saveProfile } from "../lib/profile.js";
-import { declinePayment, payPath, publicOrigin, rememberOrigin, settlePayment } from "../lib/settle.js";
+import { declinePayment, failPayment, isTerminalFavorError, payPath, publicOrigin, rememberOrigin, settlePayment } from "../lib/settle.js";
 import {
   favorWord,
   formatFavors,
@@ -75,7 +75,9 @@ class SettleApi implements RomeAppApiHandler {
       if (method === "GET" && p.length === 2) return json({ request: this.view(row, true) });
       if (method === "PATCH" && p.length === 2) return json({ request: this.editRequest(row, body(request)) });
       if (method === "DELETE" && p.length === 2) {
-        this.repo.deleteRequest(row.id);
+        if (!this.repo.deleteRequest(row.id)) {
+          throw new HttpError(409, "Someone is paying this request on Rome Cloud right now. Withdraw it instead, or try again once their checkout ends.");
+        }
         return json({ ok: true });
       }
       if (method === "POST" && p.length === 3) {
@@ -206,7 +208,16 @@ class SettleApi implements RomeAppApiHandler {
     }
     const changed = Object.entries(patch).filter(([k, v]) => (row as Record<string, unknown>)[k] !== v);
     if (!changed.length) return this.view(row, true);
-    const next = this.repo.updateRequest(row.id, patch)!;
+    const amountChanged = patch.amount !== undefined && patch.amount !== row.amount;
+    if (amountChanged) {
+      const { amount, ...rest } = patch;
+      if (!this.repo.changeAmount(row.id, amount!, rest)) {
+        throw new HttpError(409, "Someone is paying the current amount on Rome Cloud right now, so it can't change until their checkout ends.");
+      }
+    } else {
+      this.repo.updateRequest(row.id, patch);
+    }
+    const next = this.repo.request(row.id)!;
     const amountNote =
       patch.amount !== undefined && patch.amount !== row.amount
         ? `Amount ${formatFavors(row.amount)} → ${formatFavors(patch.amount)} ${favorWord(patch.amount)}`
@@ -304,10 +315,15 @@ class SettleApi implements RomeAppApiHandler {
       this.repo.log(row.id, "payment_started", `${caller.email} started paying ${formatFavors(row.amount)} ${favorWord(row.amount)}`);
     }
 
-    const favor = await this.ctx.favors.requestAction({
-      ...this.favorRequest(payment, row),
-      returnTo: `${payPath(row.id)}?payment=${payment.id}`,
-    });
+    const request = (p: PaymentRow) =>
+      this.ctx.favors.requestAction({ ...this.favorRequest(p, row), returnTo: `${payPath(row.id)}?payment=${p.id}` });
+    let favor = await request(payment);
+    if (favor.status === "error" && isTerminalFavorError(favor.error)) {
+      // The earlier checkout expired on Rome Cloud; its idempotency key can't be reused, so start a new one.
+      failPayment(this.repo, payment.id, favor.error);
+      payment = this.repo.createPayment({ requestId: row.id, accountId: caller.accountId, email: caller.email, amount: row.amount });
+      favor = await request(payment);
+    }
     return this.favorResponse(payment, favor);
   }
 
@@ -348,6 +364,10 @@ class SettleApi implements RomeAppApiHandler {
         return json({ status: "declined", paymentId: payment.id });
       default: {
         const error = favor.status === "error" ? favor.error : "unknown";
+        if (isTerminalFavorError(error)) {
+          failPayment(this.repo, payment.id, error);
+          return json({ status: "expired", paymentId: payment.id });
+        }
         if (error === "visitor_auth_required" || error === "visitor_favor_auth_required") {
           throw new HttpError(401, "Sign in with Rome Cloud to pay with favors.", "visitor_auth_required");
         }
