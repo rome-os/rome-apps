@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import type { AppDbContext, DrizzleDb } from "@rome-os/app-runtime";
 import { createAppDbSchema } from "../schema.js";
 import type { EventKind, PaidVia, PaymentStatus, RequestStatus } from "../../shared/model.js";
@@ -9,6 +9,9 @@ export type PaymentRow = Schema["payments"]["$inferSelect"];
 export type EventRow = Schema["events"]["$inferSelect"];
 
 export const now = (): string => new Date().toISOString();
+
+/** Rome Cloud's favor-request lifetime (30 min) plus a margin for clock skew. */
+export const CHECKOUT_LOCK_MS = 35 * 60 * 1000;
 
 const ALPHABET = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -85,7 +88,7 @@ export class LedgerRepository {
    */
   deleteRequest(id: string): boolean {
     return this.transaction(() => {
-      if (this.hasAwaitingPayment(id)) return false;
+      if (this.hasActiveCheckout(id)) return false;
       this.deleteRequestRows(id);
       return true;
     });
@@ -152,7 +155,7 @@ export class LedgerRepository {
    */
   changeAmount(id: string, amount: number, patch: Partial<Omit<RequestRow, "id" | "createdAt">>): boolean {
     return this.transaction(() => {
-      if (this.hasAwaitingPayment(id)) return false;
+      if (this.hasActiveCheckout(id)) return false;
       this.updateRequest(id, { ...patch, amount });
       return true;
     });
@@ -181,11 +184,25 @@ export class LedgerRepository {
       .get();
   }
 
-  hasAwaitingPayment(requestId: string): boolean {
+  /**
+   * Whether a payer may still complete a Rome Cloud checkout for this request.
+   * Cloud expires an unapproved favor request 30 minutes after it is created,
+   * so an older `awaiting` row (an abandoned checkout) no longer locks the
+   * request. A charge approved in time but reported late is still caught by
+   * settlement's amount/status guard and flagged to the owner.
+   */
+  hasActiveCheckout(requestId: string, at: Date = new Date()): boolean {
+    const cutoff = new Date(at.getTime() - CHECKOUT_LOCK_MS).toISOString();
     return !!this.db
       .select({ id: this.t.payments.id })
       .from(this.t.payments)
-      .where(and(eq(this.t.payments.requestId, requestId), eq(this.t.payments.status, "awaiting")))
+      .where(
+        and(
+          eq(this.t.payments.requestId, requestId),
+          eq(this.t.payments.status, "awaiting"),
+          gt(this.t.payments.createdAt, cutoff),
+        ),
+      )
       .get();
   }
 

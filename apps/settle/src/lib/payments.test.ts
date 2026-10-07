@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { readdirSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,11 +48,16 @@ function newRequest(amount = 10) {
   return repo.createRequest({ item: "Deck review", details: "", recipientName: "", recipientEmail: "", amount, dueDate: null });
 }
 
-async function call(method: string, path: string[], caller: RomeAppApiRequest["caller"], payload?: unknown) {
+function age(paymentId: string, minutes: number) {
+  const at = new Date(Date.now() - minutes * 60_000).toISOString();
+  db.connection.run(sql`UPDATE settle__payments SET created_at = ${at} WHERE id = ${paymentId}`);
+}
+
+async function call(method: string, path: string[], caller: RomeAppApiRequest["caller"], payload?: unknown, headers: Record<string, string> = {}) {
   const res = await createApiHandler(ctx).handle({
     method,
     path,
-    headers: {},
+    headers,
     query: new URLSearchParams(),
     body: payload === undefined ? undefined : new TextEncoder().encode(JSON.stringify(payload)),
     caller,
@@ -127,7 +133,49 @@ describe("owner edits during checkout", () => {
   });
 });
 
+describe("abandoned checkouts", () => {
+  it("stop locking the request once Rome Cloud would have expired them", async () => {
+    const row = newRequest(10);
+    const payment = repo.createPayment({ requestId: row.id, accountId: "acct-1", email: null, amount: 10 });
+    expect((await call("PATCH", ["requests", row.id], guardian, { amount: 25 })).status).toBe(409);
+
+    age(payment.id, 40);
+    expect((await call("PATCH", ["requests", row.id], guardian, { amount: 25 })).status).toBe(200);
+    expect((await call("DELETE", ["requests", row.id], guardian)).status).toBe(200);
+  });
+});
+
+describe("public origin", () => {
+  it("is learned from the owner's requests, never from anyone else's headers", async () => {
+    const row = newRequest();
+    await call("GET", ["p", row.id], { kind: "anonymous" }, undefined, { "x-forwarded-host": "attacker.example" });
+    expect(repo.setting("public_origin")).toBeNull();
+
+    await call("GET", ["dashboard"], { kind: "guardian", userId: "owner", via: "cookie" }, undefined, { host: "owner.romeos.cc" });
+    expect(repo.setting("public_origin")).toBe("https://owner.romeos.cc");
+  });
+});
+
 describe("expired checkouts", () => {
+  it("gives concurrent retries after an expiry one shared replacement checkout", async () => {
+    const row = newRequest();
+    repo.createPayment({ requestId: row.id, accountId: "acct-1", email: "payer@example.com", amount: 10 });
+    favorResults = [
+      { status: "error", error: "expired" },
+      { status: "error", error: "expired" },
+      { status: "pending_consent", requestId: "fr-2", authorizationUrl: "https://cloud.example/a" },
+      { status: "pending_consent", requestId: "fr-2", authorizationUrl: "https://cloud.example/a" },
+    ];
+
+    const [a, b] = await Promise.all([call("POST", ["p", row.id, "pay"], visitor, {}), call("POST", ["p", row.id, "pay"], visitor, {})]);
+
+    expect(a.data.paymentId).toBe(b.data.paymentId);
+    const awaiting = db.connection.all(sql`SELECT id FROM settle__payments WHERE status = 'awaiting'`);
+    expect(awaiting).toHaveLength(1);
+    const keys = vi.mocked(ctx.favors.requestAction).mock.calls.map(([input]) => input.idempotencyKey);
+    expect(keys[2]).toBe(keys[3]);
+  });
+
   it("starts a fresh checkout when Rome Cloud says the earlier one expired", async () => {
     const row = newRequest();
     const old = repo.createPayment({ requestId: row.id, accountId: "acct-1", email: "payer@example.com", amount: 10 });

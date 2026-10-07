@@ -34,7 +34,8 @@ class SettleApi implements RomeAppApiHandler {
 
   async handle(request: RomeAppApiRequest): Promise<Response> {
     try {
-      rememberOrigin(request.headers, this.repo);
+      // Only the owner's own requests teach Settle its public origin; anyone else's headers could be forged.
+      if (request.caller.kind === "guardian") rememberOrigin(request.headers, this.repo);
       return await this.route(request);
     } catch (error) {
       if (error instanceof HttpError) {
@@ -121,7 +122,7 @@ class SettleApi implements RomeAppApiHandler {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       voidedAt: row.voidedAt,
-      pendingPayment: row.status === "open" && this.repo.hasAwaitingPayment(row.id),
+      pendingPayment: row.status === "open" && this.repo.hasActiveCheckout(row.id),
       link: this.link(row.id),
       ...(withActivity
         ? { activity: this.repo.events(row.id).map((e) => ({ kind: e.kind as never, detail: e.detail, at: e.at })) }
@@ -319,9 +320,17 @@ class SettleApi implements RomeAppApiHandler {
       this.ctx.favors.requestAction({ ...this.favorRequest(p, row), returnTo: `${payPath(row.id)}?payment=${p.id}` });
     let favor = await request(payment);
     if (favor.status === "error" && isTerminalFavorError(favor.error)) {
-      // The earlier checkout expired on Rome Cloud; its idempotency key can't be reused, so start a new one.
-      failPayment(this.repo, payment.id, favor.error);
-      payment = this.repo.createPayment({ requestId: row.id, accountId: caller.accountId, email: caller.email, amount: row.amount });
+      // The earlier checkout expired on Rome Cloud and its idempotency key can't be reused. Close it and
+      // acquire-or-create one replacement in a single transaction, so concurrent retries share it.
+      const expired = favor.error;
+      const replacement = this.repo.transaction(() => {
+        failPayment(this.repo, payment!.id, expired);
+        const current = this.repo.request(row.id);
+        if (!current || current.status !== "open" || current.amount !== row.amount) return null;
+        return this.repo.openPayment(row.id, caller.accountId, row.amount) ?? this.repo.createPayment({ requestId: row.id, accountId: caller.accountId, email: caller.email, amount: row.amount });
+      });
+      if (!replacement) return json({ status: "expired", paymentId: payment.id });
+      payment = replacement;
       favor = await request(payment);
     }
     return this.favorResponse(payment, favor);
