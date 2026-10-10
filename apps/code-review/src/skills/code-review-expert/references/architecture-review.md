@@ -6,11 +6,15 @@ design of the CL"), Single Source of Truth (SSOT), Occam's razor / KISS /
 YAGNI, and *A Philosophy of Software Design* (complexity is the enemy; deep
 modules, shallow interfaces).
 
-## 1. Direction — Is the change architecturally correct?
+## 1. Direction — Right problem, right solution?
 
 "Good" means **globally optimal for the codebase**, not locally clean within
 the diff. A tidy patch can still be the wrong move for the system.
 
+- Is the problem real and correctly diagnosed? Does the change fix the root
+  cause, or patch a symptom while the cause remains?
+- Does the change solve the problem the PR description states, or a
+  different (easier, adjacent) one?
 - Does the change respect existing module boundaries and layering, or does it
   cut across them (e.g. business rules in a controller, UI state persisted in
   the data layer, transport concerns leaking into domain code)?
@@ -74,6 +78,7 @@ enum, config key, or DB column, ask:
 | Finding | Typical severity |
 |---|---|
 | Wrong direction on a one-way door (public API / schema / wire format) | P0–P1 |
+| Wrong problem: fixes a symptom, not the cause, or not the stated problem | P1 |
 | Structurally wrong approach; a clearly better global design exists at similar cost | P1 |
 | SSOT violation: duplicate-meaning field/entity, two writers of one fact | P1–P2 |
 | Unnecessary entity / speculative generality (Occam's razor, YAGNI) | P2 |
