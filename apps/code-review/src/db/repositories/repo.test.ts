@@ -50,6 +50,13 @@ describe("ScanRepository trigger access policy", () => {
     sqlite.close();
   });
 
+  it("defaults newly configured repositories to everyone except blocked", () => {
+    const repository = createScanRepository(appDb);
+    const created = repository.upsertPRReviewSettings("rome-os/new-repo", { autoReviewEnabled: true });
+    expect(created.triggerAccessMode).toBe("blocklist");
+    expect(createScanRepository(appDb).getPRReviewSettings("rome-os/new-repo")?.triggerAccessMode).toBe("blocklist");
+  });
+
   it("preserves both lists and the compatibility alias across partial mode switches", () => {
     const repository = createScanRepository(appDb);
     const repo = "rome-os/rome";
