@@ -1,6 +1,6 @@
 import "./styles.css";
 import "streamdown/styles.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAppApi, getBootstrap, type RomeAppBootstrap } from "@rome-os/app-web-sdk";
 import { HomeDashboard } from "@/components/home/HomeDashboard";
 import { ReviewDetailPage } from "@/components/reviews/ReviewDetailPage";
@@ -150,22 +150,38 @@ export default function App({
     }
   }, []);
 
+  // Only the latest PR-history request may update state: a slow response for
+  // PR A must not overwrite PR B's page (or its Re-review target).
+  const prHistoryRequest = useRef<AbortController | null>(null);
+  const cancelPRHistoryLoad = useCallback(() => {
+    prHistoryRequest.current?.abort();
+    prHistoryRequest.current = null;
+  }, []);
+
   const loadPRHistory = useCallback(async (pr: { repo: string; number: number }) => {
+    cancelPRHistoryLoad();
+    const controller = new AbortController();
+    prHistoryRequest.current = controller;
     setLoadingPRHistory(true);
     setError(null);
     try {
       const apiBase = getBootstrap().apiBase;
       const response = await fetch(
         `${apiBase}/pr-history?repo=${encodeURIComponent(pr.repo)}&number=${pr.number}`,
+        { signal: controller.signal },
       );
       if (!response.ok) throw new Error(`Failed to load PR history (HTTP ${response.status})`);
-      setPrHistory((await response.json()) as PRHistoryData);
+      const data = (await response.json()) as PRHistoryData;
+      if (!controller.signal.aborted) setPrHistory(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoadingPRHistory(false);
+      if (prHistoryRequest.current === controller) {
+        prHistoryRequest.current = null;
+        setLoadingPRHistory(false);
+      }
     }
-  }, []);
+  }, [cancelPRHistoryLoad]);
 
   const goToActivityPage = useCallback(
     (page: number) => {
@@ -430,13 +446,15 @@ export default function App({
   const routePRKey = routePR ? `${routePR.repo}#${routePR.number}` : null;
   useEffect(() => {
     if (!routePR) {
+      cancelPRHistoryLoad();
+      setLoadingPRHistory(false);
       setPrHistory(null);
       return;
     }
     setPrHistory(null);
     void loadPRHistory(routePR);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routePRKey, loadPRHistory]);
+  }, [routePRKey, loadPRHistory, cancelPRHistoryLoad]);
 
   const repositories = dashboard?.repositories || [];
   const prSettings = dashboard?.prReviewSettings || [];

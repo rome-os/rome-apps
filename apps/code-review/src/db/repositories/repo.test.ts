@@ -130,4 +130,13 @@ describe("ScanRepository PR history", () => {
     expect(repository.listPRReviewsForPR("rome-os/rome", 7).map((r) => r.id)).toEqual([first.id, second.id]);
     expect(repository.listMentionTasksForPR("rome-os/rome", 7).map((t) => t.id)).toEqual([question.id]);
   });
+
+  it("matches repository names case-insensitively, like GitHub", () => {
+    const repository = createScanRepository(appDb);
+    const review = repository.createQueuedPRReview({ repo: "Rome-OS/Rome", prNumber: 7 });
+    const task = repository.createMentionTask({ repo: "rome-os/ROME", surface: "pr", number: 7, intent: "general" });
+
+    expect(repository.listPRReviewsForPR("rome-os/rome", 7).map((r) => r.id)).toEqual([review.id]);
+    expect(repository.listMentionTasksForPR("ROME-OS/rome", 7).map((t) => t.id)).toEqual([task.id]);
+  });
 });
