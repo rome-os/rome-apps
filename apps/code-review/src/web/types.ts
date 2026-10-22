@@ -17,6 +17,7 @@ export interface PRReviewData {
   prUrl: string;
   prTitle: string;
   prAuthor: string | null;
+  headSha?: string | null;
   status: string;
   stageHistory: string | null;
   reviewComment: string | null;
@@ -98,6 +99,17 @@ export interface MentionTaskData {
   actorLogin: string | null;
   createdAt: string;
   completedAt: string | null;
+}
+
+/** Everything recorded for one repo + PR pair, both lists oldest first. */
+export interface PRHistoryData {
+  repo: string;
+  number: number;
+  title: string | null;
+  author: string | null;
+  url: string;
+  reviews: PRReviewData[];
+  tasks: MentionTaskData[];
 }
 
 /** A normalized item in the unified activity feed (review or mention task). */

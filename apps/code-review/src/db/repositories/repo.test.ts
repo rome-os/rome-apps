@@ -101,3 +101,42 @@ describe("ScanRepository trigger access policy", () => {
     });
   });
 });
+
+describe("ScanRepository PR history", () => {
+  let sqlite: Database.Database;
+  let appDb: AppDbContext;
+
+  beforeEach(() => {
+    ({ sqlite, appDb } = createTestContext());
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("returns only the reviews and PR mention tasks for one repo + PR pair, oldest first", () => {
+    const repository = createScanRepository(appDb);
+    const first = repository.createQueuedPRReview({ repo: "rome-os/rome", prNumber: 7 });
+    const second = repository.createQueuedPRReview({ repo: "rome-os/rome", prNumber: 7 });
+    sqlite.prepare(`UPDATE repo_guardian__pr_reviews SET started_at = ? WHERE id = ?`).run("2026-01-01T00:00:00.000Z", first.id);
+    sqlite.prepare(`UPDATE repo_guardian__pr_reviews SET started_at = ? WHERE id = ?`).run("2026-01-02T00:00:00.000Z", second.id);
+    repository.createQueuedPRReview({ repo: "rome-os/rome", prNumber: 8 });
+    repository.createQueuedPRReview({ repo: "rome-os/other", prNumber: 7 });
+
+    const question = repository.createMentionTask({ repo: "rome-os/rome", surface: "pr", number: 7, intent: "general" });
+    repository.createMentionTask({ repo: "rome-os/rome", surface: "issue", number: 7, intent: "general" });
+    repository.createMentionTask({ repo: "rome-os/rome", surface: "pr", number: 8, intent: "general" });
+
+    expect(repository.listPRReviewsForPR("rome-os/rome", 7).map((r) => r.id)).toEqual([first.id, second.id]);
+    expect(repository.listMentionTasksForPR("rome-os/rome", 7).map((t) => t.id)).toEqual([question.id]);
+  });
+
+  it("matches repository names case-insensitively, like GitHub", () => {
+    const repository = createScanRepository(appDb);
+    const review = repository.createQueuedPRReview({ repo: "Rome-OS/Rome", prNumber: 7 });
+    const task = repository.createMentionTask({ repo: "rome-os/ROME", surface: "pr", number: 7, intent: "general" });
+
+    expect(repository.listPRReviewsForPR("rome-os/rome", 7).map((r) => r.id)).toEqual([review.id]);
+    expect(repository.listMentionTasksForPR("ROME-OS/rome", 7).map((t) => t.id)).toEqual([task.id]);
+  });
+});

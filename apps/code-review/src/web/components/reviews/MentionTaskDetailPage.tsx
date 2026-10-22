@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Brain, ExternalLink, MessageSquare, RefreshCw, Wrench } from "lucide-react";
+import { ArrowLeft, Bot, Brain, ExternalLink, History, MessageSquare, RefreshCw, ScrollText, Wrench } from "lucide-react";
 import { navigateRome } from "@rome-os/app-web-sdk";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,15 +7,16 @@ import { formatDate } from "@/lib/helpers";
 import { GenericStageTimeline, MarkdownBlock, StatusBadge } from "./review-components";
 
 /** Mention-task stages considered in-progress (spinner + "so far"). */
-const ACTIVE_MENTION_STATUSES = new Set(["queued", "running", "posting"]);
+export const ACTIVE_MENTION_STATUSES = new Set(["queued", "running", "posting"]);
 
-const INTENT_META: Record<string, { label: string; Icon: typeof MessageSquare }> = {
+export const INTENT_META: Record<string, { label: string; Icon: typeof MessageSquare }> = {
   "update-memory": { label: "Memory update", Icon: Brain },
   "code-task": { label: "Code task", Icon: Wrench },
   general: { label: "Question", Icon: MessageSquare },
+  summary: { label: "Summary", Icon: ScrollText },
 };
 
-function parseResult(resultRef: string | null): { url: string | null; error: string | null; kind: string | null; body: string | null } {
+export function parseResult(resultRef: string | null): { url: string | null; error: string | null; kind: string | null; body: string | null } {
   if (!resultRef) return { url: null, error: null, kind: null, body: null };
   try {
     const r = JSON.parse(resultRef) as Record<string, unknown>;
@@ -38,6 +39,7 @@ export function MentionTaskDetailPage({
   onBack,
   onRefresh,
   onDismissError,
+  onOpenPRHistory,
 }: {
   selectedTask: MentionTaskData | null;
   loading: boolean;
@@ -46,6 +48,7 @@ export function MentionTaskDetailPage({
   onBack: () => void;
   onRefresh: () => void;
   onDismissError: () => void;
+  onOpenPRHistory: (repo: string, prNumber: number) => void;
 }) {
   const meta = selectedTask ? INTENT_META[selectedTask.intent] ?? { label: selectedTask.intent, Icon: Bot } : null;
   const githubUrl = selectedTask
@@ -128,6 +131,12 @@ export function MentionTaskDetailPage({
                       <MessageSquare className="h-3 w-3" />
                       View result
                     </a>
+                  )}
+                  {selectedTask.surface === "pr" && (
+                    <Button variant="outline" size="sm" onClick={() => onOpenPRHistory(selectedTask.repo, selectedTask.number)}>
+                      <History className="h-3.5 w-3.5 mr-1" />
+                      PR history
+                    </Button>
                   )}
                   {selectedTask.romeSession && (
                     <Button

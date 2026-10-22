@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Brain, CheckCircle, ChevronDown, ExternalLink, Eye, Github, ListFilter, MessageSquare, Plus, RefreshCw, Wrench, X } from "lucide-react";
+import { Bot, Brain, CheckCircle, ChevronDown, ExternalLink, Eye, Github, History, ListFilter, MessageSquare, Plus, RefreshCw, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
@@ -53,7 +53,7 @@ const STATUS_TONE: Record<StatusTone, { dot: string; text: string; ring: string 
   muted: { dot: "bg-muted-foreground/40", text: "text-muted-foreground", ring: "border-border" },
 };
 
-function MiniStatusBadge({ status }: { status: string }) {
+export function MiniStatusBadge({ status }: { status: string }) {
   const { tone, label } = statusMeta(status);
   const c = STATUS_TONE[tone];
   const pulse = tone === "active" ? "animate-pulse" : "";
@@ -165,6 +165,7 @@ export function HomeDashboard({
   onOpenTriggerSettings,
   onPrInputChange,
   onTriggerPRReview,
+  onLookUpPRHistory,
   onOpenActivityItem,
   onActivityFilterChange,
   onGoToActivityPage,
@@ -196,6 +197,7 @@ export function HomeDashboard({
   onOpenTriggerSettings: (repoName?: string) => void;
   onPrInputChange: (value: string) => void;
   onTriggerPRReview: (input?: string) => void;
+  onLookUpPRHistory: (input: string) => void;
   onOpenActivityItem: (item: ActivityItem) => void;
   onActivityFilterChange: (type: string) => void;
   onGoToActivityPage: (page: number) => void;
@@ -361,7 +363,7 @@ export function HomeDashboard({
             className="flex w-full items-center gap-2.5 px-5 py-3.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/40 sm:px-6"
           >
             <Eye className="h-4 w-4 shrink-0" />
-            <span className="flex-1">Run a manual review on a specific PR</span>
+            <span className="flex-1">Look up a PR's history or run a manual review</span>
             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
           </button>
           {manualOpen && (
@@ -375,6 +377,10 @@ export function HomeDashboard({
                 autoFocus
                 className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
+              <Button variant="outline" onClick={() => onLookUpPRHistory(prInput)} disabled={!prInput.trim()}>
+                <History className="mr-1 h-4 w-4" />
+                History
+              </Button>
               <Button onClick={() => onTriggerPRReview()} disabled={triggeringReview || !prInput.trim()}>
                 <Eye className="mr-1 h-4 w-4" />
                 {triggeringReview ? "Starting..." : "Review"}

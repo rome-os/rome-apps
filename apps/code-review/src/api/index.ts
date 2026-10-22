@@ -877,6 +877,27 @@ class GuardianApiHandler implements RomeAppApiHandler {
       return json({ task });
     }
 
+    // --- PR history: every review run and mention task for one repo + PR pair ---
+    if (request.method === "GET" && route === "pr-history") {
+      const repoName = (request.query.get("repo") || "").trim();
+      const prNumber = parseInt(request.query.get("number") || "", 10);
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repoName) || !Number.isInteger(prNumber) || prNumber <= 0) {
+        return json({ error: "repo (owner/name) and a positive PR number are required" }, { status: 400 });
+      }
+      const reviews = repo.listPRReviewsForPR(repoName, prNumber);
+      const tasks = repo.listMentionTasksForPR(repoName, prNumber);
+      const latest = reviews[reviews.length - 1];
+      return json({
+        repo: repoName,
+        number: prNumber,
+        title: latest?.prTitle ?? null,
+        author: latest?.prAuthor ?? null,
+        url: latest?.prUrl ?? `https://github.com/${repoName}/pull/${prNumber}`,
+        reviews,
+        tasks,
+      });
+    }
+
     // --- Unified activity feed (PR reviews + new-flow mention tasks) ---
     // Merges both sources into one normalized, filterable, paginated list so the
     // dashboard can show every trigger (review / question / memory / code task)

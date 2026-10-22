@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, CircleStop, Clock, ExternalLink, MessageSquare, RefreshCw } from "lucide-react";
+import { ArrowLeft, Bot, CircleStop, Clock, ExternalLink, History, MessageSquare, RefreshCw } from "lucide-react";
 import { navigateRome } from "@rome-os/app-web-sdk";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ export function ReviewDetailPage({
   onDismissError,
   onTriggerReview,
   onCancelReview,
+  onOpenPRHistory,
 }: {
   selectedReview: PRReviewData | null;
   loadingReviewDetail: boolean;
@@ -30,6 +31,7 @@ export function ReviewDetailPage({
   onDismissError: () => void;
   onTriggerReview: (prUrl: string) => void;
   onCancelReview: (reviewId: string) => void;
+  onOpenPRHistory: (repo: string, prNumber: number) => void;
 }) {
   return (
     <>
@@ -120,6 +122,14 @@ export function ReviewDetailPage({
                       View Review
                     </a>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onOpenPRHistory(selectedReview.repo, selectedReview.prNumber)}
+                  >
+                    <History className="h-3.5 w-3.5 mr-1" />
+                    PR history
+                  </Button>
                   {selectedReview.romeSession && (
                     <Button
                       variant="outline"

@@ -48,3 +48,17 @@
   padding-left: 0.75rem;
   color: hsl(var(--muted-foreground));
 }
+
+/* Compact markdown for stacked history cards: headings stay readable, not loud. */
+.sd-compact :where(h1, h2) {
+  font-size: 1rem;
+}
+
+.sd-compact :where(h3, h4) {
+  font-size: 0.9375rem;
+}
+
+.sd-compact > :first-child,
+.sd-compact :where(h1, h2, h3, h4):first-child {
+  margin-top: 0;
+}

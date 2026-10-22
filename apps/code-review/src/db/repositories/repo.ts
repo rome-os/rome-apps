@@ -542,6 +542,17 @@ export class ScanRepository {
   }
 
   /**
+   * Every review run for one repo + PR pair, oldest first (the PR history view).
+   * GitHub repo names are case-insensitive, so match them that way.
+   */
+  listPRReviewsForPR(repo: string, prNumber: number): PRReview[] {
+    return this.all<any>(
+      `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? COLLATE NOCASE AND pr_number = ? ORDER BY started_at ASC`,
+      [repo, prNumber],
+    ).map((row) => this.hydratePRReviewRow(row));
+  }
+
+  /**
    * Per-repo dashboard aggregates: total PR-review count, the most recent review
    * time, and a daily-bucketed trend series (oldest→newest) over the last
    * `days` days for the repo-card sparkline. Computed with two grouped queries
@@ -928,6 +939,14 @@ export class ScanRepository {
     return this.all<any>(
       `SELECT ${this.mentionTaskColumns()} FROM "${this.t("mention_tasks")}" ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [limit, offset],
+    ).map((row) => this.hydrateMentionTask(row)!).filter(Boolean);
+  }
+
+  /** Every mention task raised on one PR, oldest first (the PR history view). */
+  listMentionTasksForPR(repo: string, prNumber: number): MentionTask[] {
+    return this.all<any>(
+      `SELECT ${this.mentionTaskColumns()} FROM "${this.t("mention_tasks")}" WHERE repo = ? COLLATE NOCASE AND surface = 'pr' AND number = ? ORDER BY created_at ASC`,
+      [repo, prNumber],
     ).map((row) => this.hydrateMentionTask(row)!).filter(Boolean);
   }
 

@@ -68,6 +68,23 @@ export function getRouteMentionTaskId(): string | null {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+/** The PR history route: /apps/code-review/pr/<owner>/<repo>/<number>. */
+export function getRoutePR(): { repo: string; number: number } | null {
+  if (typeof window === "undefined") return null;
+  const match = window.location.pathname.match(/\/apps\/code-review\/pr\/([^/?#]+)\/([^/?#]+)\/(\d+)\/?$/);
+  if (!match) return null;
+  return { repo: `${decodeURIComponent(match[1])}/${decodeURIComponent(match[2])}`, number: Number(match[3]) };
+}
+
+/** Parse "https://github.com/o/r/pull/12" or "o/r#12" into a repo + PR pair. */
+export function parsePRRef(input: string): { repo: string; number: number } | null {
+  const trimmed = input.trim();
+  const url = trimmed.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/);
+  if (url) return { repo: url[1], number: Number(url[2]) };
+  const short = trimmed.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/);
+  return short ? { repo: short[1], number: Number(short[2]) } : null;
+}
+
 export function isTriggerSettingsRoute(): boolean {
   if (typeof window === "undefined") return false;
   return new RegExp(`/apps/code-review/${TRIGGER_SETTINGS_ROUTE}/?$`).test(window.location.pathname);
