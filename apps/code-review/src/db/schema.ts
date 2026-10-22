@@ -120,7 +120,13 @@ export function createAppDbSchema(tablePrefix: string = "repo_guardian") {
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   });
 
-  return { repositories, prReviews, prReviewSettings, mentionTasks, memoryEdits };
+  /** App-wide key/value settings (e.g. the remembered public origin). */
+  const appSettings = sqliteTable(`${tablePrefix}__app_settings`, {
+    key: text("key").primaryKey(),
+    value: text("value").notNull(),
+  });
+
+  return { repositories, prReviews, prReviewSettings, mentionTasks, memoryEdits, appSettings };
 }
 
 const defaultSchema = createAppDbSchema();
@@ -129,3 +135,4 @@ export const prReviews = defaultSchema.prReviews;
 export const prReviewSettings = defaultSchema.prReviewSettings;
 export const mentionTasks = defaultSchema.mentionTasks;
 export const memoryEdits = defaultSchema.memoryEdits;
+export const appSettings = defaultSchema.appSettings;

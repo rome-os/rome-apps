@@ -8,6 +8,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import type { ScanRepository } from "../db/repositories/repo.js";
 import { isTriggerAccessMode } from "../lib/trigger-access.js";
+import { PUBLIC_ORIGIN_SETTING, publicOriginFromHeaders } from "../lib/public-origin.js";
 import { sanitizeCliError } from "../utils/cli-errors.js";
 import {
   GITHUB_EVENTS,
@@ -956,6 +957,11 @@ class GuardianApiHandler implements RomeAppApiHandler {
 
     // --- Dashboard ---
     if (request.method === "GET" && route === "dashboard") {
+      // Remember the public origin so GitHub review footers can link back here.
+      const origin = publicOriginFromHeaders(request.headers);
+      if (origin && repo.getAppSetting(PUBLIC_ORIGIN_SETTING) !== origin) {
+        repo.setAppSetting(PUBLIC_ORIGIN_SETTING, origin);
+      }
       const repositories = await Promise.all(
         repo.listRepositories().map(async (r) => ({ ...r, visibility: await readRepoVisibility(r.name) })),
       );

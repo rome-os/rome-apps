@@ -950,6 +950,19 @@ export class ScanRepository {
     ).map((row) => this.hydrateMentionTask(row)!).filter(Boolean);
   }
 
+  // --- App-wide settings ---
+
+  getAppSetting(key: string): string | null {
+    return this.get<{ value: string }>(`SELECT value FROM "${this.t("app_settings")}" WHERE key = ?`, [key])?.value ?? null;
+  }
+
+  setAppSetting(key: string, value: string): void {
+    this.run(
+      `INSERT INTO "${this.t("app_settings")}" (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [key, value],
+    );
+  }
+
   // --- Project memory writer + audit ---
 
   /**
