@@ -140,3 +140,15 @@ describe("ScanRepository PR history", () => {
     expect(repository.listMentionTasksForPR("ROME-OS/rome", 7).map((t) => t.id)).toEqual([task.id]);
   });
 });
+
+describe("ScanRepository app settings", () => {
+  it("stores and overwrites a setting", () => {
+    const { sqlite, appDb } = createTestContext();
+    const repository = createScanRepository(appDb);
+    expect(repository.getAppSetting("public_origin")).toBeNull();
+    repository.setAppSetting("public_origin", "https://a.romeos.cc");
+    repository.setAppSetting("public_origin", "https://b.romeos.cc");
+    expect(createScanRepository(appDb).getAppSetting("public_origin")).toBe("https://b.romeos.cc");
+    sqlite.close();
+  });
+});

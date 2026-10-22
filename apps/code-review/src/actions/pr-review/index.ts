@@ -9,6 +9,7 @@ import type {
   RomeSessionRef,
 } from "@rome-os/app-runtime";
 import { createScanRepository } from "../../db/repositories/repo.js";
+import { PUBLIC_ORIGIN_SETTING, prHistoryUrl } from "../../lib/public-origin.js";
 import { execFileSync } from "child_process";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -373,6 +374,7 @@ function postInlineReview(
   prNumber: number,
   headSha: string,
   reviewOutput: AgentReviewOutput,
+  historyUrl: string | null,
 ): { reviewUrl: string | null; postedFindings: number; skippedFindings: number } {
   validateRepoSlug(repoSlug);
 
@@ -440,7 +442,8 @@ function postInlineReview(
   }
   summaryParts.push("");
   summaryParts.push("---");
-  summaryParts.push(`*Automated review by [RomeOS](https://romeos.io) Code Review · commit ${headSha.substring(0, 7)}*`);
+  const historyLink = historyUrl ? ` · [Full review history](${historyUrl})` : "";
+  summaryParts.push(`*Automated review by [RomeOS](https://romeos.io) Code Review · commit ${headSha.substring(0, 7)}${historyLink}*`);
 
   // Build inline comments from the anchor-validated findings.
   const comments: Array<{ path: string; line: number; body: string }> = anchoredFindings.map((finding) => ({
@@ -935,8 +938,10 @@ export function createAction(
         throwIfReviewCancelled(db, review.id);
         db.updatePRReviewStage(review.id, "posting");
         throwIfReviewCancelled(db, review.id);
+        const publicOrigin = db.getAppSetting(PUBLIC_ORIGIN_SETTING);
         const { reviewUrl, postedFindings, skippedFindings } = postInlineReview(
           repoSlug, prNumber, prInfo.headSha, reviewOutput,
+          publicOrigin ? prHistoryUrl(publicOrigin, repoSlug, prNumber) : null,
         );
         throwIfReviewCancelled(db, review.id);
 
