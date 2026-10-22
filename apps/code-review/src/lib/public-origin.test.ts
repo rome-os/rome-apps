@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prHistoryUrl, publicOriginFromHeaders } from "./public-origin.js";
+import { originToRemember, prHistoryUrl, publicOriginFromHeaders } from "./public-origin.js";
 
 describe("publicOriginFromHeaders", () => {
   it("uses HTTPS for Rome Cloud hosts even when the edge forwards http", () => {
@@ -28,5 +28,19 @@ describe("prHistoryUrl", () => {
     expect(prHistoryUrl("https://yunfan.romeos.cc", "rome-os/rome", 816)).toBe(
       "https://yunfan.romeos.cc/apps/code-review/pr/rome-os/rome/816",
     );
+  });
+});
+
+describe("originToRemember", () => {
+  const headers = { "x-forwarded-host": "attacker.example", "x-forwarded-proto": "https" };
+
+  it("learns the origin from a signed-in guardian browser session", () => {
+    expect(originToRemember({ caller: { kind: "guardian", via: "cookie" }, headers })).toBe("https://attacker.example");
+  });
+
+  it("never lets visitors, anonymous callers, or loopback tools set it", () => {
+    expect(originToRemember({ caller: { kind: "visitor" }, headers })).toBeNull();
+    expect(originToRemember({ caller: { kind: "anonymous" }, headers })).toBeNull();
+    expect(originToRemember({ caller: { kind: "guardian", via: "loopback" }, headers })).toBeNull();
   });
 });

@@ -34,6 +34,20 @@ export function publicOriginFromHeaders(
   return `${protocol}://${host}`;
 }
 
+/**
+ * The origin to remember from a dashboard request, or null. Only a guardian
+ * signed in through the browser may set it: the saved origin is published in
+ * GitHub reviews under the bot's identity, and visitors, anonymous callers,
+ * and loopback tools can all choose the Host headers they send.
+ */
+export function originToRemember(request: {
+  caller: { kind: string; via?: string };
+  headers: Record<string, string | undefined>;
+}): string | null {
+  if (request.caller.kind !== "guardian" || request.caller.via !== "cookie") return null;
+  return publicOriginFromHeaders(request.headers);
+}
+
 /** Absolute link to the app's history page for one repo + PR pair. */
 export function prHistoryUrl(origin: string, repo: string, prNumber: number): string {
   const [owner, name] = repo.split("/");
