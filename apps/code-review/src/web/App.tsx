@@ -5,9 +5,10 @@ import { fetchAppApi, getBootstrap, type RomeAppBootstrap } from "@rome-os/app-w
 import { HomeDashboard } from "@/components/home/HomeDashboard";
 import { ReviewDetailPage } from "@/components/reviews/ReviewDetailPage";
 import { MentionTaskDetailPage } from "@/components/reviews/MentionTaskDetailPage";
+import { PRHistoryPage } from "@/components/reviews/PRHistoryPage";
 import { TriggerSettingsPage } from "@/components/settings/TriggerSettingsPage";
-import type { ActivityCounts, ActivityItem, ActivityPage, DashboardData, GhAuthStatus, MentionTaskData, PRReviewData, TriggerSettingsPayload } from "@/types";
-import { getAppBasePath, getRouteMentionTaskId, getRouteReviewId, isTriggerSettingsRoute, normalizeGithubLogins } from "@/lib/helpers";
+import type { ActivityCounts, ActivityItem, ActivityPage, DashboardData, GhAuthStatus, MentionTaskData, PRHistoryData, PRReviewData, TriggerSettingsPayload } from "@/types";
+import { getAppBasePath, getRouteMentionTaskId, getRoutePR, getRouteReviewId, isTriggerSettingsRoute, normalizeGithubLogins, parsePRRef } from "@/lib/helpers";
 import { ACTIVITY_PAGE_SIZE, TRIGGER_SETTINGS_ROUTE } from "@/lib/constants";
 import { readHomeCache, writeHomeCache } from "@/lib/home-cache";
 
@@ -52,6 +53,9 @@ export default function App({
   const [routeReviewId, setRouteReviewId] = useState<string | null>(() => getRouteReviewId());
   const [routeMentionTaskId, setRouteMentionTaskId] = useState<string | null>(() => getRouteMentionTaskId());
   const [routeIsTriggerSettings, setRouteIsTriggerSettings] = useState(() => isTriggerSettingsRoute());
+  const [routePR, setRoutePR] = useState<{ repo: string; number: number } | null>(() => getRoutePR());
+  const [prHistory, setPrHistory] = useState<PRHistoryData | null>(null);
+  const [loadingPRHistory, setLoadingPRHistory] = useState(false);
   const [loadingReviewDetail, setLoadingReviewDetail] = useState(false);
   const [loadingTaskDetail, setLoadingTaskDetail] = useState(false);
   const [cancellingReview, setCancellingReview] = useState(false);
@@ -143,6 +147,23 @@ export default function App({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingTaskDetail(false);
+    }
+  }, []);
+
+  const loadPRHistory = useCallback(async (pr: { repo: string; number: number }) => {
+    setLoadingPRHistory(true);
+    setError(null);
+    try {
+      const apiBase = getBootstrap().apiBase;
+      const response = await fetch(
+        `${apiBase}/pr-history?repo=${encodeURIComponent(pr.repo)}&number=${pr.number}`,
+      );
+      if (!response.ok) throw new Error(`Failed to load PR history (HTTP ${response.status})`);
+      setPrHistory((await response.json()) as PRHistoryData);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingPRHistory(false);
     }
   }, []);
 
@@ -271,14 +292,18 @@ export default function App({
           throw new Error((data.error as string) || `Failed to trigger review (HTTP ${response.status})`);
         }
         setPrInput("");
-        setTimeout(() => void loadActivity(1, activityFilter), 1000);
+        setTimeout(() => {
+          void loadActivity(1, activityFilter);
+          const pr = getRoutePR();
+          if (pr) void loadPRHistory(pr);
+        }, 1000);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setTriggeringReview(false);
       }
     },
-    [prInput, dashboard, loadActivity, activityFilter],
+    [prInput, dashboard, loadActivity, activityFilter, loadPRHistory],
   );
 
   // Save PR review settings
@@ -380,6 +405,7 @@ export default function App({
       setRouteIsTriggerSettings(isTriggerSettingsRoute());
       setRouteReviewId(getRouteReviewId());
       setRouteMentionTaskId(getRouteMentionTaskId());
+      setRoutePR(getRoutePR());
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -401,23 +427,68 @@ export default function App({
     void loadMentionTaskDetail(routeMentionTaskId);
   }, [routeMentionTaskId, loadMentionTaskDetail]);
 
+  const routePRKey = routePR ? `${routePR.repo}#${routePR.number}` : null;
+  useEffect(() => {
+    if (!routePR) {
+      setPrHistory(null);
+      return;
+    }
+    setPrHistory(null);
+    void loadPRHistory(routePR);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routePRKey, loadPRHistory]);
+
   const repositories = dashboard?.repositories || [];
   const prSettings = dashboard?.prReviewSettings || [];
 
+  const openReview = (id: string) => {
+    window.history.pushState({}, "", `${getAppBasePath()}/${encodeURIComponent(id)}`);
+    setRouteIsTriggerSettings(false);
+    setRouteMentionTaskId(null);
+    setRoutePR(null);
+    setRouteReviewId(id);
+  };
+
+  const openMentionTask = (id: string) => {
+    window.history.pushState({}, "", `${getAppBasePath()}/task/${encodeURIComponent(id)}`);
+    setRouteIsTriggerSettings(false);
+    setRouteReviewId(null);
+    setRoutePR(null);
+    setRouteMentionTaskId(id);
+  };
+
   const openActivityItem = (item: ActivityItem) => {
-    if (item.kind === "review") {
-      const nextPath = `${getAppBasePath()}/${encodeURIComponent(item.id)}`;
-      window.history.pushState({}, "", nextPath);
-      setRouteIsTriggerSettings(false);
-      setRouteMentionTaskId(null);
-      setRouteReviewId(item.id);
-    } else {
-      const nextPath = `${getAppBasePath()}/task/${encodeURIComponent(item.id)}`;
-      window.history.pushState({}, "", nextPath);
-      setRouteIsTriggerSettings(false);
-      setRouteReviewId(null);
-      setRouteMentionTaskId(item.id);
+    if (item.kind === "review") openReview(item.id);
+    else openMentionTask(item.id);
+  };
+
+  const openPRHistory = (repo: string, number: number) => {
+    const [owner, name] = repo.split("/");
+    window.history.pushState(
+      {},
+      "",
+      `${getAppBasePath()}/pr/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/${number}`,
+    );
+    setRouteIsTriggerSettings(false);
+    setRouteReviewId(null);
+    setRouteMentionTaskId(null);
+    setRoutePR({ repo, number });
+  };
+
+  const lookUpPRHistory = (input: string) => {
+    const pr = parsePRRef(input);
+    if (pr) {
+      setError(null);
+      openPRHistory(pr.repo, pr.number);
+      return;
     }
+    const repos = dashboard?.repositories || [];
+    if (/^\d+$/.test(input.trim()) && repos.length === 1) {
+      setError(null);
+      openPRHistory(repos[0].name, Number(input.trim()));
+      return;
+    }
+    setError("Enter a PR URL (https://github.com/owner/repo/pull/123) or owner/repo#123.");
   };
 
   const openTriggerSettings = (repoName?: string) => {
@@ -426,6 +497,7 @@ export default function App({
     window.history.pushState({}, "", nextPath);
     setRouteReviewId(null);
     setRouteMentionTaskId(null);
+    setRoutePR(null);
     setRouteIsTriggerSettings(true);
   };
 
@@ -434,6 +506,7 @@ export default function App({
     setRouteIsTriggerSettings(false);
     setRouteReviewId(null);
     setRouteMentionTaskId(null);
+    setRoutePR(null);
   };
 
   return (
@@ -453,6 +526,21 @@ export default function App({
             goHome();
           }}
         />
+      ) : routePR ? (
+        <PRHistoryPage
+          repo={routePR.repo}
+          prNumber={routePR.number}
+          history={prHistory}
+          loading={loadingPRHistory}
+          error={error}
+          triggeringReview={triggeringReview}
+          onBack={goHome}
+          onRefresh={() => void loadPRHistory(routePR)}
+          onDismissError={() => setError(null)}
+          onTriggerReview={(prUrl) => void triggerPRReview(prUrl)}
+          onOpenReview={openReview}
+          onOpenTask={openMentionTask}
+        />
       ) : routeReviewId ? (
         <ReviewDetailPage
           selectedReview={selectedReview}
@@ -466,6 +554,7 @@ export default function App({
           onDismissError={() => setError(null)}
           onTriggerReview={(prUrl) => void triggerPRReview(prUrl)}
           onCancelReview={(reviewId) => void cancelPRReview(reviewId)}
+          onOpenPRHistory={openPRHistory}
         />
       ) : routeMentionTaskId ? (
         <MentionTaskDetailPage
@@ -476,6 +565,7 @@ export default function App({
           onBack={goHome}
           onRefresh={() => routeMentionTaskId ? void loadMentionTaskDetail(routeMentionTaskId) : void loadDashboard()}
           onDismissError={() => setError(null)}
+          onOpenPRHistory={openPRHistory}
         />
       ) : (
         <HomeDashboard
@@ -506,6 +596,7 @@ export default function App({
           onOpenTriggerSettings={openTriggerSettings}
           onPrInputChange={setPrInput}
           onTriggerPRReview={(input) => void triggerPRReview(input)}
+          onLookUpPRHistory={lookUpPRHistory}
           onOpenActivityItem={openActivityItem}
           onActivityFilterChange={changeActivityFilter}
           onGoToActivityPage={goToActivityPage}

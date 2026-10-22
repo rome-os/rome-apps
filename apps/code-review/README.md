@@ -18,6 +18,7 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 - Lets you tune review instructions per repository.
 - Lets you allow everyone except people you block (the default for newly configured repositories) or allow only selected GitHub users.
 - Keeps a review history dashboard in Rome for status, results, and follow-up.
+- Groups every review run and bot conversation on a PR into one history view, so you can trace how the feedback evolved.
 
 ## Best fit
 
