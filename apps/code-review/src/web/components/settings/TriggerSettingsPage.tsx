@@ -1032,7 +1032,7 @@ export function TriggerSettingsPage({
               initialTriggerOnReviewRequest={selectedSettings?.triggerOnReviewRequest ?? true}
               initialTriggerOnMention={selectedSettings?.triggerOnMention ?? true}
               initialTriggerOnPush={selectedSettings?.triggerOnPush ?? true}
-              initialTriggerAccessMode={selectedSettings?.triggerAccessMode ?? "allowlist"}
+              initialTriggerAccessMode={selectedSettings?.triggerAccessMode ?? "blocklist"}
               initialTriggerAllowlist={selectedSettings?.triggerAllowlist ?? selectedSettings?.manualTriggerAllowlist ?? []}
               initialTriggerBlocklist={selectedSettings?.triggerBlocklist ?? []}
               initialMentionTriggerPhrase={selectedSettings?.mentionTriggerPhrase ?? "PTAL"}

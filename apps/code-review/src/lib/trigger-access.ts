@@ -2,7 +2,7 @@ export const TRIGGER_ACCESS_MODES = ["allowlist", "blocklist"] as const;
 
 export type TriggerAccessMode = (typeof TRIGGER_ACCESS_MODES)[number];
 
-export const DEFAULT_TRIGGER_ACCESS_MODE: TriggerAccessMode = "allowlist";
+export const DEFAULT_TRIGGER_ACCESS_MODE: TriggerAccessMode = "blocklist";
 
 export function isTriggerAccessMode(value: unknown): value is TriggerAccessMode {
   return typeof value === "string"
