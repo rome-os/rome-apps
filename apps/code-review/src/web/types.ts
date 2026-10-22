@@ -8,6 +8,8 @@ export interface RepositoryData {
   url: string;
   name: string;
   addedAt: string;
+  /** GitHub visibility; null when unknown (GitHub not connected or lookup failed). */
+  visibility?: "public" | "private" | "internal" | null;
 }
 
 export interface PRReviewData {
