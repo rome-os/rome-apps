@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
+import { RepoVisibilityBadge } from "@/components/github/RepoVisibilityBadge";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
-import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
+import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, RepositoryData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
 import { fetchGithubUserProfile, getAppBasePath, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
 import { TRIGGER_SETTINGS_ROUTE } from "@/lib/constants";
 
@@ -336,6 +337,7 @@ function SectionHeader({
 
 function TriggerSettingsForm({
   repoName,
+  repoVisibility,
   initialAutoReview,
   initialTriggerOnCreate,
   initialTriggerOnRequest,
@@ -356,6 +358,7 @@ function TriggerSettingsForm({
   onRemoveRepo,
 }: {
   repoName: string;
+  repoVisibility: RepositoryData["visibility"];
   initialAutoReview: boolean;
   initialTriggerOnCreate: boolean;
   initialTriggerOnRequest: boolean;
@@ -553,6 +556,7 @@ function TriggerSettingsForm({
         <div className="inline-flex max-w-full items-center gap-2 rounded-full border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground">
           <Github className="h-4 w-4 shrink-0" />
           <span className="truncate font-medium text-foreground">{repoName}</span>
+          <RepoVisibilityBadge visibility={repoVisibility} />
           {autoSaving && (
             <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1026,6 +1030,7 @@ export function TriggerSettingsPage({
             <TriggerSettingsForm
               key={`${selectedRepoName}:${selectedSettings?.updatedAt || "new"}`}
               repoName={selectedRepoName}
+              repoVisibility={selectedRepo?.visibility}
               initialAutoReview={selectedSettings?.autoReviewEnabled ?? false}
               initialTriggerOnCreate={selectedSettings?.triggerOnCreate ?? true}
               initialTriggerOnRequest={selectedSettings?.triggerOnRequest ?? true}

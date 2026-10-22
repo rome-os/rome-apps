@@ -224,6 +224,43 @@ type GithubUserResult = { login: string; name: string | null; avatarUrl: string 
 
 /** Cache a successfully-resolved GitHub user for a day; cache a miss briefly. */
 const GH_USER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type RepoVisibility = "public" | "private" | "internal";
+
+/**
+ * Process-lifetime cache of GitHub repo visibility, keyed by lowercased
+ * owner/repo. Module-level because a fresh handler is built per request, and
+ * the dashboard polls; visibility rarely changes, so a few hours is fine.
+ */
+const repoVisibilityCache = new Map<string, { visibility: RepoVisibility | null; expiresAt: number }>();
+const REPO_VISIBILITY_TTL_MS = 6 * 60 * 60 * 1000;
+const REPO_VISIBILITY_MISS_TTL_MS = 10 * 60 * 1000;
+
+function parseRepoVisibility(value: unknown): RepoVisibility | null {
+  return value === "public" || value === "private" || value === "internal" ? value : null;
+}
+
+async function readRepoVisibility(repoName: string): Promise<RepoVisibility | null> {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repoName)) return null;
+  const key = repoName.toLowerCase();
+  const cached = repoVisibilityCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.visibility;
+  let visibility: RepoVisibility | null = null;
+  try {
+    const { stdout } = await execFileAsync("gh", ["api", `repos/${repoName}`, "--jq", ".visibility"], {
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+    visibility = parseRepoVisibility(stdout.trim());
+  } catch (err) {
+    log.info("gh repo visibility lookup failed", { repo: repoName, error: sanitizeCliError(err) });
+  }
+  repoVisibilityCache.set(key, {
+    visibility,
+    expiresAt: Date.now() + (visibility ? REPO_VISIBILITY_TTL_MS : REPO_VISIBILITY_MISS_TTL_MS),
+  });
+  return visibility;
+}
 const GH_USER_CACHE_MISS_TTL_MS = 5 * 60 * 1000;
 
 class GuardianApiHandler implements RomeAppApiHandler {
@@ -919,7 +956,9 @@ class GuardianApiHandler implements RomeAppApiHandler {
 
     // --- Dashboard ---
     if (request.method === "GET" && route === "dashboard") {
-      const repositories = repo.listRepositories();
+      const repositories = await Promise.all(
+        repo.listRepositories().map(async (r) => ({ ...r, visibility: await readRepoVisibility(r.name) })),
+      );
       const initialPageSize = 20;
       const prReviews = repo.listPRReviews(initialPageSize);
       const totalPRReviews = repo.countPRReviews();
