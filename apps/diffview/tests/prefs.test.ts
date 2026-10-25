@@ -9,7 +9,6 @@ import {
   savePrefs,
   type KV,
 } from "../src/shared/prefs";
-import { projectsPanelMessage } from "../src/shared/projectLink";
 
 function memory(): KV {
   const m = new Map<string, string>();
@@ -62,20 +61,6 @@ test("unknown enum values are dropped", () => {
     kv,
   );
   assert.deepEqual(loadChatState("chat:a", kv), { repo: "/r" });
-});
-test("project panel message targets the chat and strips the leading slash", () => {
-  assert.deepEqual(
-    projectsPanelMessage("rome:host-navigate", "s 1", "projects/rome/a b.md"),
-    {
-      type: "rome:host-navigate",
-      detail: {
-        path: "/chat/s%201",
-        state: {
-          widgets: [{ type: "projects", selectedPath: "projects/rome/a b.md" }],
-        },
-      },
-    },
-  );
 });
 test("a conversation's home repo is the first one it reviewed and never changes", () => {
   const kv = memory();

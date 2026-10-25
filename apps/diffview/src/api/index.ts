@@ -5,8 +5,10 @@ import {
   allowedRepo,
   cached,
   cachedSWR,
+  cachedPayload,
+  comparison,
+  type ResolvedComparison,
   defaultBase,
-  sha,
   files,
   type FileEntry,
   fingerprintInfo,
@@ -35,26 +37,26 @@ import {
   type Snapshot,
   type SnapshotFile,
 } from "../lib/snapshot.js";
+import { PAGE_MAX_BYTES, pageEnd } from "../shared/paging.js";
 /**
  * Everything known about one comparison at one fingerprint. `snap` holds all patches when the
  * whole diff fits in memory; otherwise only the file list is kept and pages are cut from git.
  */
 interface View {
   info: FingerprintInfo;
+  comparison: ResolvedComparison;
   head: string;
   list: FileEntry[];
   snap?: Snapshot;
   /** Comparing against a base: its resolved name, and whether it is the commit HEAD is on. */
   compare?: { ref: string; same: boolean };
 }
-const views = new Map<
-  string,
-  { promise: Promise<View>; at: number; bytes: number }
->();
+const views = new Map<string, { promise: Promise<View>; bytes: number }>();
 /** Rough size of what a view keeps alive: its patches plus the file list. */
 function viewBytes(v: View) {
   return (
-    (v.snap?.files.reduce((n, f) => n + f.patch.length, 0) ?? 0) +
+    (v.snap?.files.reduce((n, f) => n + f.patch.length * 2, 0) ?? 0) +
+    (v.comparison.fallback?.length ?? 0) * 2 +
     v.list.length * 300
   );
 }
@@ -75,37 +77,32 @@ function trimViews(keep: string) {
     total -= e.bytes;
   }
 }
-async function compareMeta(
-  repo: string,
-  m: Mode,
-  info: FingerprintInfo,
-): Promise<View["compare"]> {
-  if (m.mode !== "ref") return undefined;
-  try {
-    const ref = m.ref || (await defaultBase(repo));
-    return { ref, same: !!info.head && (await sha(repo, ref)) === info.head };
-  } catch {
-    return undefined; // an invalid ref is reported by the comparison itself
-  }
-}
 async function buildView(
   repo: string,
   m: Mode,
   ctx: number,
   info: FingerprintInfo,
+  resolved: ResolvedComparison,
 ): Promise<View> {
   const head = info.head || "unborn";
-  const compare = await compareMeta(repo, m, info);
+  const compare =
+    m.mode === "ref"
+      ? {
+          ref: m.ref || m.base!,
+          same: !!info.head && resolved.from === info.head,
+        }
+      : undefined;
+  const common = { info, head, compare, comparison: resolved };
   // `git status` already counted the changed paths; a large count means page from the start
   // instead of first computing (and discarding) the whole diff.
   if (m.mode === "uncommitted" && info.changed > maxWholeDiffFiles())
-    return { info, head, compare, list: await files(repo, m) };
+    return { ...common, list: await files(repo, m, resolved) };
   try {
-    const snap = await buildSnapshot(repo, m, ctx, info);
-    return { info, head, compare, snap, list: snap.files.map(toEntry) };
+    const snap = await buildSnapshot(repo, m, ctx, info, resolved);
+    return { ...common, snap, list: snap.files.map(toEntry) };
   } catch (e) {
     if (e instanceof GitError && e.code === "output_limit")
-      return { info, head, compare, list: await files(repo, m) };
+      return { ...common, list: await files(repo, m, resolved) };
     throw e;
   }
 }
@@ -124,39 +121,53 @@ async function pageFor(
   );
   if (cursor < 0 || cursor > eligible.length)
     throw new GitError("invalid_cursor");
+  let subset: SnapshotFile[];
   if (view.snap) {
     const byPath = new Map(view.snap.files.map((f) => [f.path, f]));
-    const page = pageOf(
-      eligible.map((e) => byPath.get(e.path)!),
-      cursor,
+    const all = eligible.map((e) => byPath.get(e.path)!);
+    subset = all.slice(cursor, pageOf(all, cursor).end);
+  } else {
+    const end = pageEnd(eligible, cursor);
+    const built = await buildPage(
+      repo,
+      m,
+      ctx,
+      view.info,
+      eligible.slice(cursor, end),
+      view.comparison,
     );
-    for (const f of page.lazy)
-      page.patches[f.path] = await loadUntrackedPatch(repo, f.path, false);
-    return {
-      patches: page.patches,
-      next: page.end < eligible.length ? page.end : null,
-    };
+    const byPath = new Map(built.map((f) => [f.path, f]));
+    subset = eligible
+      .slice(cursor, end)
+      .map(
+        (entry) =>
+          byPath.get(entry.path) ?? {
+            ...entry,
+            patch: "",
+            lazy: !!entry.untracked,
+            collapsed: true,
+          },
+      );
   }
-  // Too large to hold at once: the page's own paths, one git diff for the whole page.
-  const end = pageOf(
-    eligible.map((e) => ({ ...e, patch: "" }) as SnapshotFile),
-    cursor,
-  ).end;
-  const built = await buildPage(
-    repo,
-    m,
-    ctx,
-    view.info,
-    eligible.slice(cursor, end),
-  );
-  const byPath = new Map(built.map((f) => [f.path, f]));
   const patches: PageData["patches"] = {};
-  for (const f of eligible.slice(cursor, end)) {
-    const file = byPath.get(f.path);
-    if (file) patches[f.path] = patchData(file, false);
+  let bytes = 0,
+    count = 0;
+  for (const file of subset) {
+    const payload = file.lazy
+      ? await loadUntrackedPatch(repo, file.path, false)
+      : patchData(file, false);
+    const size = Buffer.byteLength(payload.patch);
+    // Estimate when choosing candidate paths, then enforce the actual byte budget after
+    // hydrating lazy content. A large single-line file must not inflate a 150-file page.
+    if (count > 0 && bytes + size > PAGE_MAX_BYTES) break;
+    patches[file.path] = payload;
+    bytes += size;
+    count++;
   }
+  const end = cursor + count;
   return { patches, next: end < eligible.length ? end : null };
 }
+
 const validModes = new Set([
   "uncommitted",
   "branch",
@@ -269,47 +280,55 @@ function createInnerHandler(): RomeAppApiHandler {
         const known = claimed ? views.get(lookup(claimed)) : undefined;
         const view = async (): Promise<{ v: View; fp: string }> => {
           if (known) return { v: await known.promise, fp: claimed };
-          let info = await fingerprintInfo(repo);
-          if (m.mode === "unpushed") {
-            const upstream = await tracking(repo);
-            info = {
-              ...info,
-              hash: createHash("sha256")
-                .update(JSON.stringify([info.hash, upstream]))
-                .digest("hex"),
-            };
-          } else if (m.mode === "commit" || m.mode === "ref") {
-            const selected = await sha(
-              repo,
-              m.mode === "commit" ? m.commit || "" : m.ref || m.base || "HEAD",
-            );
-            info = {
-              ...info,
-              hash: createHash("sha256")
-                .update(JSON.stringify([info.hash, selected]))
-                .digest("hex"),
-            };
-          }
+          const raw = await fingerprintInfo(repo);
+          const resolved = await comparison(
+            repo,
+            m,
+            raw.head,
+            q.get("refresh") === "1",
+          );
+          const info =
+            m.mode === "uncommitted"
+              ? raw
+              : {
+                  ...raw,
+                  hash: createHash("sha256")
+                    .update(
+                      JSON.stringify([
+                        raw.hash,
+                        resolved.from,
+                        resolved.to,
+                        resolved.args,
+                      ]),
+                    )
+                    .update(resolved.fallback ?? "")
+                    .digest("hex"),
+                };
+          // A missing old view may be rebuilt only if it is still the same comparison.
+          // Never silently attach current patches to the client's superseded file list.
+          if (claimed && claimed !== info.hash)
+            throw new GitError("stale_view");
           const key = lookup(info.hash);
           let entry = views.get(key);
-          // PR/legacy branch metadata may change independently of the worktree;
-          // periodically rebuild non-local views even when the fingerprint is stable.
-          if (entry && m.mode !== "uncommitted" && Date.now() - entry.at > 5000)
-            entry = undefined;
           if (!entry) {
-            const promise = buildView(repo, m, ctx, info);
-            const fresh = { promise, at: Date.now(), bytes: 0 };
+            const promise = buildView(repo, m, ctx, info, resolved);
+            const fresh = { promise, bytes: 0 };
             entry = fresh;
             views.set(key, fresh);
+            // Observe success and rejection on the same derived promise. A request-level
+            // catch on `promise` alone does not handle a rejected `.then()` observer.
             void promise
-              .then((v) => {
-                fresh.bytes = viewBytes(v);
-                trimViews(key);
-              })
+              .then(
+                (v) => {
+                  fresh.bytes = viewBytes(v);
+                  if (views.get(key) === fresh) trimViews(key);
+                },
+                () => {
+                  if (views.get(key) === fresh) views.delete(key);
+                },
+              )
               .catch(() => {});
             trimViews(key);
-            // A failed build must not be remembered.
-            promise.catch(() => views.delete(key));
           }
           return { v: await entry.promise, fp: info.hash };
         };
@@ -340,7 +359,7 @@ function createInnerHandler(): RomeAppApiHandler {
           const filter = (q.get("q") || "").toLowerCase().slice(0, 200);
           const { v, fp } = await view();
           return Response.json(
-            await cached(
+            await cachedPayload(
               JSON.stringify([repo, m, fp, ctx, "page", cursor, filter]),
               () => pageFor(repo, m, ctx, v, cursor, filter),
               60000,
@@ -364,9 +383,9 @@ function createInnerHandler(): RomeAppApiHandler {
           if (file && context === v.snap!.context)
             return Response.json(patchData(file, anyway));
           return Response.json(
-            await cached(
+            await cachedPayload(
               JSON.stringify([repo, m, fp, path, context, anyway]),
-              () => patch(repo, m, path, context, anyway, entry),
+              () => patch(repo, m, path, context, anyway, entry, v.comparison),
             ),
           );
         }
@@ -379,7 +398,9 @@ function createInnerHandler(): RomeAppApiHandler {
               e instanceof GitError
                 ? e.code === "forbidden_path"
                   ? 403
-                  : 400
+                  : e.code === "stale_view"
+                    ? 409
+                    : 400
                 : 500,
           },
         );

@@ -150,7 +150,7 @@ export function DiffHeader({
   /** Waiting for its page to arrive; nothing to click. */
   queued?: boolean;
   onCopy: () => void;
-  onOpen: () => void;
+  onOpen?: () => void;
   openUrl?: string;
   onContext: () => void;
   collapsed?: boolean;
@@ -270,10 +270,12 @@ export function DiffHeader({
             <Copy size={14} />
             {t.copyPath}
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={!openUrl} onSelect={onOpen}>
-            <FileText size={14} />
-            {t.openFile}
-          </DropdownMenuItem>
+          {onOpen && (
+            <DropdownMenuItem disabled={!openUrl} onSelect={onOpen}>
+              <FileText size={14} />
+              {t.openFile}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem asChild disabled={!openUrl}>
             <a href={openUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink size={14} />

@@ -17,21 +17,3 @@ export function projectFileUrl(repo: string, path: string): string | undefined {
   const logical = projectLogicalPath(repo, path);
   return logical && "/" + logical.split("/").map(encodeURIComponent).join("/");
 }
-/**
- * Message that makes the chat page add (or activate) a Projects panel beside the conversation.
- * Only the parent window may receive it: sending it to our own window would navigate this
- * embedded app away. The host applies `selectedPath` only when it creates the panel.
- */
-export function projectsPanelMessage(
-  type: string,
-  chatId: string,
-  logicalPath: string,
-) {
-  return {
-    type,
-    detail: {
-      path: "/chat/" + encodeURIComponent(chatId),
-      state: { widgets: [{ type: "projects", selectedPath: logicalPath }] },
-    },
-  };
-}

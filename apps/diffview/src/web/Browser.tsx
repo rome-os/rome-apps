@@ -46,12 +46,7 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { CodeViewItem } from "@pierre/diffs";
 import type { FileEntry } from "../lib/git";
 import { comparisonIdentity } from "../shared/comparison";
-import {
-  projectFileUrl,
-  projectLogicalPath,
-  projectsPanelMessage,
-} from "../shared/projectLink";
-import { openProjectInChatPanel } from "./hostBridge";
+import { projectFileUrl } from "../shared/projectLink";
 import { PAGE_LOOKAHEAD, isPageable } from "../shared/paging";
 import { ComparisonMenu } from "./ComparisonMenu";
 import { api } from "./api";
@@ -396,13 +391,21 @@ function Browser() {
   // Context lines every patch is cut with: the chosen amount, or the whole file when unchanged
   // lines are expanded. The server cuts all pages with it, so it is part of what a page *is*.
   const ctxParam = collapseContext ? state.unified : "10000";
+  const refreshScope = useRef<string | undefined>(undefined);
   const data = useQuery({
     queryKey: ["files", scope, ctxParam],
     queryFn: async ({ signal }) => {
       const held = qc.getQueryData<FilesData>(["files", scope, ctxParam]);
+      const force = refreshScope.current === scope;
+      if (force) refreshScope.current = undefined;
       const res = await api<FilesData | { unchanged: true; ms: number }>(
         "files",
-        { ...state, ctx: ctxParam, have: held?.fingerprint },
+        {
+          ...state,
+          ctx: ctxParam,
+          have: force ? undefined : held?.fingerprint,
+          refresh: force ? "1" : undefined,
+        },
         signal,
       );
       // Same object back: nothing re-seeds, nothing re-renders.
@@ -536,7 +539,7 @@ function Browser() {
             },
             controller.signal,
           );
-          if (generation === epoch.current) {
+          if (generation === epoch.current && requestFp === fpRef.current) {
             const record = recordFromPatch(path, result, context, requestFp);
             setRecords((r) => ({
               ...r,
@@ -547,6 +550,19 @@ function Browser() {
             }));
           }
         } catch (e) {
+          if (
+            !controller.signal.aborted &&
+            generation === epoch.current &&
+            e instanceof Error &&
+            e.message === "stale_view"
+          ) {
+            setNonce((n) => n + 1);
+            void qc.resetQueries({
+              queryKey: ["files", scope, ctxParam],
+              exact: true,
+            });
+            return;
+          }
           if (!controller.signal.aborted && generation === epoch.current)
             setRecords((r) => ({
               ...r,
@@ -750,13 +766,21 @@ function Browser() {
       controller.signal,
     )
       .then((page) => {
-        if (generation !== epoch.current) return;
+        if (generation !== epoch.current || requestFp !== fpRef.current) return;
         seed(page.patches, requestFp);
         setPager((p) => ({ ...p, busy: false }));
       })
       .catch((e) => {
         if (controller.signal.aborted || generation !== epoch.current) return;
         asked.current.delete(key);
+        if (e instanceof Error && e.message === "stale_view") {
+          setNonce((n) => n + 1);
+          void qc.resetQueries({
+            queryKey: ["files", scope, ctxParam],
+            exact: true,
+          });
+          return;
+        }
         setPager((p) => ({
           ...p,
           busy: false,
@@ -977,11 +1001,17 @@ function Browser() {
   const narrow = width < 768,
     compact = width < 640;
   const refresh = () => {
+    refreshScope.current = scope;
     void qc.invalidateQueries({ queryKey: ["repos", project] });
     void qc.invalidateQueries({ queryKey: ["refs", state.repo] });
     void qc.invalidateQueries({ queryKey: ["tracking", state.repo] });
     void qc.invalidateQueries({ queryKey: ["history", state.repo] });
-    void qc.invalidateQueries({ queryKey: ["files", scope] });
+    // Cancel even an initial in-flight load: invalidation alone can reuse that request
+    // and swallow the explicit refresh intent (including the PR TTL bypass).
+    void qc
+      .cancelQueries({ queryKey: ["files", scope] })
+      .then(() => qc.invalidateQueries({ queryKey: ["files", scope] }))
+      .catch(() => {});
     // A new stamp resets what is loaded and re-seeds it from the refreshed list and pages.
     setNonce((n) => n + 1);
   };
@@ -1013,26 +1043,14 @@ function Browser() {
       setCopied(false);
     }
   };
-  // Inside a chat workspace this app runs in an iframe: open the file in the chat's Projects panel,
-  // like a project link in a chat message. Never navigate our own window there, or this whole view
-  // would be replaced by the file page.
+  // Standalone navigation uses the public host event. Embedded views expose an ordinary
+  // new-tab link instead: never inspect the parent's React tree or mutate its private store.
   const openFile = (file: string) => {
     const url = projectFileUrl(state.repo, file);
-    const logical = projectLogicalPath(state.repo, file);
-    if (!url || !logical) return;
-    if (!embedded) {
+    if (url)
       window.dispatchEvent(
         new CustomEvent(HOST_NAVIGATE_EVENT, { detail: { path: url } }),
       );
-      return;
-    }
-    if (chatId && openProjectInChatPanel(chatId, "/" + logical)) return;
-    if (chatId)
-      window.parent.postMessage(
-        projectsPanelMessage(HOST_NAVIGATE_EVENT, chatId, logical),
-        window.location.origin,
-      );
-    else window.open(url, "_blank", "noopener,noreferrer");
   };
   const expandContext = (
     path: string,
@@ -1675,7 +1693,7 @@ function Browser() {
                             ? undefined
                             : projectFileUrl(state.repo, f.path)
                         }
-                        onOpen={() => openFile(f.path)}
+                        onOpen={embedded ? undefined : () => openFile(f.path)}
                         onContext={() => expandContext(f.path)}
                       />
                     );

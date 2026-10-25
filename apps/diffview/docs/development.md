@@ -81,3 +81,12 @@ commit pagination/root selection/reload, branch-only endpoint controls, keyboard
 selection, missing upstream and unchanged Git index. It uses the same browser
 executable override as `test:worker`; ordinary scopes never query GitHub.
 See [scope menu](2026-10-25-scope-menu.md) for comparison definitions.
+
+## Review correctness regressions
+
+`pnpm --filter @rome/app-diffview test:browser` builds once and runs all three
+production browser suites (worker, scroll and menu). Set
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` only when using an existing browser.
+`review.test.ts` and `cache.test.ts` run in the normal Vitest suite; they require
+no real GitHub account. See [review corrections](2026-10-25-review-fixes.md) for
+comparison identity, PR refresh, cache budgets and safe file-link behavior.

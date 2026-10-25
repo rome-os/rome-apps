@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { BoundedCache } from "./cache.js";
 import { spawn } from "node:child_process";
 import { realpath, readdir, lstat, open } from "node:fs/promises";
 import { resolve, relative, isAbsolute, join } from "node:path";
@@ -315,63 +316,68 @@ export function diffArgs(m: Mode, from?: string, to = "HEAD") {
     ? [from]
     : [from + (m.dots === "two" ? ".." : "...") + to];
 }
-const prCache = new Map<
-  string,
-  {
-    at: number;
-    promise: Promise<{ from: string; to: string; fallback?: string }>;
-  }
->();
-async function prCompare(repo: string, n: string) {
+export interface ResolvedComparison {
+  args: string[];
+  from?: string;
+  to?: string;
+  /** Empty string is a valid empty remote diff, not a missing fallback. */
+  fallback?: string;
+}
+const prCache = new BoundedCache(6, 32 * 1024 * 1024);
+async function prCompare(repo: string, n: string, refresh = false) {
   if (!/^[1-9]\d{0,7}$/.test(n)) throw new GitError("invalid_pr");
-  const key = repo + ":" + n,
-    hit = prCache.get(key);
-  if (hit && Date.now() - hit.at < 60000) return hit.promise;
-  const promise = (async () => {
-    let meta: { baseRefName: string };
-    try {
-      meta = JSON.parse(
-        await command(repo, "gh", ["pr", "view", n, "--json", "baseRefName"]),
-      );
-    } catch {
-      throw new GitError("pr_unavailable");
-    }
-    try {
-      const temp = "refs/diffview/pr/" + n;
-      await git(
-        repo,
-        [
-          "fetch",
-          "--no-tags",
-          "--no-write-fetch-head",
-          "origin",
-          "+refs/pull/" + n + "/head:" + temp,
-        ],
-        undefined,
-        25000,
-      );
-      const base = await sha(
-        repo,
-        "origin/" + validateRef(meta.baseRefName),
-      ).catch(() => sha(repo, meta.baseRefName));
-      return { from: base, to: await sha(repo, temp) };
-    } catch {
-      return {
-        from: "",
-        to: "",
-        fallback: await command(
+  return prCache.get(
+    repo + ":" + n,
+    async () => {
+      let meta: { baseRefName: string };
+      try {
+        meta = JSON.parse(
+          await command(repo, "gh", ["pr", "view", n, "--json", "baseRefName"]),
+        );
+        validateRef(meta.baseRefName);
+      } catch {
+        throw new GitError("pr_unavailable");
+      }
+      try {
+        const temp = "refs/diffview/pulls/" + n;
+        // Fetch both endpoints atomically into app-owned refs. Never update the user's
+        // branches or remote-tracking refs, and never fall back to a stale local base.
+        await git(
           repo,
-          "gh",
-          ["pr", "diff", n, "--color=never"],
-          8 * 1024 * 1024,
+          [
+            "fetch",
+            "--atomic",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--refmap=",
+            "origin",
+            "+refs/heads/" + meta.baseRefName + ":" + temp + "/base",
+            "+refs/pull/" + n + "/head:" + temp + "/head",
+          ],
+          undefined,
           25000,
-        ),
-      };
-    }
-  })();
-  prCache.set(key, { at: Date.now(), promise });
-  if (prCache.size > 6) prCache.delete(prCache.keys().next().value!);
-  return promise;
+        );
+        return {
+          from: await sha(repo, temp + "/base"),
+          to: await sha(repo, temp + "/head"),
+        };
+      } catch {
+        return {
+          from: "",
+          to: "",
+          fallback: await command(
+            repo,
+            "gh",
+            ["pr", "diff", n, "--color=never"],
+            8 * 1024 * 1024,
+            25000,
+          ),
+        };
+      }
+    },
+    60000,
+    refresh,
+  );
 }
 /** Tracking is local metadata only. Never fetch, change branches, or guess a base. */
 export interface TrackingInfo {
@@ -443,7 +449,8 @@ export async function comparison(
   repo: string,
   m: Mode,
   head?: string,
-): Promise<{ args: string[]; fallback?: string }> {
+  refresh = false,
+): Promise<ResolvedComparison> {
   if (m.mode === "commit") {
     const to = await sha(repo, m.commit || "");
     const parents = (await git(repo, ["rev-list", "--parents", "-n", "1", to]))
@@ -461,7 +468,7 @@ export async function comparison(
           "",
         )
       ).trim();
-    return { args: [from, to] };
+    return { from, to, args: [from, to] };
   }
   if (m.mode === "unpushed") {
     const info = await tracking(repo);
@@ -471,11 +478,14 @@ export async function comparison(
       .catch(() => {
         throw new GitError("no_merge_base");
       });
-    return { args: [from, info.head] };
+    return { from: info.upstreamHead, to: info.head, args: [from, info.head] };
   }
   if (m.mode === "pr") {
-    const r = await prCompare(repo, m.pr || "");
-    return { ...r, args: r.fallback ? [] : diffArgs(m, r.from, r.to) };
+    const r = await prCompare(repo, m.pr || "", refresh);
+    return {
+      ...r,
+      args: r.fallback !== undefined ? [] : diffArgs(m, r.from, r.to),
+    };
   }
   if (m.mode === "uncommitted") {
     let args = diffArgs(m);
@@ -485,6 +495,7 @@ export async function comparison(
       !(head ?? (await tryGit(repo, ["rev-parse", "--verify", "HEAD"])))
     )
       args = ["--cached"];
+    if (args[0] === "HEAD" && head) args = [head];
     return { args };
   }
   const from = await sha(
@@ -495,11 +506,12 @@ export async function comparison(
         : m.ref || (await defaultBase(repo)),
     ),
   );
+  const to = head || (await sha(repo, "HEAD"));
   if (m.mode === "ref" && m.target === "worktree" && m.dots !== "two") {
-    const merge = (await git(repo, ["merge-base", from, "HEAD"])).trim();
-    return { args: [merge] };
+    const merge = (await git(repo, ["merge-base", from, to])).trim();
+    return { from, to, args: [merge] };
   }
-  return { args: diffArgs(m, from) };
+  return { from, to, args: diffArgs(m, from, to) };
 }
 /** `Promise.all(items.map(fn))` that never has more than `limit` calls in flight. */
 export async function mapLimit<T, R>(
@@ -581,63 +593,39 @@ export function fingerprintInfo(repo: string): Promise<FingerprintInfo> {
 export async function fingerprint(repo: string) {
   return (await fingerprintInfo(repo)).hash;
 }
-const cache = new Map<string, { at: number; value: unknown }>();
-const inflight = new Map<string, Promise<unknown>>();
-/** TTL cache with single-flight: concurrent misses for one key share a single computation. */
-export async function cached<T>(
+const onCacheLookup = (hit: boolean) => {
+  const trace = traceStore.getStore();
+  if (trace) hit ? trace.cacheHits++ : trace.cacheMisses++;
+};
+const metadataCache = new BoundedCache(64, 4 * 1024 * 1024, onCacheLookup);
+const payloadCache = new BoundedCache(32, 32 * 1024 * 1024, onCacheLookup);
+export function cached<T>(key: string, fn: () => Promise<T>, ttl = 2000) {
+  return metadataCache.get(key, fn, ttl);
+}
+/** Patch/page payloads cannot evict the repository scan or other small metadata. */
+export function cachedPayload<T>(
   key: string,
   fn: () => Promise<T>,
   ttl = 2000,
-): Promise<T> {
-  const v = cache.get(key);
-  const trace = traceStore.getStore();
-  if (v && Date.now() - v.at < ttl) {
-    if (trace) trace.cacheHits++;
-    return v.value as T;
-  }
-  const running = inflight.get(key);
-  if (running) {
-    if (trace) trace.cacheHits++;
-    return running as Promise<T>;
-  }
-  if (trace) trace.cacheMisses++;
-  const promise = fn().then(
-    (value) => {
-      cache.set(key, { at: Date.now(), value });
-      while (cache.size > 32) cache.delete(cache.keys().next().value!);
-      inflight.delete(key);
-      return value;
-    },
-    (e) => {
-      inflight.delete(key);
-      throw e;
-    },
-  );
-  inflight.set(key, promise);
-  return promise;
+) {
+  return payloadCache.get(key, fn, ttl);
 }
-/** Stale-while-revalidate: answer from cache immediately and refresh in the background. */
-export async function cachedSWR<T>(
-  key: string,
-  fn: () => Promise<T>,
-  ttl: number,
-): Promise<T> {
-  const v = cache.get(key);
-  if (v) {
-    if (Date.now() - v.at >= ttl) void cached(key, fn, 0).catch(() => {});
-    return v.value as T;
-  }
-  return cached(key, fn, ttl);
+export function cachedSWR<T>(key: string, fn: () => Promise<T>, ttl: number) {
+  return metadataCache.swr(key, fn, ttl);
 }
 export function splitPatch(patch: string) {
   return patch
     .split(/(?=^diff --git )/m)
     .filter((x) => x.startsWith("diff --git "));
 }
-export async function files(repo: string, m: Mode) {
-  const cmp = await comparison(repo, m);
+export async function files(
+  repo: string,
+  m: Mode,
+  resolved?: ResolvedComparison,
+) {
+  const cmp = resolved ?? (await comparison(repo, m));
   let entries: FileEntry[] = [];
-  if (cmp.fallback) {
+  if (cmp.fallback !== undefined) {
     entries = splitPatch(cmp.fallback).map((p) => {
       const path =
         /^\+\+\+ b\/(.*)$/m.exec(p)?.[1] ||
@@ -742,6 +730,7 @@ export async function patch(
   context = 3,
   anyway = false,
   known?: FileEntry,
+  resolved?: ResolvedComparison,
 ) {
   const entry =
     known ??
@@ -777,8 +766,8 @@ export async function patch(
         ? "\\ No newline at end of file\n"
         : "");
   } else {
-    const cmp = await comparison(repo, m);
-    if (cmp.fallback)
+    const cmp = resolved ?? (await comparison(repo, m));
+    if (cmp.fallback !== undefined)
       text =
         splitPatch(cmp.fallback).find(
           (p) =>

@@ -127,7 +127,8 @@ test(
           errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
         page.on("console", (m) => {
-          if (m.type() === "error") errors.push(m.text());
+          if (m.type() === "error" && !m.text().includes("409 (Conflict)"))
+            errors.push(m.text());
         });
         await page.goto(
           width === 447
@@ -187,6 +188,29 @@ test(
             JSON.stringify(r),
           );
         };
+        // Ordinary project links work without React-fiber probing or private host stores.
+        await v
+          .getByRole("button", { name: "文件操作: initial.txt", exact: true })
+          .click();
+        const projectLink = v.getByRole("menuitem", {
+          name: "在新标签页打开",
+          exact: true,
+        });
+        await projectLink.waitFor();
+        assert.match(
+          await projectLink.getAttribute("href"),
+          /\/projects\/repository-with-a-deliberately-long-name\/initial.txt$/,
+        );
+        assert.equal(await projectLink.getAttribute("target"), "_blank");
+        assert.match(await projectLink.getAttribute("rel"), /noopener/);
+        if (width === 447)
+          assert.equal(
+            await v
+              .getByRole("menuitem", { name: "打开文件", exact: true })
+              .count(),
+            0,
+          );
+        await v.locator("main").press("Escape");
         await bounds();
         await scope.click();
         await v.getByRole("menuitemradio", { name: /未推送/ }).waitFor();
@@ -286,6 +310,45 @@ test(
         await local.focus();
         await local.press("Enter");
         assert.equal(await endpoints.count(), 0);
+        if (width === 1100) {
+          // A page/patch view can expire while another comparison is open. Recover with a
+          // fresh list, not an infinite error or patches stamped with the stale fingerprint.
+          let injected = false;
+          await page.route("**/api/apps/diffview/patch?*", async (route) => {
+            if (injected) return route.continue();
+            injected = true;
+            await route.fulfill({
+              status: 409,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "stale_view" }),
+            });
+          });
+          await v
+            .getByRole("button", { name: "文件操作: initial.txt", exact: true })
+            .click();
+          const recovered = page.waitForRequest((request) => {
+            const u = new URL(request.url());
+            return u.pathname.endsWith("/files") && !u.searchParams.has("have");
+          });
+          await v
+            .getByRole("menuitem", { name: "更多未变上下文", exact: true })
+            .click();
+          await recovered;
+          await file("initial.txt").waitFor();
+          assert.equal(injected, true);
+          await page.unroute("**/api/apps/diffview/patch?*");
+          // Explicit refresh carries server-side intent. On wide layouts it is the
+          // toolbar button; the options-menu copy exists only on compact layouts.
+          const forced = page.waitForRequest((request) => {
+            const u = new URL(request.url());
+            return (
+              u.pathname.endsWith("/files") &&
+              u.searchParams.get("refresh") === "1"
+            );
+          });
+          await v.getByRole("button", { name: "刷新", exact: true }).click();
+          await forced;
+        }
         await bounds();
         if (process.env.DIFFVIEW_MENU_SCREENSHOTS)
           await page.screenshot({

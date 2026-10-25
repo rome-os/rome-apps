@@ -9,6 +9,7 @@ import {
   type FileEntry,
   type FingerprintInfo,
   type Mode,
+  type ResolvedComparison,
 } from "./git.js";
 import { isPageable, pageEnd } from "../shared/paging.js";
 
@@ -302,8 +303,9 @@ export async function buildSnapshot(
   m: Mode,
   context: number,
   info: FingerprintInfo,
+  resolved?: ResolvedComparison,
 ): Promise<Snapshot> {
-  const cmp = await comparison(repo, m, info.head);
+  const cmp = resolved ?? (await comparison(repo, m, info.head));
   const text =
     cmp.fallback ??
     (await git(
@@ -327,12 +329,13 @@ export async function buildPage(
   context: number,
   info: FingerprintInfo,
   subset: FileEntry[],
+  resolved?: ResolvedComparison,
 ): Promise<SnapshotFile[]> {
   const tracked = subset.filter((f) => !f.untracked);
-  const cmp = await comparison(repo, m, info.head);
+  const cmp = resolved ?? (await comparison(repo, m, info.head));
   let text = "";
   if (tracked.length) {
-    if (cmp.fallback) {
+    if (cmp.fallback !== undefined) {
       const wanted = new Set(tracked.map((f) => f.path));
       text = splitPatch(cmp.fallback)
         .filter((c) => {
