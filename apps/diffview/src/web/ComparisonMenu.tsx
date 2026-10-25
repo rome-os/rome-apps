@@ -125,15 +125,15 @@ export function ComparisonMenu({
   );
   const drill = (next: Pane, label: string, selected: boolean) => (
     <DropdownMenuItem
-      className="relative pl-8"
+      className={selected ? "relative pr-14" : "relative pr-8"}
       onSelect={(e) => {
         e.preventDefault();
         enter(next);
       }}
     >
-      {selected && <Check className="absolute left-2 size-4" />}
-      <span>{label}</span>
-      <ChevronRight className="ml-auto text-muted-foreground" />
+      <span className="min-w-0 truncate">{label}</span>
+      {selected && <Check className="absolute right-8 size-4" />}
+      <ChevronRight className="absolute right-2 size-4 text-muted-foreground" />
     </DropdownMenuItem>
   );
   const trackingReady = tracking?.state === "ready";
@@ -533,6 +533,7 @@ export function ComparisonMenu({
               ) : (
                 <>
                   <DropdownMenuItem
+                    className="relative pr-8"
                     onSelect={(e) => {
                       e.preventDefault();
                       enter("branch");
@@ -544,7 +545,7 @@ export function ComparisonMenu({
                         ? state.ref || defaultBase
                         : desc.from}
                     </span>
-                    <ChevronRight className="shrink-0" />
+                    <ChevronRight className="absolute right-2 size-4" />
                   </DropdownMenuItem>
                   {drill("commit", t.committed, state.mode === "commit")}
                   {state.mode === "ref" && (

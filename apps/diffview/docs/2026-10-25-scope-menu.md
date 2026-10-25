@@ -9,6 +9,9 @@ contextual revision selector (base → target, or selected commit) next to the s
 
 All primary labels share the same left inset. Selected indicators use the shared
 right inset; the unpushed ahead count sits immediately beside its label.
+The secondary selector uses the same text inset for Base, Committed, section labels
+and radio choices, with drill arrows in the radio-check column. Committed mode
+keeps its additional selected check beside the arrow, never before its label.
 
 ## Comparison rules
 

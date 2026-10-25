@@ -54,6 +54,66 @@ async function scopeAlignment(view, branchSelected) {
   assert.equal(await branch.locator("svg").count(), branchSelected ? 1 : 0);
 }
 
+// Both drill-down entries share the local radio rows' text and trailing-icon rails.
+async function revisionAlignment(view, committed = false) {
+  const base = view.getByRole("menuitem", { name: /^基准/ });
+  const history = view.getByRole("menuitem", { name: "已提交", exact: true });
+  const geometry = (item) =>
+    item.evaluate((element) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (!node.textContent.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        return rect.x;
+      }
+      throw new Error("Missing menu label");
+    });
+  const left = await geometry(base);
+  assert.ok(
+    Math.abs(left - (await geometry(history))) < 1,
+    "Revision entries share a left edge",
+  );
+  const arrow = await base.locator(".lucide-chevron-right").boundingBox();
+  const historyArrow = await history
+    .locator(".lucide-chevron-right")
+    .boundingBox();
+  assert.ok(
+    Math.abs(arrow.x - historyArrow.x) < 1,
+    "Drill arrows share a trailing column",
+  );
+  const row = await base.boundingBox();
+  assert.ok(Math.abs(row.x + row.width - arrow.x - arrow.width - 8) < 1);
+  for (const item of await view
+    .locator(
+      '[role="menu"] [role="menuitemradio"], [role="menu"] [data-slot="dropdown-menu-label"]',
+    )
+    .all()) {
+    assert.ok(
+      Math.abs(left - (await geometry(item))) < 1,
+      "All section labels and choices align",
+    );
+  }
+  if (committed) {
+    const check = await history.locator(".lucide-check").boundingBox();
+    assert.ok(
+      check.x > left && check.x + check.width <= historyArrow.x,
+      "Committed selection stays on the right without moving its label",
+    );
+  } else {
+    const check = await view
+      .locator('[role="menuitemradio"][aria-checked="true"] svg')
+      .first()
+      .boundingBox();
+    assert.ok(
+      Math.abs(check.x - arrow.x) < 1,
+      "Arrows and radio checks share a trailing column",
+    );
+  }
+}
+
 // Production UI + production API; every Git operation is confined to this disposable sandbox.
 test(
   "scope menu, local history, tracking and branch controls in standalone/sidebar",
@@ -386,10 +446,14 @@ test(
           0,
         );
         await scope.click();
+        await bounds();
         await scopeAlignment(v, true);
         await shot("branch-selected");
         await v.getByRole("menu").press("Escape");
         await endpoints.click();
+        await bounds();
+        await revisionAlignment(v);
+        await shot("revision-root");
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         await v.getByRole("menuitemradio", { name: /Local feature/ }).waitFor();
         await bounds();
@@ -412,6 +476,9 @@ test(
         assert.match(await scope.textContent(), /^分支/);
         assert.equal(await endpoints.count(), 1);
         await endpoints.click();
+        await bounds();
+        await revisionAlignment(v, true);
+        await shot("revision-committed");
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         const input = v.getByRole("textbox", { name: "选择提交", exact: true });
         await input.fill(initial);
