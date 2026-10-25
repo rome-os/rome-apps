@@ -1,0 +1,22 @@
+formatVersion: 2
+id: diffview
+name: Diff
+version: 0.1.1
+description: Read-only Git diff browser for local repositories, working changes, branches, pull requests, and arbitrary refs.
+# Shown on the app's social share card and as the preview text beside it.
+# One sentence, at most 80 characters (40 for CJK): lead with what the user
+# gets, no jargon — write it like an App Store subtitle. Without it the card
+# shows no description at all, so fill it in and update it when the app's
+# purpose changes.
+tagline: 在一个视图中审阅工作区、分支与 PR 的代码变更
+icon: assets/icon.svg
+appRoot: dist
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: Diff
+  navLabel: Diff
+
+api:
+  entry: api/index

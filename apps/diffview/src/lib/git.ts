@@ -1,0 +1,811 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { spawn } from "node:child_process";
+import { realpath, readdir, lstat, open } from "node:fs/promises";
+import { resolve, relative, isAbsolute, join } from "node:path";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { constants } from "node:fs";
+export const ROOT = join(
+  homedir(),
+  ".rome",
+  process.env.ROME_PROFILE || "default",
+  "projects",
+);
+export class GitError extends Error {
+  constructor(
+    public code: string,
+    message = code,
+  ) {
+    super(message);
+  }
+}
+export function validateRef(ref: string) {
+  if (
+    !ref ||
+    ref.length > 256 ||
+    ref.startsWith("-") ||
+    /[\x00-\x20\x7f]/.test(ref)
+  )
+    throw new GitError("invalid_ref");
+  return ref;
+}
+export function inside(root: string, path: string) {
+  const rel = relative(root, path);
+  return !isAbsolute(rel) && rel !== ".." && !rel.startsWith("../");
+}
+const allowedCache = new Map<string, { at: number; repo: string }>();
+/** Validated repositories are remembered for a few seconds: the check costs three processes. */
+export async function allowedRepo(input: string, root = ROOT) {
+  const key = root + "\0" + input;
+  const hit = allowedCache.get(key);
+  if (hit && Date.now() - hit.at < 10_000) return hit.repo;
+  const repo = await allowedRepoUncached(input, root);
+  allowedCache.set(key, { at: Date.now(), repo });
+  if (allowedCache.size > 64)
+    allowedCache.delete(allowedCache.keys().next().value!);
+  return repo;
+}
+async function allowedRepoUncached(input: string, root = ROOT) {
+  const base = await realpath(root);
+  const repo = await realpath(input).catch(() => {
+    throw new GitError("not_repo");
+  });
+  if (!inside(base, repo)) throw new GitError("forbidden_path");
+  const top = (
+    await git(repo, ["rev-parse", "--show-toplevel"]).catch(() => {
+      throw new GitError("not_repo");
+    })
+  ).trim();
+  if ((await realpath(top)) !== repo) throw new GitError("not_repo");
+  const dir = (await git(repo, ["rev-parse", "--absolute-git-dir"])).trim();
+  if (!inside(base, await realpath(dir))) throw new GitError("forbidden_path");
+  return repo;
+}
+/** Per-request counters so the API can report where a request's time went (Server-Timing). */
+export interface Trace {
+  spawns: number;
+  spawnMs: number;
+  cacheHits: number;
+  cacheMisses: number;
+}
+export const traceStore = new AsyncLocalStorage<Trace>();
+export function command(
+  cwd: string,
+  bin: string,
+  args: string[],
+  cap = 8 * 1024 * 1024,
+  timeout = 15000,
+  input?: string,
+  /** `latin1` keeps every byte of binary output (cat-file); text output stays utf8. */
+  encoding: "utf8" | "latin1" = "utf8",
+): Promise<string> {
+  const trace = traceStore.getStore();
+  const started = performance.now();
+  return new Promise((res, rej) => {
+    let chunks: Buffer[] = [],
+      size = 0,
+      stderr = "",
+      done = false;
+    const p = spawn(bin, args, {
+      cwd,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_OPTIONAL_LOCKS: "0",
+        GH_PROMPT_DISABLED: "true",
+      },
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    });
+    if (input !== undefined) {
+      p.stdin!.on("error", () => {});
+      p.stdin!.end(input);
+    }
+    const finish = (e?: Error, out?: string) => {
+      if (done) return;
+      done = true;
+      if (trace) {
+        trace.spawns++;
+        trace.spawnMs += performance.now() - started;
+      }
+      clearTimeout(timer);
+      e ? rej(e) : res(out || "");
+    };
+    const timer = setTimeout(() => {
+      p.kill("SIGKILL");
+      finish(new GitError("timeout"));
+    }, timeout);
+    p.stdout!.on("data", (b: Buffer) => {
+      size += b.length;
+      if (size > cap) {
+        p.kill("SIGKILL");
+        finish(new GitError("output_limit"));
+      } else chunks.push(b);
+    });
+    p.stderr!.on("data", (b) => {
+      if (stderr.length < 2000) stderr += b.toString();
+    });
+    p.on("error", (e) =>
+      finish(
+        new GitError(
+          (e as NodeJS.ErrnoException).code === "ENOENT"
+            ? "missing_tool"
+            : "command_failed",
+          e.message,
+        ),
+      ),
+    );
+    p.on("close", (code) =>
+      finish(
+        code ? new GitError("command_failed", stderr.trim()) : undefined,
+        Buffer.concat(chunks).toString(encoding),
+      ),
+    );
+  });
+}
+export function git(
+  cwd: string,
+  args: string[],
+  cap?: number,
+  timeout?: number,
+  input?: string,
+  encoding?: "utf8" | "latin1",
+) {
+  return command(
+    cwd,
+    "git",
+    ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", ...args],
+    cap,
+    timeout,
+    input,
+    encoding,
+  );
+}
+export async function sha(repo: string, ref: string) {
+  validateRef(ref);
+  return (
+    await git(repo, [
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      ref + "^{commit}",
+    ]).catch(() => {
+      throw new GitError("invalid_ref");
+    })
+  ).trim();
+}
+const tryGit = async (r: string, a: string[], fallback = "") =>
+  git(r, a)
+    .then((x) => x.trim())
+    .catch(() => fallback);
+export function defaultBase(repo: string) {
+  return cached(
+    repo + ":default-base",
+    () => defaultBaseUncached(repo),
+    30_000,
+  );
+}
+async function defaultBaseUncached(repo: string) {
+  const origin = await tryGit(repo, [
+    "symbolic-ref",
+    "--short",
+    "refs/remotes/origin/HEAD",
+  ]);
+  if (origin) return origin;
+  for (const ref of ["main", "master"])
+    if (await tryGit(repo, ["rev-parse", "--verify", ref])) return ref;
+  return await tryGit(repo, ["rev-parse", "--abbrev-ref", "HEAD"], "HEAD");
+}
+export async function scanRepos(root = ROOT) {
+  const base = await realpath(root);
+  const seen = new Set<string>(),
+    repos: string[] = [];
+  async function walk(path: string, depth: number) {
+    let real: string;
+    try {
+      real = await realpath(path);
+      if (!inside(base, real) || seen.has(real)) return;
+      seen.add(real);
+      const entries = await readdir(real, { withFileTypes: true });
+      if (entries.some((e) => e.name === ".git")) {
+        try {
+          repos.push(await allowedRepo(real, base));
+        } catch {}
+      }
+      if (depth >= 3) return;
+      await Promise.all(
+        entries
+          .filter(
+            (e) =>
+              e.isDirectory() &&
+              !e.name.startsWith(".") &&
+              !["node_modules", "dist", "vendor"].includes(e.name),
+          )
+          .map((e) => walk(join(real, e.name), depth + 1)),
+      );
+    } catch {}
+  }
+  await walk(base, 0);
+  return Promise.all(
+    repos.sort().map(async (path) => ({
+      path,
+      name: relative(base, path),
+      branch: await tryGit(path, ["symbolic-ref", "--short", "HEAD"], "HEAD"),
+      base: await defaultBase(path),
+      lastCommit:
+        Number(await tryGit(path, ["log", "-1", "--format=%ct"], "0")) || 0,
+    })),
+  );
+}
+export interface FileEntry {
+  path: string;
+  oldPath?: string;
+  status: string;
+  added: number;
+  deleted: number;
+  binary: boolean;
+  collapsed: boolean;
+  untracked?: boolean;
+}
+export function parseNumstat(text: string) {
+  const fields = text.split("\0");
+  const out = new Map<
+    string,
+    { added: number; deleted: number; binary: boolean; oldPath?: string }
+  >();
+  for (let i = 0; i < fields.length; i++) {
+    if (!fields[i]) continue;
+    const m = /^([^\t]+)\t([^\t]+)\t([\s\S]*)$/.exec(fields[i]);
+    if (!m) continue;
+    let path = m[3],
+      oldPath: string | undefined;
+    if (!path) {
+      oldPath = fields[++i];
+      path = fields[++i];
+    }
+    out.set(path, {
+      added: m[1] === "-" ? 0 : Number(m[1]),
+      deleted: m[2] === "-" ? 0 : Number(m[2]),
+      binary: m[1] === "-",
+      oldPath,
+    });
+  }
+  return out;
+}
+export function parseRaw(text: string) {
+  const a = text.split("\0");
+  const out: { path: string; oldPath?: string; status: string }[] = [];
+  for (let i = 0; i < a.length; i++) {
+    if (!a[i].startsWith(":")) continue;
+    const status = a[i].split(" ").at(-1)![0];
+    let path = a[++i],
+      oldPath: string | undefined;
+    if (status === "R" || status === "C") {
+      oldPath = path;
+      path = a[++i];
+    }
+    out.push({ path, oldPath, status });
+  }
+  return out;
+}
+export function collapseHint(path: string) {
+  return /(^|\/)([^/]*lock[^/]*|[^/]*\.min\.[^/]+|[^/]*\.generated\.[^/]+|dist|vendor)(\/|$)/i.test(
+    path,
+  );
+}
+export interface Mode {
+  mode: "uncommitted" | "branch" | "pr" | "ref";
+  filter?: string;
+  base?: string;
+  ref?: string;
+  dots?: string;
+  target?: string;
+  pr?: string;
+}
+export function diffArgs(m: Mode, from?: string, to = "HEAD") {
+  if (m.mode === "uncommitted")
+    return m.filter === "staged"
+      ? ["--cached"]
+      : m.filter === "unstaged"
+        ? []
+        : ["HEAD"];
+  if (!from) throw new GitError("invalid_ref");
+  if (m.mode === "branch" || m.mode === "pr") return [from + "..." + to];
+  return m.target === "worktree"
+    ? [from]
+    : [from + (m.dots === "two" ? ".." : "...") + to];
+}
+const prCache = new Map<
+  string,
+  {
+    at: number;
+    promise: Promise<{ from: string; to: string; fallback?: string }>;
+  }
+>();
+async function prCompare(repo: string, n: string) {
+  if (!/^[1-9]\d{0,7}$/.test(n)) throw new GitError("invalid_pr");
+  const key = repo + ":" + n,
+    hit = prCache.get(key);
+  if (hit && Date.now() - hit.at < 60000) return hit.promise;
+  const promise = (async () => {
+    let meta: { baseRefName: string };
+    try {
+      meta = JSON.parse(
+        await command(repo, "gh", ["pr", "view", n, "--json", "baseRefName"]),
+      );
+    } catch {
+      throw new GitError("pr_unavailable");
+    }
+    try {
+      const temp = "refs/diffview/pr/" + n;
+      await git(
+        repo,
+        [
+          "fetch",
+          "--no-tags",
+          "--no-write-fetch-head",
+          "origin",
+          "+refs/pull/" + n + "/head:" + temp,
+        ],
+        undefined,
+        25000,
+      );
+      const base = await sha(
+        repo,
+        "origin/" + validateRef(meta.baseRefName),
+      ).catch(() => sha(repo, meta.baseRefName));
+      return { from: base, to: await sha(repo, temp) };
+    } catch {
+      return {
+        from: "",
+        to: "",
+        fallback: await command(
+          repo,
+          "gh",
+          ["pr", "diff", n, "--color=never"],
+          8 * 1024 * 1024,
+          25000,
+        ),
+      };
+    }
+  })();
+  prCache.set(key, { at: Date.now(), promise });
+  if (prCache.size > 6) prCache.delete(prCache.keys().next().value!);
+  return promise;
+}
+export async function comparison(
+  repo: string,
+  m: Mode,
+  head?: string,
+): Promise<{ args: string[]; fallback?: string }> {
+  if (m.mode === "pr") {
+    const r = await prCompare(repo, m.pr || "");
+    return { ...r, args: r.fallback ? [] : diffArgs(m, r.from, r.to) };
+  }
+  if (m.mode === "uncommitted") {
+    let args = diffArgs(m);
+    if (
+      m.filter !== "staged" &&
+      m.filter !== "unstaged" &&
+      !(head ?? (await tryGit(repo, ["rev-parse", "--verify", "HEAD"])))
+    )
+      args = ["--cached"];
+    return { args };
+  }
+  const from = await sha(
+    repo,
+    validateRef(
+      m.mode === "branch"
+        ? m.base || (await defaultBase(repo))
+        : m.ref || (await defaultBase(repo)),
+    ),
+  );
+  if (m.mode === "ref" && m.target === "worktree" && m.dots !== "two") {
+    const merge = (await git(repo, ["merge-base", from, "HEAD"])).trim();
+    return { args: [merge] };
+  }
+  return { args: diffArgs(m, from) };
+}
+/** `Promise.all(items.map(fn))` that never has more than `limit` calls in flight. */
+export async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i], i);
+      }
+    }),
+  );
+  return out;
+}
+export interface FingerprintInfo {
+  hash: string;
+  /** Commit HEAD points at; empty on an unborn branch. */
+  head: string;
+  untracked: string[];
+  /** Paths git status lists as changed (staged, unstaged or untracked): a free size signal. */
+  changed: number;
+}
+/**
+ * One `git status` gives everything the other views need: HEAD, the untracked files, and which
+ * paths changed (whose mtime/size are folded in so editing an already-modified file is noticed).
+ */
+async function fingerprintInfoUncached(repo: string): Promise<FingerprintInfo> {
+  const status = await git(repo, [
+    "status",
+    "--porcelain=v2",
+    "-z",
+    "--branch",
+    "--untracked-files=all",
+  ]);
+  const parts = status.split("\0");
+  let head = "";
+  const paths: string[] = [],
+    untracked: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const e = parts[i];
+    if (!e) continue;
+    if (e.startsWith("# branch.oid ")) {
+      const oid = e.slice("# branch.oid ".length);
+      head = oid === "(initial)" ? "" : oid;
+    } else if (e[0] === "1") paths.push(e.split(" ").slice(8).join(" "));
+    else if (e[0] === "2") {
+      paths.push(e.split(" ").slice(9).join(" "));
+      i++; // the original path follows as its own NUL field
+    } else if (e[0] === "u") paths.push(e.split(" ").slice(10).join(" "));
+    else if (e[0] === "?") {
+      untracked.push(e.slice(2));
+      paths.push(e.slice(2));
+    }
+  }
+  // mtime and size make editing an already-modified file visible. With tens of thousands of
+  // changed paths that is thousands of lstat calls per poll (measured: +252 MB of transient memory
+  // for 60,000 untracked files), so past a limit only the status text itself is hashed.
+  const info =
+    paths.length <= 5000
+      ? await mapLimit(paths, 64, async (path) => {
+          const s = await lstat(join(repo, path)).catch(() => null);
+          return [path, s?.mtimeMs, s?.size];
+        })
+      : [];
+  const hash = createHash("sha256")
+    .update(status + JSON.stringify(info))
+    .digest("hex");
+  return { hash, head, untracked, changed: paths.length };
+}
+/** Concurrent callers (several tabs polling) share one `git status` instead of each running it. */
+export function fingerprintInfo(repo: string): Promise<FingerprintInfo> {
+  return cached(repo + ":fingerprint", () => fingerprintInfoUncached(repo), 0);
+}
+export async function fingerprint(repo: string) {
+  return (await fingerprintInfo(repo)).hash;
+}
+const cache = new Map<string, { at: number; value: unknown }>();
+const inflight = new Map<string, Promise<unknown>>();
+/** TTL cache with single-flight: concurrent misses for one key share a single computation. */
+export async function cached<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl = 2000,
+): Promise<T> {
+  const v = cache.get(key);
+  const trace = traceStore.getStore();
+  if (v && Date.now() - v.at < ttl) {
+    if (trace) trace.cacheHits++;
+    return v.value as T;
+  }
+  const running = inflight.get(key);
+  if (running) {
+    if (trace) trace.cacheHits++;
+    return running as Promise<T>;
+  }
+  if (trace) trace.cacheMisses++;
+  const promise = fn().then(
+    (value) => {
+      cache.set(key, { at: Date.now(), value });
+      while (cache.size > 32) cache.delete(cache.keys().next().value!);
+      inflight.delete(key);
+      return value;
+    },
+    (e) => {
+      inflight.delete(key);
+      throw e;
+    },
+  );
+  inflight.set(key, promise);
+  return promise;
+}
+/** Stale-while-revalidate: answer from cache immediately and refresh in the background. */
+export async function cachedSWR<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number,
+): Promise<T> {
+  const v = cache.get(key);
+  if (v) {
+    if (Date.now() - v.at >= ttl) void cached(key, fn, 0).catch(() => {});
+    return v.value as T;
+  }
+  return cached(key, fn, ttl);
+}
+export function splitPatch(patch: string) {
+  return patch
+    .split(/(?=^diff --git )/m)
+    .filter((x) => x.startsWith("diff --git "));
+}
+export async function files(repo: string, m: Mode) {
+  const cmp = await comparison(repo, m);
+  let entries: FileEntry[] = [];
+  if (cmp.fallback) {
+    entries = splitPatch(cmp.fallback).map((p) => {
+      const path =
+        /^\+\+\+ b\/(.*)$/m.exec(p)?.[1] ||
+        /^diff --git a\/(.*?) b\//m.exec(p)?.[1] ||
+        "";
+      return {
+        path,
+        status: "M",
+        added: (p.match(/^\+(?!\+\+)/gm) || []).length,
+        deleted: (p.match(/^-(?!--)/gm) || []).length,
+        binary: /Binary files/.test(p),
+        collapsed: collapseHint(path),
+      };
+    });
+  } else {
+    const base = ["diff", "--no-ext-diff", "--no-textconv", "-M", ...cmp.args];
+    const [num, raw] = await Promise.all([
+      git(repo, [...base, "--numstat", "-z", "--"]),
+      git(repo, [...base, "--raw", "-z", "--"]),
+    ]);
+    const counts = parseNumstat(num);
+    entries = parseRaw(raw).map((f) => ({
+      ...f,
+      ...counts.get(f.path),
+      added: counts.get(f.path)?.added || 0,
+      deleted: counts.get(f.path)?.deleted || 0,
+      binary: counts.get(f.path)?.binary || false,
+      collapsed:
+        collapseHint(f.path) ||
+        (counts.get(f.path)?.added || 0) + (counts.get(f.path)?.deleted || 0) >
+          2000,
+    }));
+  }
+  if (m.mode === "uncommitted" && m.filter !== "staged") {
+    const paths = (
+      await git(repo, ["ls-files", "-o", "--exclude-standard", "-z"])
+    )
+      .split("\0")
+      .filter(Boolean);
+    const read = await mapLimit(paths, 32, async (path) => {
+      let added = 0,
+        binary = false,
+        large = false;
+      try {
+        const data = await readSafe(repo, path, 512 * 1024);
+        large = data.large;
+        binary = data.binary;
+        added = data.text
+          ? data.text.split("\n").length - (data.text.endsWith("\n") ? 1 : 0)
+          : 0;
+      } catch {
+        large = true;
+      }
+      return {
+        path,
+        status: "?",
+        added,
+        deleted: 0,
+        binary,
+        collapsed: large || added > 2000 || collapseHint(path),
+        untracked: true,
+      };
+    });
+    entries.push(...read);
+  }
+  return entries.sort((a, b) => a.path.localeCompare(b.path));
+}
+export async function readSafe(repo: string, path: string, limit: number) {
+  if (
+    !path ||
+    isAbsolute(path) ||
+    !inside(repo, resolve(repo, path)) ||
+    /[\x00]/.test(path)
+  )
+    throw new GitError("forbidden_path");
+  const real = await realpath(join(repo, path));
+  if (!inside(repo, real)) throw new GitError("forbidden_path");
+  const s = await lstat(join(repo, path));
+  if (!s.isFile() || s.isSymbolicLink()) throw new GitError("unsupported_file");
+  const h = await open(real, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const opened = await realpath("/proc/self/fd/" + h.fd);
+    if (!inside(repo, opened)) throw new GitError("forbidden_path");
+    const size = (await h.stat()).size;
+    const b = Buffer.alloc(Math.min(size, limit));
+    await h.read(b, 0, b.length, 0);
+    const binary = b.includes(0);
+    return {
+      text: binary ? "" : b.toString("utf8"),
+      binary,
+      large: size > limit,
+      size,
+    };
+  } finally {
+    await h.close();
+  }
+}
+export async function patch(
+  repo: string,
+  m: Mode,
+  path: string,
+  context = 3,
+  anyway = false,
+  known?: FileEntry,
+) {
+  const entry =
+    known ??
+    (
+      await cached(repo + JSON.stringify(m) + ":file-list", () =>
+        files(repo, m),
+      )
+    ).find((f) => f.path === path);
+  if (!entry) throw new GitError("file_not_found");
+  if (entry.binary)
+    return { patch: "", binary: true, truncated: false, collapsed: true };
+  const cap = anyway ? 8 * 1024 * 1024 : 512 * 1024;
+  let text = "";
+  let totalLines: number | undefined;
+  if (entry.untracked) {
+    const data = await readSafe(repo, path, cap);
+    if (data.large)
+      return {
+        patch: "",
+        binary: data.binary,
+        truncated: true,
+        collapsed: true,
+      };
+    if (data.binary)
+      return { patch: "", binary: true, truncated: false, collapsed: true };
+    const lines = data.text.split("\n");
+    if (lines.at(-1) === "") lines.pop();
+    totalLines = lines.length;
+    text =
+      `diff --git a/${path} b/${path}\nnew file mode 100644\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n` +
+      lines.map((l) => "+" + l + "\n").join("") +
+      (data.text && !data.text.endsWith("\n")
+        ? "\\ No newline at end of file\n"
+        : "");
+  } else {
+    const cmp = await comparison(repo, m);
+    if (cmp.fallback)
+      text =
+        splitPatch(cmp.fallback).find(
+          (p) =>
+            p.includes("\n+++ b/" + path + "\n") ||
+            p.includes("\n--- a/" + path + "\n"),
+        ) || "";
+    else
+      try {
+        text = await git(
+          repo,
+          [
+            "-c",
+            "core.quotePath=false",
+            "--literal-pathspecs",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "-M",
+            "--unified=" + context,
+            ...cmp.args,
+            "--",
+            ...(entry.oldPath ? [entry.oldPath] : []),
+            path,
+          ],
+          cap,
+        );
+      } catch (e) {
+        if (e instanceof GitError && e.code === "output_limit")
+          return { patch: "", binary: false, truncated: true, collapsed: true };
+        throw e;
+      }
+  }
+  // The line count makes the final omitted-context bar exact without shipping blobs to the UI.
+  if (totalLines === undefined) {
+    const ids = /^index ([0-9a-f]+)\.\.([0-9a-f]+)/m.exec(text);
+    const id = ids ? (/^0+$/.test(ids[2]) ? ids[1] : ids[2]) : undefined;
+    if (id && !/^0+$/.test(id))
+      totalLines = await cached(
+        repo + ":blob-lines:" + id + ":" + cap,
+        async () => {
+          try {
+            const blob = await git(repo, ["cat-file", "blob", id], cap);
+            return blob
+              ? blob.split("\n").length - (blob.endsWith("\n") ? 1 : 0)
+              : 0;
+          } catch {
+            return undefined;
+          }
+        },
+        60000,
+      );
+  }
+  return {
+    totalLines,
+    patch: text,
+    binary: /^Binary files|^GIT binary patch/m.test(text),
+    truncated: Buffer.byteLength(text) > cap,
+    collapsed: entry.collapsed,
+  };
+}
+export async function refs(repo: string) {
+  const [branches, commits, tags] = await Promise.all([
+    git(repo, [
+      "for-each-ref",
+      "--format=%(refname:short)",
+      "refs/heads/",
+      "refs/remotes/",
+    ]),
+    tryGit(repo, ["log", "-40", "--format=%H%x09%s"]),
+    git(repo, ["tag", "--list"]),
+  ]);
+  let prs: unknown[] = [],
+    prState = "ready";
+  try {
+    prs = JSON.parse(
+      await command(repo, "gh", [
+        "pr",
+        "list",
+        "--limit",
+        "50",
+        "--json",
+        "number,title,headRefName,baseRefName,author",
+      ]),
+    );
+  } catch (e) {
+    const err = e as GitError;
+    prState =
+      err.code === "missing_tool"
+        ? "missing"
+        : /auth|login|token/i.test(err.message)
+          ? "unauthenticated"
+          : /remote/i.test(err.message)
+            ? "no_remote"
+            : "unavailable";
+  }
+  return {
+    branches: branches.trim().split("\n").filter(Boolean),
+    tags: tags.trim().split("\n").filter(Boolean),
+    commits: commits
+      .split("\n")
+      .filter(Boolean)
+      .map((s) => {
+        const [sha, ...title] = s.split("\t");
+        return { sha, title: title.join("\t") };
+      }),
+    prs,
+    prState,
+  };
+}
+
+/**
+ * The repository a conversation "lives in", when that is unambiguous: its project directory is
+ * itself a repository, or contains exactly one. Otherwise empty (the client then remembers the
+ * first repository the conversation reviewed).
+ */
+export function homeRepo(
+  repos: { path: string }[],
+  projectDir: string,
+): string {
+  const dir = projectDir.replace(/\/+$/, "");
+  const exact = repos.find((r) => r.path === dir);
+  if (exact) return exact.path;
+  const inside = repos.filter((r) => r.path.startsWith(dir + "/"));
+  return inside.length === 1 ? inside[0].path : "";
+}
