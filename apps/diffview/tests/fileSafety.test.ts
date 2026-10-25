@@ -6,6 +6,7 @@ import {
   open,
   lstat,
   realpath,
+  rename,
   rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -60,6 +61,11 @@ test("portable descriptor checks succeed without procfs but reject identity/loca
           throw Object.assign(Error("denied"), { code: "EACCES" });
         return path;
       }),
+    );
+    await rename(path, join(root, "moved.txt"));
+    await writeFile(path, "replacement");
+    await assert.rejects(
+      verifyOpenedFile(root, path, expected, handle, noProc),
     );
   } finally {
     await handle.close();

@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { realpath, lstat } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { relative, isAbsolute, sep } from "node:path";
@@ -25,6 +25,14 @@ export async function verifyOpenedFile(
   const current = await resolvePath(path);
   if (current !== path || !within(repo, current))
     throw Error("file_location_changed");
+  const currentStat = await lstat(current);
+  if (
+    !currentStat.isFile() ||
+    currentStat.isSymbolicLink() ||
+    currentStat.dev !== actual.dev ||
+    currentStat.ino !== actual.ino
+  )
+    throw Error("pathname_identity_changed");
   try {
     const opened = await resolvePath("/proc/self/fd/" + handle.fd);
     if (!within(repo, opened)) throw Error("opened_file_outside_repo");
