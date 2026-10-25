@@ -8,6 +8,52 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 
+// Match the shared radio-item geometry without turning Branch into a submenu.
+async function scopeAlignment(view, branchSelected) {
+  const local = view.getByRole("menuitemradio", {
+    name: "未提交",
+    exact: true,
+  });
+  const unpushed = view.getByRole("menuitemradio", { name: /未推送/ });
+  const branch = view.getByRole("menuitem", { name: "分支", exact: true });
+  const textBox = (item) =>
+    item.evaluate((element) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (!node.textContent.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.x, right: rect.right };
+      }
+      throw new Error("Missing menu label");
+    });
+  const [localLabel, branchLabel, unpushedLabel] = await Promise.all([
+    textBox(local),
+    textBox(branch),
+    textBox(unpushed),
+  ]);
+  assert.ok(
+    Math.abs(localLabel.x - branchLabel.x) < 1,
+    "Branch label must align with local scopes",
+  );
+  const hint = await unpushed.getByText("↑1", { exact: true }).boundingBox();
+  assert.ok(
+    hint.x - unpushedLabel.right >= 0 && hint.x - unpushedLabel.right <= 12,
+    "Ahead count must sit beside Unpushed, not at the far edge",
+  );
+  const check = await (branchSelected ? branch : local)
+    .locator("svg")
+    .boundingBox();
+  const row = await local.boundingBox();
+  assert.ok(
+    Math.abs(row.x + row.width - check.x - check.width - 8) < 1,
+    "Selected indicator must use the shared right inset",
+  );
+  assert.equal(await branch.locator("svg").count(), branchSelected ? 1 : 0);
+}
+
 // Production UI + production API; every Git operation is confined to this disposable sandbox.
 test(
   "scope menu, local history, tracking and branch controls in standalone/sidebar",
@@ -290,6 +336,7 @@ test(
         );
         assert.equal(await v.getByText("上一轮", { exact: true }).count(), 0);
         await bounds();
+        await scopeAlignment(v, false);
         await shot("root");
         await v.getByRole("menuitemradio", { name: /未推送/ }).click();
         await file("local.txt").waitFor();
@@ -338,6 +385,10 @@ test(
             .count(),
           0,
         );
+        await scope.click();
+        await scopeAlignment(v, true);
+        await shot("branch-selected");
+        await v.getByRole("menu").press("Escape");
         await endpoints.click();
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         await v.getByRole("menuitemradio", { name: /Local feature/ }).waitFor();

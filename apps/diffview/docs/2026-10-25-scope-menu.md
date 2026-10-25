@@ -7,6 +7,9 @@ Clicking Branch only reveals the secondary selector and opens no popup. Committe
 is an entry inside that secondary selector, with in-place commit history. Do not implement Last turn yet. Only Branch has the
 contextual revision selector (base → target, or selected commit) next to the scope/totals pill.
 
+All primary labels share the same left inset. Selected indicators use the shared
+right inset; the unpushed ahead count sits immediately beside its label.
+
 ## Comparison rules
 
 - **Unpushed** uses locally recorded tracking upstream, not the default/main branch.

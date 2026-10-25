@@ -181,7 +181,7 @@ export function ComparisonMenu({
           }
         >
           {t.unpushed}
-          <span className="ml-auto truncate pl-2 text-aux text-muted-foreground">
+          <span className="truncate text-aux text-muted-foreground">
             {upstreamHint}
           </span>
         </DropdownMenuRadioItem>
@@ -197,10 +197,10 @@ export function ComparisonMenu({
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem
-        className="relative pl-8"
+        className="relative pr-8"
         onSelect={() => pick({ mode: "ref" })}
       >
-        {revisionScope && <Check className="absolute left-2 size-4" />}
+        {revisionScope && <Check className="absolute right-2 size-4" />}
         <span>{t.branch}</span>
       </DropdownMenuItem>
       {/* Old PR links remain operable; PR is no longer a top-level scope in the normal menu. */}
