@@ -97,11 +97,14 @@ on the base branch itself ("HEAD is already at main") → compare with the worki
 staged → show all changes; no PR chosen → choose one; a PR number that matches nothing →
 "not found" rather than "no differences".
 
-## "This chat's repository"
+## Repository menu
 
-A conversation only records its project name. The label is claimed only when the project itself
-decides it (the project is, or contains exactly, that repository). Otherwise the app can only say
-which repository the conversation **opened first** and labels it that way; it never says "this chat's".
+Two sections: **Current directory repositories**, **Other repositories**. Membership follows
+`repos.selectedProject` (the selected conversation project directory), including the project
+itself and nested repositories with segment-aware path boundaries. It never follows the active
+diff repository or a remembered first-opened repository. Empty sections explain that no repos
+were found. There is one shared radio selection across both groups. No "return to repository"
+arrow, special home border, first-opened tag or duplicate section heading.
 
 ## Memory: what is bounded, and why
 

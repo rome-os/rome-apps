@@ -22,9 +22,15 @@ test(
     process.env.ROME_PROFILE = "menu";
     const repo = join(
       home,
-      ".rome/menu/projects/repository-with-a-deliberately-long-name",
+      ".rome/menu/projects/default/repository-with-a-deliberately-long-name",
     );
     await mkdir(repo, { recursive: true });
+    const otherRepo = join(home, ".rome/menu/projects/other");
+    await mkdir(otherRepo, { recursive: true });
+    execFileSync("git", ["init", "-b", "main"], {
+      cwd: otherRepo,
+      stdio: "pipe",
+    });
     const g = (...args) =>
       execFileSync("git", args, { cwd: repo, stdio: "pipe" }).toString().trim();
     g("init", "-b", "main");
@@ -158,6 +164,7 @@ test(
             v.getByRole("button", { name: "折叠文件: " + name, exact: true });
         await v.locator("diffs-container").first().waitFor();
         const bounds = async () => {
+          await v.waitForTimeout(150);
           const r = await v.evaluate(() => {
             const menu = document.querySelector('[role="menu"]'),
               els = [
@@ -199,7 +206,7 @@ test(
         await projectLink.waitFor();
         assert.match(
           await projectLink.getAttribute("href"),
-          /\/projects\/repository-with-a-deliberately-long-name\/initial.txt$/,
+          /\/projects\/default\/repository-with-a-deliberately-long-name\/initial.txt$/,
         );
         assert.equal(await projectLink.getAttribute("target"), "_blank");
         assert.match(await projectLink.getAttribute("rel"), /noopener/);
@@ -211,6 +218,53 @@ test(
             0,
           );
         await v.locator("main").press("Escape");
+        const overlap = await v
+          .locator('header[aria-label="变更工具栏"] button')
+          .evaluateAll((buttons) => {
+            const boxes = buttons.map((button) =>
+              button.getBoundingClientRect(),
+            );
+            return boxes.some((a, i) =>
+              boxes.some(
+                (b, j) =>
+                  j > i &&
+                  Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+                  Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1,
+              ),
+            );
+          });
+        assert.equal(overlap, false, "toolbar controls must not overlap");
+        const repoButton = v.getByRole("button", { name: "仓库", exact: true });
+        await repoButton.click();
+        await v.getByText("当前目录仓库", { exact: true }).waitFor();
+        await v.getByText("其它仓库", { exact: true }).waitFor();
+        await bounds();
+        const rows = v.locator('[role="menu"] [role="menuitemradio"]');
+        assert.deepEqual(await rows.allTextContents(), [
+          "default/repository-with-a-deliberately-long-name",
+          "other",
+        ]);
+        assert.equal(await rows.first().getAttribute("aria-checked"), "true");
+        await rows.last().click();
+        await repoButton.click();
+        assert.equal(
+          await v
+            .getByRole("menuitemradio", { name: "other", exact: true })
+            .getAttribute("aria-checked"),
+          "true",
+        );
+        await v
+          .getByRole("menuitemradio", {
+            name: "default/repository-with-a-deliberately-long-name",
+            exact: true,
+          })
+          .click();
+        assert.equal(
+          await v
+            .getByRole("button", { name: /回到.*仓库|Back to.*repository/ })
+            .count(),
+          0,
+        );
         await bounds();
         await scope.click();
         await v.getByRole("menuitemradio", { name: /未推送/ }).waitFor();

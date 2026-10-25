@@ -23,6 +23,10 @@ export function useHost() {
   return host;
 }
 const en = {
+  currentDirectoryRepos: "Current directory repositories",
+  otherRepos: "Other repositories",
+  noCurrentDirectoryRepos: "No repositories in the current directory.",
+  noOtherRepos: "No other repositories.",
   unpushed: "Unpushed",
   committed: "Committed",
   chooseCommit: "Choose a commit",
@@ -203,6 +207,10 @@ const en = {
   prNumber: "PR number",
 };
 const zh: typeof en = {
+  currentDirectoryRepos: "当前目录仓库",
+  otherRepos: "其它仓库",
+  noCurrentDirectoryRepos: "当前目录下没有仓库。",
+  noOtherRepos: "没有其它仓库。",
   unpushed: "未推送",
   committed: "已提交",
   chooseCommit: "选择提交",

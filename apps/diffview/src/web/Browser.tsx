@@ -39,7 +39,6 @@ import {
   FolderGit2,
   WrapText,
   Keyboard,
-  Undo2,
   LoaderCircle,
 } from "lucide-react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
@@ -51,13 +50,12 @@ import { PAGE_LOOKAHEAD, isPageable } from "../shared/paging";
 import { ComparisonMenu } from "./ComparisonMenu";
 import { api } from "./api";
 import type { TrackingInfo } from "../lib/git";
+import { groupRepositories } from "../shared/repositories";
 import { normalizeMode } from "../shared/mode";
 import { describeComparison, describeEmpty } from "../shared/describe";
 import {
   DEFAULT_CHAT_STATE,
   loadChatState,
-  loadHome,
-  rememberHome,
   loadPrefs,
   pickChatState,
   savePrefs,
@@ -346,11 +344,12 @@ function Browser() {
   const repos = useQuery({
     queryKey: ["repos", project],
     queryFn: ({ signal }) =>
-      api<{ repos: Repo[]; defaultRepo: string; homeRepo: string }>(
-        "repos",
-        { project },
-        signal,
-      ),
+      api<{
+        repos: Repo[];
+        defaultRepo: string;
+        homeRepo: string;
+        selectedProject: string;
+      }>("repos", { project }, signal),
     enabled: !chatId || chatProject.isFetched,
     refetchInterval: 60000,
   });
@@ -1145,26 +1144,10 @@ function Browser() {
     } catch {}
   }, [treeWidth]);
   const keepOpen = (e: Event) => e.preventDefault();
-  const [rememberedHome, setRememberedHome] = useState("");
-  useEffect(() => {
-    if (!ready) return;
-    setRememberedHome(loadHome(scopeId, localStorage));
-  }, [ready, scopeId]);
-  useEffect(() => {
-    // Nothing unambiguous about the project: remember the first repo this conversation reviews.
-    if (!ready || repos.data?.homeRepo || rememberedHome || !state.repo) return;
-    if (!repos.data?.repos.some((r) => r.path === state.repo)) return;
-    setRememberedHome(rememberHome(scopeId, state.repo, localStorage));
-  }, [ready, scopeId, repos.data, rememberedHome, state.repo]);
-  // "This chat's" is only claimed when the project itself says so (it is, or holds exactly, that
-  // repository). Otherwise all that is known is which repository was opened first.
-  const homeFromProject = !!repos.data?.homeRepo;
-  const homePath = repos.data?.homeRepo || rememberedHome;
-  const homeName =
-    repos.data?.repos.find((r) => r.path === homePath)?.name ||
-    homePath.split("/").at(-1) ||
-    "";
-  const awayFromHome = !!homePath && !!state.repo && state.repo !== homePath;
+  const repoGroups = groupRepositories(
+    repos.data?.repos || [],
+    repos.data?.selectedProject || "",
+  );
   const switchRepo = (repo: string) =>
     change({
       repo,
@@ -1323,7 +1306,11 @@ function Browser() {
               <Pill
                 aria-label={t.repo}
                 title={`${t.repo}: ${state.repo}`}
-                className={`${compact ? "max-w-32" : "max-w-48"} shrink ${awayFromHome ? "border-primary/40" : ""}`}
+                style={{
+                  maxWidth: compact ? "100%" : undefined,
+                  flexShrink: 1,
+                }}
+                className={compact ? "max-w-full" : "max-w-48"}
               >
                 <FolderGit2
                   size={15}
@@ -1338,42 +1325,51 @@ function Browser() {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
-              className="max-h-80 min-w-52 overflow-y-auto"
+              collisionPadding={8}
+              className="max-h-80 w-[min(24rem,var(--radix-dropdown-menu-content-available-width))] overflow-y-auto"
             >
-              <DropdownMenuLabel>{t.repo}</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={state.repo}
                 onValueChange={switchRepo}
               >
-                {(repos.data?.repos || []).map((r) => (
-                  <DropdownMenuRadioItem
-                    key={r.path}
-                    value={r.path}
-                    title={r.path}
-                  >
-                    <span className="truncate">{r.name}</span>
-                    {r.path === homePath && (
-                      <span className="ml-auto pl-2 text-aux text-muted-foreground">
-                        {homeFromProject ? t.thisChat : t.openedFirst}
-                      </span>
-                    )}
-                  </DropdownMenuRadioItem>
-                ))}
+                <DropdownMenuLabel title={repos.data?.selectedProject}>
+                  {t.currentDirectoryRepos}
+                </DropdownMenuLabel>
+                {repoGroups.current.length ? (
+                  repoGroups.current.map((r) => (
+                    <DropdownMenuRadioItem
+                      key={r.path}
+                      value={r.path}
+                      title={r.path}
+                    >
+                      <span className="truncate">{r.name}</span>
+                    </DropdownMenuRadioItem>
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-aux text-muted-foreground">
+                    {t.noCurrentDirectoryRepos}
+                  </p>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>{t.otherRepos}</DropdownMenuLabel>
+                {repoGroups.others.length ? (
+                  repoGroups.others.map((r) => (
+                    <DropdownMenuRadioItem
+                      key={r.path}
+                      value={r.path}
+                      title={r.path}
+                    >
+                      <span className="truncate">{r.name}</span>
+                    </DropdownMenuRadioItem>
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-aux text-muted-foreground">
+                    {t.noOtherRepos}
+                  </p>
+                )}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          {awayFromHome && (
-            <Quiet
-              label={(homeFromProject
-                ? t.backToChatRepo
-                : t.backToOpenedRepo
-              ).replace("{name}", homeName)}
-              className="border border-border/60"
-              onClick={() => switchRepo(homePath)}
-            >
-              <Undo2 size={15} />
-            </Quiet>
-          )}
         </div>
         <ComparisonMenu
           state={state}
