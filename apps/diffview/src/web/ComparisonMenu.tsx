@@ -38,6 +38,7 @@ interface Props {
   zh: boolean;
   compact: boolean;
   open: boolean;
+  commitEntry?: boolean;
   setOpen(open: boolean): void;
 }
 type Pane = "root" | "branch" | "commit" | "pr";
@@ -57,12 +58,16 @@ export function ComparisonMenu({
   zh,
   compact,
   open,
+  commitEntry = false,
   setOpen,
 }: Props) {
   const [pane, setPane] = useState<Pane>("root");
   const [draft, setDraft] = useState("");
   const [cursor, setCursor] = useState(0);
   const [branchOpen, setBranchOpen] = useState(false);
+  const revisionScope = state.mode === "ref" || state.mode === "commit";
+  const revisionOpen = branchOpen || (open && commitEntry);
+  const revisionPane = open && commitEntry ? "commit" : pane;
   const commits = useQuery({
     queryKey: ["history", state.repo, cursor],
     queryFn: ({ signal }) =>
@@ -71,7 +76,7 @@ export function ComparisonMenu({
         { repo: state.repo, cursor: String(cursor) },
         signal,
       ),
-    enabled: open && pane === "commit" && !!state.repo,
+    enabled: revisionOpen && revisionPane === "commit" && !!state.repo,
   });
   const reset = () => {
     setDraft("");
@@ -80,7 +85,13 @@ export function ComparisonMenu({
   };
   const onOpenChange = (value: boolean) => {
     reset();
+    if (value) setBranchOpen(false);
     setOpen(value);
+  };
+  const onRevisionOpenChange = (value: boolean) => {
+    reset();
+    setBranchOpen(value);
+    setOpen(false);
   };
   const pick = (patch: Partial<State>) => {
     change(patch);
@@ -98,6 +109,10 @@ export function ComparisonMenu({
       <DropdownMenuItem
         onSelect={(e) => {
           e.preventDefault();
+          if (open && commitEntry) {
+            setOpen(false);
+            setBranchOpen(true);
+          }
           enter("root");
         }}
         aria-label={`${t.back}: ${title}`}
@@ -181,8 +196,13 @@ export function ComparisonMenu({
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
-      {drill("branch", t.branch, state.mode === "ref")}
-      {drill("commit", t.committed, state.mode === "commit")}
+      <DropdownMenuItem
+        className="relative pl-8"
+        onSelect={() => pick({ mode: "ref" })}
+      >
+        {revisionScope && <Check className="absolute left-2 size-4" />}
+        <span>{t.branch}</span>
+      </DropdownMenuItem>
       {/* Old PR links remain operable; PR is no longer a top-level scope in the normal menu. */}
       {state.mode === "pr" && (
         <>
@@ -427,17 +447,16 @@ export function ComparisonMenu({
     </>
   );
   const files = data?.files || [];
-  const scopeLabel =
-    state.mode === "ref"
-      ? t.branch
-      : state.mode === "pr"
-        ? state.pr
-          ? `#${state.pr}`
-          : t.choosePrPlaceholder
-        : desc.label || t.committed;
+  const scopeLabel = revisionScope
+    ? t.branch
+    : state.mode === "pr"
+      ? state.pr
+        ? `#${state.pr}`
+        : t.choosePrPlaceholder
+      : desc.label || t.committed;
   return (
     <>
-      <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenu open={open && !commitEntry} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
           <Pill
             aria-label={t.comparison}
@@ -461,38 +480,40 @@ export function ComparisonMenu({
           collisionPadding={8}
           className={pane === "root" ? "w-56" : WIDTH}
         >
-          {pane === "root"
-            ? root
-            : pane === "branch"
-              ? branches
-              : pane === "commit"
-                ? history
-                : prs}
+          {pane === "pr" ? prs : root}
         </DropdownMenuContent>
       </DropdownMenu>
-      {state.mode === "ref" && (
+      {revisionScope && (
         <div
           className={
             compact ? "order-last col-span-3 w-full" : "min-w-0 shrink"
           }
         >
-          <DropdownMenu open={branchOpen} onOpenChange={setBranchOpen}>
+          <DropdownMenu open={revisionOpen} onOpenChange={onRevisionOpenChange}>
             <DropdownMenuTrigger asChild>
               <Pill
                 aria-label={t.branchComparison}
                 title={desc.tooltip}
                 className="min-w-0 max-w-full shrink"
               >
-                <span className="min-w-0 truncate">{desc.from}</span>
-                <ArrowRight
-                  size={12}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <span className="shrink-0">{desc.to}</span>
-                {desc.twoDot && (
-                  <span className="shrink-0 text-aux text-muted-foreground">
-                    {t.two}
+                {state.mode === "commit" ? (
+                  <span className="min-w-0 truncate">
+                    {state.commit ? desc.label : t.chooseCommit}
                   </span>
+                ) : (
+                  <>
+                    <span className="min-w-0 truncate">{desc.from}</span>
+                    <ArrowRight
+                      size={12}
+                      className="shrink-0 text-muted-foreground"
+                    />
+                    <span className="shrink-0">{desc.to}</span>
+                    {desc.twoDot && (
+                      <span className="shrink-0 text-aux text-muted-foreground">
+                        {t.two}
+                      </span>
+                    )}
+                  </>
                 )}
                 <ChevronDown
                   size={12}
@@ -505,22 +526,35 @@ export function ComparisonMenu({
               collisionPadding={8}
               className={WIDTH}
             >
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setBranchOpen(false);
-                  enter("branch");
-                  setOpen(true);
-                }}
-              >
-                {t.secBase}
-                <span className="ml-auto min-w-0 truncate pl-2 text-muted-foreground">
-                  {desc.from}
-                </span>
-                <ChevronRight className="shrink-0" />
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {branchOptions}
+              {revisionPane === "branch" ? (
+                branches
+              ) : revisionPane === "commit" ? (
+                history
+              ) : (
+                <>
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      enter("branch");
+                    }}
+                  >
+                    {t.secBase}
+                    <span className="ml-auto min-w-0 truncate pl-2 text-muted-foreground">
+                      {state.mode === "commit"
+                        ? state.ref || defaultBase
+                        : desc.from}
+                    </span>
+                    <ChevronRight className="shrink-0" />
+                  </DropdownMenuItem>
+                  {drill("commit", t.committed, state.mode === "commit")}
+                  {state.mode === "ref" && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {branchOptions}
+                    </>
+                  )}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

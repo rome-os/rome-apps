@@ -286,7 +286,7 @@ test(
           .allTextContents();
         assert.deepEqual(
           entries.map((s) => s.replace(/↑1/, "").trim()),
-          ["未推送", "未提交", "已暂存", "未暂存", "分支", "已提交"],
+          ["未推送", "未提交", "已暂存", "未暂存", "分支"],
         );
         assert.equal(await v.getByText("上一轮", { exact: true }).count(), 0);
         await bounds();
@@ -295,7 +295,7 @@ test(
         await file("local.txt").waitFor();
         assert.equal(await file("initial.txt").count(), 0);
         const endpoints = v.getByRole("button", {
-          name: "分支比较",
+          name: "分支选择器",
           exact: true,
         });
         assert.equal(await endpoints.count(), 0);
@@ -311,6 +311,34 @@ test(
           .click();
         await file("loose.txt").waitFor();
         await scope.click();
+        const branchAction = v.getByRole("menuitem", {
+          name: "分支",
+          exact: true,
+        });
+        assert.equal(
+          await branchAction.locator(".lucide-chevron-right").count(),
+          0,
+        );
+        assert.equal(
+          await v
+            .getByRole("menuitem", { name: "已提交", exact: true })
+            .count(),
+          0,
+        );
+        await branchAction.click();
+        await endpoints.waitFor();
+        assert.equal(
+          await v.getByRole("menu").count(),
+          0,
+          "Branch only reveals the selector; it must not open a popup",
+        );
+        assert.equal(
+          await v
+            .getByRole("textbox", { name: "分支、标签或提交", exact: true })
+            .count(),
+          0,
+        );
+        await endpoints.click();
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         await v.getByRole("menuitemradio", { name: /Local feature/ }).waitFor();
         await bounds();
@@ -327,11 +355,12 @@ test(
         await v.getByRole("menuitemradio", { name: /Local feature/ }).click();
         await file("local.txt").waitFor();
         assert.match(
-          await scope.textContent(),
+          await endpoints.textContent(),
           new RegExp(feature.slice(0, 7)),
         );
-        assert.equal(await endpoints.count(), 0);
-        await scope.click();
+        assert.match(await scope.textContent(), /^分支/);
+        assert.equal(await endpoints.count(), 1);
+        await endpoints.click();
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         const input = v.getByRole("textbox", { name: "选择提交", exact: true });
         await input.fill(initial);
@@ -340,11 +369,11 @@ test(
         await v.evaluate(() => location.reload());
         await file("initial.txt").waitFor();
         assert.match(
-          await scope.textContent(),
+          await endpoints.textContent(),
           new RegExp(initial.slice(0, 7)),
         );
-        await scope.click();
-        await v.getByRole("menuitem", { name: "分支", exact: true }).click();
+        await endpoints.click();
+        await v.getByRole("menuitem", { name: /^基准/ }).click();
         await v
           .getByRole("textbox", { name: "分支、标签或提交", exact: true })
           .waitFor();
@@ -428,6 +457,27 @@ test(
         assert.deepEqual(errors, []);
         await page.close();
       }
+      const emptyCommit = await browser.newPage({
+        viewport: { width: 447, height: 660 },
+      });
+      await emptyCommit.goto(
+        origin +
+          "/#" +
+          new URLSearchParams({ repo, mode: "commit", commit: "" }),
+      );
+      await emptyCommit
+        .getByRole("button", { name: "选择提交", exact: true })
+        .click();
+      await emptyCommit
+        .getByRole("menuitemradio", { name: /Local feature/ })
+        .waitFor();
+      await emptyCommit
+        .getByRole("menuitem", { name: "返回: 已提交", exact: true })
+        .click();
+      await emptyCommit
+        .getByRole("menuitem", { name: "已提交", exact: true })
+        .waitFor();
+      await emptyCommit.close();
       assert.ok(
         !requests.some((r) => r.endsWith("/refs")),
         "normal scopes must not query GitHub PRs",

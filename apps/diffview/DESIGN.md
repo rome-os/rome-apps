@@ -53,7 +53,8 @@ that top border and the two coincide. Both use one opaque colour (`HEADER_LINE`,
 ## What can be compared, and how the trigger reads
 
 The scope menu is flat, in this order: **Unpushed**, **Uncommitted**, **Staged**,
-**Unstaged**, separator, **Branch ›**, **Committed ›**. There is no "Local changes /
+**Unstaged**, separator, **Branch**. Branch is an action, with no submenu chevron;
+choosing it closes the scope menu and only reveals the secondary revision selector. There is no "Local changes /
 Include" layer and no "Last turn" placeholder: accurate turn snapshots are a separate
 platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged/Unstaged.
 
@@ -64,10 +65,12 @@ platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged
 - Committed opens bounded pages of 40 reachable commits with title, short SHA and date;
   the input filters the loaded page or accepts any commit expression on Enter. A selected
   commit compares its first parent to the commit itself; roots use the empty tree. Merges
-  use the first parent, not a combined diff. The trigger reads `Committed abc1234`.
-- Branch opens an in-place branch/tag picker, with arbitrary refs accepted on Enter. Existing
+  use the first parent, not a combined diff. Committed lives inside the secondary selector,
+  not the main scope menu. The primary scope remains Branch; the secondary trigger reads
+  `Committed abc1234` and remains available to switch commits or return to a branch.
+- The secondary selector owns the in-place base/ref and commit pickers, with arbitrary refs accepted on Enter. Existing
   target (HEAD / working tree) and method (merge base / two-dot) options are preserved.
-- The primary pill always holds scope + totals. It is content-sized, may shrink, and never grows or stretches into spare grid space. Only Branch shows a second base → target pill.
+- The primary pill always holds scope + totals. It is content-sized, may shrink, and never grows or stretches into spare grid space. Only the Branch scope (including a selected commit) shows a secondary selector pill.
   At narrow widths this second pill gets its own toolbar row, rather than squeezing away the
   scope or overflowing. Long names truncate and full semantics stay in the tooltip.
 - Pull Request moved to review options. Legacy PR links and their picker still work, while

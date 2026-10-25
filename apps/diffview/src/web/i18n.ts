@@ -30,7 +30,7 @@ const en = {
   unpushed: "Unpushed",
   committed: "Committed",
   chooseCommit: "Choose a commit",
-  branchComparison: "Branch comparison",
+  branchComparison: "Revision selector",
   hintUnpushed:
     "Local commits absent from the tracking upstream; excludes uncommitted work. Uses local remote-tracking data, without fetching.",
   hintCommit:
@@ -214,7 +214,7 @@ const zh: typeof en = {
   unpushed: "未推送",
   committed: "已提交",
   chooseCommit: "选择提交",
-  branchComparison: "分支比较",
+  branchComparison: "分支选择器",
   hintUnpushed:
     "上游尚未包含的本地提交，不含未提交改动；依据本地远端跟踪信息，不自动拉取",
   hintCommit: "本次提交相对第一父提交的改动；初始提交与空树比较",

@@ -187,6 +187,9 @@ function Browser() {
     [hideViewed, setHideViewed] = useState(stored.hideViewed ?? false),
     [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set()),
     [comparisonOpen, setComparisonOpen] = useState(false),
+    [comparisonEntry, setComparisonEntry] = useState<"scope" | "commit">(
+      "scope",
+    ),
     [keysOpen, setKeysOpen] = useState(false),
     [treePop, setTreePop] = useState(false),
     [nonce, setNonce] = useState(0),
@@ -1194,7 +1197,10 @@ function Browser() {
     },
     "open-menu": {
       label: state.mode === "commit" ? t.chooseCommit : t.emptyChoosePr,
-      run: () => setComparisonOpen(true),
+      run: () => {
+        setComparisonEntry(state.mode === "commit" ? "commit" : "scope");
+        setComparisonOpen(true);
+      },
     },
   } as const;
   const emptyText: Record<typeof empty.kind, [string, string?]> = {
@@ -1383,7 +1389,11 @@ function Browser() {
           zh={host.zh}
           compact={compact}
           open={comparisonOpen}
-          setOpen={setComparisonOpen}
+          commitEntry={comparisonEntry === "commit"}
+          setOpen={(value) => {
+            setComparisonEntry("scope");
+            setComparisonOpen(value);
+          }}
         />
         <div className="ml-auto flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-border/60 p-0.5">
           <DropdownMenu>

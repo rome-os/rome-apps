@@ -2,9 +2,10 @@
 
 ## Requested behavior
 
-Order: Unpushed, Uncommitted, Staged, Unstaged; separator; Branch → branch picker,
-Committed → commit history. Do not implement Last turn yet. Only Branch has the
-contextual base → target pill next to the scope/totals pill.
+Order: Unpushed, Uncommitted, Staged, Unstaged; separator; Branch (plain action).
+Clicking Branch only reveals the secondary selector and opens no popup. Committed
+is an entry inside that secondary selector, with in-place commit history. Do not implement Last turn yet. Only Branch has the
+contextual revision selector (base → target, or selected commit) next to the scope/totals pill.
 
 ## Comparison rules
 
