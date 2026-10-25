@@ -1,4 +1,5 @@
 import "./styles.css";
+import { loadViewed, saveViewed } from "../shared/viewed";
 import { scrollViewKey } from "../shared/scroll";
 import { useScrollMemory } from "./useScrollMemory";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -477,9 +478,7 @@ function Browser() {
     (data.data?.head || "");
   useEffect(() => {
     try {
-      const marks = new Set<string>(
-        JSON.parse(localStorage.getItem(viewedKey) || "[]"),
-      );
+      const marks = new Set<string>(loadViewed(viewedKey, localStorage));
       setViewed(marks);
       setCollapsedPaths(new Set(marks));
     } catch {
@@ -498,7 +497,7 @@ function Browser() {
           return result;
         });
         try {
-          localStorage.setItem(viewedKey, JSON.stringify([...next]));
+          saveViewed(viewedKey, [...next], localStorage);
         } catch {}
         return next;
       }),
@@ -1064,6 +1063,7 @@ function Browser() {
       nextContext(contexts.current[path] ?? Number(state.unified), direction),
     );
   const toggleFile = (file: FileEntry) => {
+    if (file.conflicted) return;
     if (!records[file.path]?.item) {
       // Waiting for its page: nothing to ask for. Otherwise it is collapsed/large: load on request.
       if (!file.binary && !(rank.has(file.path) && !records[file.path]))

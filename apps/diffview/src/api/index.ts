@@ -7,6 +7,7 @@ import {
   cachedSWR,
   cachedPayload,
   comparison,
+  sha,
   type ResolvedComparison,
   defaultBase,
   files,
@@ -26,6 +27,7 @@ import {
 } from "../lib/git.js";
 import {
   buildPage,
+  worktreeSide,
   buildSnapshot,
   isPageable,
   loadUntrackedPatch,
@@ -84,7 +86,10 @@ async function buildView(
   info: FingerprintInfo,
   resolved: ResolvedComparison,
 ): Promise<View> {
-  const head = info.head || "unborn";
+  const head =
+    m.mode !== "uncommitted" && !worktreeSide(m)
+      ? resolved.to || info.hash
+      : info.head || "unborn";
   const compare =
     m.mode === "ref"
       ? {
@@ -96,13 +101,16 @@ async function buildView(
   // `git status` already counted the changed paths; a large count means page from the start
   // instead of first computing (and discarding) the whole diff.
   if (m.mode === "uncommitted" && info.changed > maxWholeDiffFiles())
-    return { ...common, list: await files(repo, m, resolved) };
+    return { ...common, list: await files(repo, m, resolved, info.conflicts) };
   try {
     const snap = await buildSnapshot(repo, m, ctx, info, resolved);
     return { ...common, snap, list: snap.files.map(toEntry) };
   } catch (e) {
     if (e instanceof GitError && e.code === "output_limit")
-      return { ...common, list: await files(repo, m, resolved) };
+      return {
+        ...common,
+        list: await files(repo, m, resolved, info.conflicts),
+      };
     throw e;
   }
 }
@@ -137,17 +145,15 @@ async function pageFor(
       view.comparison,
     );
     const byPath = new Map(built.map((f) => [f.path, f]));
-    subset = eligible
-      .slice(cursor, end)
-      .map(
-        (entry) =>
-          byPath.get(entry.path) ?? {
-            ...entry,
-            patch: "",
-            lazy: !!entry.untracked,
-            collapsed: true,
-          },
-      );
+    subset = eligible.slice(cursor, end).map(
+      (entry) =>
+        byPath.get(entry.path) ?? {
+          ...entry,
+          patch: "",
+          lazy: !!entry.untracked,
+          collapsed: true,
+        },
+    );
   }
   const patches: PageData["patches"] = {};
   let bytes = 0,
@@ -280,7 +286,16 @@ function createInnerHandler(): RomeAppApiHandler {
         const known = claimed ? views.get(lookup(claimed)) : undefined;
         const view = async (): Promise<{ v: View; fp: string }> => {
           if (known) return { v: await known.promise, fp: claimed };
-          const raw = await fingerprintInfo(repo);
+          const mutable = m.mode === "uncommitted" || worktreeSide(m);
+          const raw: FingerprintInfo = mutable
+            ? await fingerprintInfo(repo)
+            : {
+                head: await sha(repo, "HEAD").catch(() => ""),
+                hash: "",
+                untracked: [],
+                conflicts: [],
+                changed: 0,
+              };
           const resolved = await comparison(
             repo,
             m,
@@ -295,7 +310,7 @@ function createInnerHandler(): RomeAppApiHandler {
                   hash: createHash("sha256")
                     .update(
                       JSON.stringify([
-                        raw.hash,
+                        worktreeSide(m) ? raw.hash : undefined,
                         resolved.from,
                         resolved.to,
                         resolved.args,
@@ -377,6 +392,7 @@ function createInnerHandler(): RomeAppApiHandler {
           const file = v.snap?.files.find((f) => f.path === path);
           const entry = v.list.find((f) => f.path === path);
           if (!entry) throw new GitError("file_not_found");
+          if (entry.conflicted) throw new GitError("unmerged_conflict");
           // Untracked files the snapshot did not keep are read from disk now.
           if (file?.lazy)
             return Response.json(await loadUntrackedPatch(repo, path, anyway));
@@ -398,7 +414,7 @@ function createInnerHandler(): RomeAppApiHandler {
               e instanceof GitError
                 ? e.code === "forbidden_path"
                   ? 403
-                  : e.code === "stale_view"
+                  : ["stale_view", "unmerged_conflict"].includes(e.code)
                     ? 409
                     : 400
                 : 500,

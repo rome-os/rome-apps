@@ -156,17 +156,19 @@ export function DiffHeader({
   collapsed?: boolean;
 }) {
   const { directory, basename } = pathParts(file.path);
-  const label = record?.error
-    ? errorMessage(record.error, t)
-    : record?.binary || file.binary
-      ? t.binary
-      : record?.truncated
-        ? t.large
-        : record?.empty
-          ? t.noText
-          : !record?.item && file.collapsed
-            ? t.generated
-            : "";
+  const label = file.conflicted
+    ? t.unmerged_conflict
+    : record?.error
+      ? errorMessage(record.error, t)
+      : record?.binary || file.binary
+        ? t.binary
+        : record?.truncated
+          ? t.large
+          : record?.empty
+            ? t.noText
+            : !record?.item && file.collapsed
+              ? t.generated
+              : "";
   return (
     <div
       className={`dv-header flex h-11 items-center gap-2 border-t bg-[var(--app-canvas)] px-3 text-[13px] ${viewed ? "dv-viewed" : ""}`}
@@ -287,13 +289,16 @@ export function DiffHeader({
             {collapsed ? t.expand : t.collapse}
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={file.binary}
+            disabled={file.binary || file.conflicted}
             onSelect={() => onLoad(true)}
           >
             <FileDown size={14} />
             {t.loadFull}
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={file.binary} onSelect={onContext}>
+          <DropdownMenuItem
+            disabled={file.binary || file.conflicted}
+            onSelect={onContext}
+          >
             <UnfoldVertical size={14} />
             {t.moreContext}
           </DropdownMenuItem>

@@ -188,13 +188,33 @@ test("paged lazy untracked files deliver actual contents within the byte budget"
 });
 
 // A fake gh emits only fixture data; real Git fetch/diff operations still run against a local bare remote.
-async function fakeGh(repo: string) {
+async function fakeGh(repo: string, upstream?: string) {
+  const g = (...args: string[]) =>
+    execFileSync("git", args, { cwd: repo, stdio: "pipe" }).toString().trim();
+  const source = upstream || g("remote", "get-url", "origin");
+  g(
+    "config",
+    "url." + source + ".insteadOf",
+    "https://github.com/fixture/upstream.git",
+  );
   const bin = join(repo, ".git", "test-bin");
   await mkdir(bin);
+  await writeFile(join(repo, ".git", "gh-source"), source);
   const file = join(bin, "gh");
   await writeFile(
     file,
-    `#!/usr/bin/env node\nconst fs=require('node:fs');const p=require('node:path');const root=p.dirname(p.dirname(__dirname));if(fs.existsSync(p.join(root,'.git','gh-fail')))process.exit(1);if(process.argv[3]==='view'){process.stdout.write(JSON.stringify({baseRefName:'main'}));}else if(process.argv[3]==='diff'){process.stdout.write(fs.readFileSync(p.join(root,'.git','gh-diff'),'utf8'));}else process.exit(1);`,
+    `#!/usr/bin/env node
+const fs=require('node:fs'),p=require('node:path'),cp=require('node:child_process');
+const root=p.dirname(p.dirname(__dirname)),dir=p.join(root,'.git'),n=process.argv[4];
+if(fs.existsSync(p.join(dir,'gh-fail')))process.exit(1);
+if(process.argv[3]==='view'){
+ const source=fs.readFileSync(p.join(dir,'gh-source'),'utf8');
+ const sha=(ref)=>{try{return cp.execFileSync('git',['--git-dir='+source,'rev-parse','--verify',ref],{stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root}).toString().trim()}};
+ const override=fs.existsSync(p.join(dir,'gh-head-override'))?fs.readFileSync(p.join(dir,'gh-head-override'),'utf8'):undefined;
+ process.stdout.write(JSON.stringify({baseRefName:'main',baseRefOid:sha('refs/heads/main'),headRefOid:override||sha('refs/pull/'+n+'/head'),url:'https://github.com/fixture/upstream/pull/'+n}));
+}else if(process.argv[3]==='diff')process.stdout.write(fs.readFileSync(p.join(dir,'gh-diff'),'utf8'));
+else process.exit(1);
+`,
   );
   await chmod(file, 0o755);
   process.env.PATH = bin + ":" + original.PATH;
@@ -204,7 +224,7 @@ test("PR fetch refreshes base and head without changing user refs; explicit refr
   const { repo, g, write, call } = await fixture();
   const oldBase = g("rev-parse", "HEAD");
   const remote = join(home, `remote-${counter}.git`);
-  execFileSync("git", ["init", "--bare", "-q", remote]);
+  execFileSync("git", ["init", "--bare", "-q", "-b", "main", remote]);
   g("remote", "add", "origin", remote);
   g("push", "-q", "origin", "main");
   const index = g("ls-files", "--stage");
@@ -233,7 +253,7 @@ test("PR fetch refreshes base and head without changing user refs; explicit refr
   assert.equal(g("rev-parse", "main"), oldBase);
   assert.equal(g("rev-parse", "origin/main"), oldBase);
   assert.equal(g("ls-files", "--stage"), index);
-  assert.equal(g("rev-parse", "refs/diffview/pulls/1/base"), base);
+  assert.equal(g("for-each-ref", "--format=%(refname)", "refs/diffview/"), "");
   // Advance the remote from a second clone while the local checkout stays entirely unchanged.
   const author = join(home, `author-${counter}`);
   execFileSync("git", ["clone", "-q", remote, author]);
@@ -335,4 +355,183 @@ test("an evicted stale view is rejected rather than serving current patches unde
   const current = await call("files", { ...q, have: first.body.fingerprint });
   assert.equal(current.status, 200);
   assert.deepEqual(current.body.files, []);
+});
+
+for (const config of ["diff.noprefix", "diff.mnemonicprefix"]) {
+  for (const paged of [false, true])
+    test(`${config}: canonical snapshot/page/expanded patch output (${paged ? "paged" : "snapshot"})`, async () => {
+      const { g, write, call } = await fixture();
+      g("config", config, "true");
+      await write("seed.txt", "edited\n");
+      if (paged) process.env.DIFFVIEW_DIFF_CAP = "1";
+      const first = await call("files");
+      assert.equal(first.status, 200);
+      assert.equal(first.body.files[0].path, "seed.txt");
+      assert.match(
+        first.body.page.patches["seed.txt"].patch,
+        /^diff --git a\/seed.txt b\/seed.txt/m,
+      );
+      const patch = await call("patch", {
+        fp: first.body.fingerprint,
+        path: "seed.txt",
+        unified: "30",
+      });
+      assert.equal(patch.status, 200);
+      assert.match(patch.body.patch, /\+edited/);
+    });
+}
+
+test("unresolved conflicts stay visible in all local scopes, including paged mode", async () => {
+  const { g, write, call } = await fixture();
+  g("mv", "seed.txt", "conflict file.txt");
+  g("commit", "-qm", "rename");
+  g("checkout", "-qb", "side");
+  await write("conflict file.txt", "side\n");
+  g("add", ".");
+  g("commit", "-qm", "side");
+  g("checkout", "main");
+  await write("conflict file.txt", "main\n");
+  g("add", ".");
+  g("commit", "-qm", "main");
+  try {
+    g("merge", "side");
+  } catch {
+    /* expected conflict */
+  }
+  const status = g("status", "--porcelain=v2"),
+    index = g("ls-files", "--stage");
+  for (const filter of ["all", "staged", "unstaged"]) {
+    for (const paged of [false, true]) {
+      if (paged) process.env.DIFFVIEW_DIFF_CAP = "1";
+      else delete process.env.DIFFVIEW_DIFF_CAP;
+      const first = await call("files", { filter, ctx: paged ? "4" : "3" });
+      assert.equal(first.status, 200);
+      const entry = first.body.files.find(
+        (f: any) => f.path === "conflict file.txt",
+      );
+      assert.equal(entry?.conflicted, true);
+      assert.equal(entry.status, "U");
+      assert.equal(Object.keys(first.body.page.patches).length, 0);
+      const patch = await call("patch", {
+        filter,
+        ctx: paged ? "4" : "3",
+        fp: first.body.fingerprint,
+        path: "conflict file.txt",
+      });
+      assert.equal(patch.status, 409);
+      assert.equal(patch.body.error, "unmerged_conflict");
+    }
+  }
+  assert.equal(g("status", "--porcelain=v2"), status);
+  assert.equal(g("ls-files", "--stage"), index);
+});
+
+test("immutable comparisons ignore edits/index/untracked changes and skip worktree status", async () => {
+  const { g, write, call } = await fixture();
+  const root = g("rev-parse", "HEAD");
+  g("checkout", "-qb", "feature");
+  await write("seed.txt", "committed\n");
+  g("add", ".");
+  g("commit", "-qm", "feature");
+  const head = g("rev-parse", "HEAD");
+  g("remote", "add", "origin", "/nonexistent-test-remote");
+  g("update-ref", "refs/remotes/origin/main", root);
+  g("config", "branch.feature.remote", "origin");
+  g("config", "branch.feature.merge", "refs/heads/main");
+  const lib = await import("../src/lib/git");
+  const status = vi
+    .spyOn(lib, "fingerprintInfo")
+    .mockRejectedValue(Error("pure comparisons must not inspect git status"));
+  for (const q of [
+    { mode: "branch", base: "main" },
+    { mode: "ref", ref: "main", target: "head" },
+    { mode: "commit", commit: head },
+    { mode: "unpushed" },
+  ]) {
+    const first = await call("files", q);
+    assert.equal(first.status, 200);
+    await write("seed.txt", "index changes\n");
+    g("add", "seed.txt");
+    await write("seed.txt", "worktree changes\n");
+    await write("untracked.txt", "new\n");
+    const next = await call("files", { ...q, have: first.body.fingerprint });
+    assert.equal(next.status, 200);
+    assert.equal(next.body.unchanged, true);
+  }
+  assert.equal(status.mock.calls.length, 0);
+  status.mockRestore();
+  const q = { mode: "ref", ref: "main", target: "worktree" };
+  const before = await call("files", q);
+  await write("seed.txt", "new worktree changes\n");
+  const after = await call("files", { ...q, have: before.body.fingerprint });
+  assert.notEqual(after.body.fingerprint, before.body.fingerprint);
+});
+
+test("fork PR uses gh's repository, verifies head identity, cleans refs, and disables auto maintenance", async () => {
+  const { repo, g, write, call } = await fixture();
+  const root = g("rev-parse", "HEAD"),
+    upstream = join(home, `upstream-${counter}.git`),
+    origin = join(home, `fork-${counter}.git`);
+  for (const remote of [upstream, origin])
+    execFileSync("git", ["init", "--bare", "-q", "-b", "main", remote]);
+  g("remote", "add", "origin", origin);
+  g("push", "-q", "origin", "main");
+  g("push", "-q", upstream, "main");
+  await write("upstream-pr.txt", "correct upstream PR\n");
+  g("add", ".");
+  g("commit", "-qm", "upstream PR");
+  g("push", "-q", upstream, "HEAD:refs/pull/1/head");
+  const head = g("rev-parse", "HEAD");
+  g("reset", "--hard", root);
+  await write("fork-pr.txt", "wrong same-number fork PR\n");
+  g("add", ".");
+  g("commit", "-qm", "fork PR");
+  g("push", "-q", "origin", "HEAD:refs/pull/1/head");
+  g("reset", "--hard", root);
+  await fakeGh(repo, upstream);
+  const first = await call("files", { mode: "pr", pr: "1" });
+  assert.equal(first.status, 200);
+  assert.deepEqual(
+    first.body.files.map((f: any) => f.path),
+    ["upstream-pr.txt"],
+  );
+  assert.equal(g("for-each-ref", "--format=%(refname)", "refs/diffview/"), "");
+  // Metadata/ref race: reject the mismatching fetch and use the authoritative remote diff.
+  await writeFile(join(repo, ".git/gh-head-override"), "a".repeat(40));
+  await writeFile(
+    join(repo, ".git/gh-diff"),
+    `diff --git a/race.txt b/race.txt\nnew file mode 100644\n--- /dev/null\n+++ b/race.txt\n@@ -0,0 +1 @@\n+server fallback\n`,
+  );
+  const raced = await call("files", { mode: "pr", pr: "1", refresh: "1" });
+  assert.equal(raced.status, 200);
+  assert.equal(raced.body.files[0].path, "race.txt");
+  assert.equal(g("for-each-ref", "--format=%(refname)", "refs/diffview/"), "");
+  const lib = await import("../src/lib/git");
+  const now = Date.now();
+  g("update-ref", "refs/diffview/tmp/1-old/base", head);
+  g("update-ref", `refs/diffview/tmp/${now}-active/head`, head);
+  g("update-ref", "refs/heads/user-keep", root);
+  await lib.pruneReviewRefs(repo, now);
+  assert.equal(
+    g("for-each-ref", "--format=%(refname)", "refs/diffview/tmp/1-old"),
+    "",
+  );
+  assert.equal(g("rev-parse", `refs/diffview/tmp/${now}-active/head`), head);
+  assert.equal(g("rev-parse", "refs/heads/user-keep"), root);
+  const bin = join(repo, ".git/test-bin"),
+    log = join(repo, ".git/git-args");
+  const realGit = execFileSync("which", ["git"], {
+    env: { ...process.env, PATH: original.PATH },
+  })
+    .toString()
+    .trim();
+  await writeFile(
+    join(bin, "git"),
+    `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');const r=cp.spawnSync(${JSON.stringify(realGit)},process.argv.slice(2),{stdio:'inherit'});process.exit(r.status||0);`,
+  );
+  await chmod(join(bin, "git"), 0o755);
+  await lib.git(repo, ["status", "--porcelain"]);
+  const args = JSON.parse((await readFile(log, "utf8")).trim());
+  assert.ok(args.includes("gc.auto=0"));
+  assert.ok(args.includes("maintenance.auto=false"));
 });

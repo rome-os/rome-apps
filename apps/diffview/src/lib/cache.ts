@@ -50,6 +50,8 @@ export class BoundedCache {
         (value) => {
           this.pending.delete(key);
           this.remove(key);
+          // ttl <= 0 means single-flight only: do not serialize or retain the result.
+          if (ttl <= 0) return value;
           // Serialized UTF-8 plus UTF-16 is a conservative text-retention estimate. Oversized
           // results are returned to callers but never displace the entire cache.
           const encoded = JSON.stringify(value) ?? "";

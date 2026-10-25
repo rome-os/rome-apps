@@ -96,3 +96,22 @@ test("production payload cache cannot evict a production metadata entry", async 
     await cachedPayload("review-patch-" + i, async () => "x".repeat(10000));
   assert.deepEqual(await cached(key, async () => [], 60000), ["repo"]);
 });
+
+test("TTL zero is single-flight only: no serialization, byte accounting or retention", async () => {
+  const cache = new BoundedCache(1, 1000);
+  await cache.get("repos", async () => "metadata", 60000);
+  const cyclic: any = {};
+  cyclic.self = cyclic;
+  const first = cache.get("fingerprint", async () => cyclic, 0);
+  assert.equal(
+    cache.get("fingerprint", async () => "duplicate", 0),
+    first,
+  );
+  assert.equal(await first, cyclic);
+  assert.equal(cache.size, 1);
+  assert.equal(
+    await cache.get("repos", async () => "evicted", 60000),
+    "metadata",
+  );
+  assert.equal(await cache.get("fingerprint", async () => "new", 0), "new");
+});

@@ -1,5 +1,11 @@
 # rome-apps migration validation (2026-10-25)
 
+> Historical report: the results below describe the original migration at v0.1.1,
+> not the current PR head. Later validation is recorded in
+> [review corrections](2026-10-25-review-fixes.md) and
+> [second-review follow-up](2026-10-25-review-followup.md). Preserve these original
+> measurements rather than relabelling them as results from a newer build.
+
 ## Scope
 
 Import the existing Diff app into `apps/diffview` without changing its app ID or

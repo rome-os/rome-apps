@@ -1,9 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { verifyOpenedFile } from "./fileSafety.js";
 import { BoundedCache } from "./cache.js";
 import { spawn } from "node:child_process";
 import { realpath, readdir, lstat, open } from "node:fs/promises";
-import { resolve, relative, isAbsolute, join } from "node:path";
-import { createHash } from "node:crypto";
+import { resolve, relative, isAbsolute, join, sep } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { constants } from "node:fs";
 export const ROOT = join(
@@ -32,7 +33,7 @@ export function validateRef(ref: string) {
 }
 export function inside(root: string, path: string) {
   const rel = relative(root, path);
-  return !isAbsolute(rel) && rel !== ".." && !rel.startsWith("../");
+  return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + sep);
 }
 const allowedCache = new Map<string, { at: number; repo: string }>();
 /** Validated repositories are remembered for a few seconds: the check costs three processes. */
@@ -154,7 +155,17 @@ export function git(
   return command(
     cwd,
     "git",
-    ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", ...args],
+    [
+      "-c",
+      "core.fsmonitor=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "gc.auto=0",
+      "-c",
+      "maintenance.auto=false",
+      ...args,
+    ],
     cap,
     timeout,
     input,
@@ -246,6 +257,7 @@ export interface FileEntry {
   binary: boolean;
   collapsed: boolean;
   untracked?: boolean;
+  conflicted?: boolean;
 }
 export function parseNumstat(text: string) {
   const fields = text.split("\0");
@@ -323,45 +335,129 @@ export interface ResolvedComparison {
   /** Empty string is a valid empty remote diff, not a missing fallback. */
   fallback?: string;
 }
+interface PrMetadata {
+  baseRefName: string;
+  baseRefOid: string;
+  headRefOid: string;
+  url: string;
+}
+export function prRepository(meta: PrMetadata, n: string) {
+  const url = new URL(meta.url);
+  const match = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(url.pathname);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    !match ||
+    match[3] !== n ||
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(meta.headRefOid) ||
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(meta.baseRefOid)
+  )
+    throw new GitError("pr_unavailable");
+  validateRef(meta.baseRefName);
+  return url.origin + "/" + match[1] + "/" + match[2] + ".git";
+}
+async function deleteReviewRefs(repo: string, entries: string[]) {
+  if (!entries.length) return;
+  // Compare-and-delete: do not delete a ref if another writer changed its value.
+  const input = entries
+    .map((entry) => {
+      const [ref, oid] = entry.split("\t");
+      return "delete " + ref + " " + oid + "\n";
+    })
+    .join("");
+  await git(repo, ["update-ref", "--stdin"], undefined, undefined, input);
+}
+async function reviewRefs(repo: string, prefixes: string[]) {
+  return (
+    await git(repo, [
+      "for-each-ref",
+      "--format=%(refname)%09%(objectname)",
+      ...prefixes,
+    ])
+  )
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+}
+/** Retire legacy retained refs and abandoned temporary refs, never active fetch namespaces. */
+export async function pruneReviewRefs(repo: string, now = Date.now()) {
+  const entries = await reviewRefs(repo, [
+    "refs/diffview/pr/",
+    "refs/diffview/pulls/",
+    "refs/diffview/tmp/",
+  ]);
+  await deleteReviewRefs(
+    repo,
+    entries.filter((entry) => {
+      const ref = entry.split("\t")[0];
+      if (
+        ref.startsWith("refs/diffview/pr/") ||
+        ref.startsWith("refs/diffview/pulls/")
+      )
+        return true;
+      const match = /^refs\/diffview\/tmp\/(\d+)-[a-z0-9-]+\/(base|head)$/.exec(
+        ref,
+      );
+      return !!match && Number(match[1]) < now - 3600_000;
+    }),
+  );
+}
 const prCache = new BoundedCache(6, 32 * 1024 * 1024);
 async function prCompare(repo: string, n: string, refresh = false) {
   if (!/^[1-9]\d{0,7}$/.test(n)) throw new GitError("invalid_pr");
   return prCache.get(
     repo + ":" + n,
     async () => {
-      let meta: { baseRefName: string };
+      let meta: PrMetadata, source: string;
       try {
         meta = JSON.parse(
-          await command(repo, "gh", ["pr", "view", n, "--json", "baseRefName"]),
+          await command(repo, "gh", [
+            "pr",
+            "view",
+            n,
+            "--json",
+            "url,baseRefName,baseRefOid,headRefOid",
+          ]),
         );
-        validateRef(meta.baseRefName);
+        source = prRepository(meta, n);
+        await git(repo, ["check-ref-format", "refs/heads/" + meta.baseRefName]);
       } catch {
         throw new GitError("pr_unavailable");
       }
       try {
-        const temp = "refs/diffview/pulls/" + n;
-        // Fetch both endpoints atomically into app-owned refs. Never update the user's
-        // branches or remote-tracking refs, and never fall back to a stale local base.
-        await git(
-          repo,
-          [
-            "fetch",
-            "--atomic",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "--refmap=",
-            "origin",
-            "+refs/heads/" + meta.baseRefName + ":" + temp + "/base",
-            "+refs/pull/" + n + "/head:" + temp + "/head",
-          ],
-          undefined,
-          25000,
+        await cached(
+          repo + ":pr-ref-cleanup",
+          () => pruneReviewRefs(repo),
+          60000,
         );
-        return {
-          from: await sha(repo, temp + "/base"),
-          to: await sha(repo, temp + "/head"),
-        };
+        const temp = "refs/diffview/tmp/" + Date.now() + "-" + randomUUID();
+        try {
+          await git(
+            repo,
+            [
+              "fetch",
+              "--atomic",
+              "--no-tags",
+              "--no-write-fetch-head",
+              "--refmap=",
+              source,
+              "+refs/heads/" + meta.baseRefName + ":" + temp + "/base",
+              "+refs/pull/" + n + "/head:" + temp + "/head",
+            ],
+            undefined,
+            25000,
+          );
+          const from = await sha(repo, temp + "/base"),
+            to = await sha(repo, temp + "/head");
+          if (from !== meta.baseRefOid || to !== meta.headRefOid)
+            throw new GitError("pr_changed_during_fetch");
+          return { from, to };
+        } finally {
+          await deleteReviewRefs(repo, await reviewRefs(repo, [temp + "/"]));
+        }
       } catch {
+        // An authoritative server diff is safer than mixing a fork's refs or racing endpoints.
         return {
           from: "",
           to: "",
@@ -536,6 +632,7 @@ export interface FingerprintInfo {
   /** Commit HEAD points at; empty on an unborn branch. */
   head: string;
   untracked: string[];
+  conflicts?: string[];
   /** Paths git status lists as changed (staged, unstaged or untracked): a free size signal. */
   changed: number;
 }
@@ -554,7 +651,8 @@ async function fingerprintInfoUncached(repo: string): Promise<FingerprintInfo> {
   const parts = status.split("\0");
   let head = "";
   const paths: string[] = [],
-    untracked: string[] = [];
+    untracked: string[] = [],
+    conflicts: string[] = [];
   for (let i = 0; i < parts.length; i++) {
     const e = parts[i];
     if (!e) continue;
@@ -565,8 +663,11 @@ async function fingerprintInfoUncached(repo: string): Promise<FingerprintInfo> {
     else if (e[0] === "2") {
       paths.push(e.split(" ").slice(9).join(" "));
       i++; // the original path follows as its own NUL field
-    } else if (e[0] === "u") paths.push(e.split(" ").slice(10).join(" "));
-    else if (e[0] === "?") {
+    } else if (e[0] === "u") {
+      const path = e.split(" ").slice(10).join(" ");
+      paths.push(path);
+      conflicts.push(path);
+    } else if (e[0] === "?") {
       untracked.push(e.slice(2));
       paths.push(e.slice(2));
     }
@@ -584,7 +685,7 @@ async function fingerprintInfoUncached(repo: string): Promise<FingerprintInfo> {
   const hash = createHash("sha256")
     .update(status + JSON.stringify(info))
     .digest("hex");
-  return { hash, head, untracked, changed: paths.length };
+  return { hash, head, untracked, conflicts, changed: paths.length };
 }
 /** Concurrent callers (several tabs polling) share one `git status` instead of each running it. */
 export function fingerprintInfo(repo: string): Promise<FingerprintInfo> {
@@ -622,6 +723,7 @@ export async function files(
   repo: string,
   m: Mode,
   resolved?: ResolvedComparison,
+  conflicts?: string[],
 ) {
   const cmp = resolved ?? (await comparison(repo, m));
   let entries: FileEntry[] = [];
@@ -691,7 +793,37 @@ export async function files(
     });
     entries.push(...read);
   }
+  if (m.mode === "uncommitted") {
+    const paths =
+      conflicts ??
+      (
+        await git(repo, [
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--name-only",
+          "--diff-filter=U",
+          "-z",
+        ])
+      )
+        .split("\0")
+        .filter(Boolean);
+    const unmerged = new Set(paths);
+    entries = entries.filter((entry) => !unmerged.has(entry.path));
+    entries.push(...[...unmerged].map(conflictEntry));
+  }
   return entries.sort((a, b) => a.path.localeCompare(b.path));
+}
+export function conflictEntry(path: string): FileEntry {
+  return {
+    path,
+    status: "U",
+    added: 0,
+    deleted: 0,
+    binary: false,
+    collapsed: true,
+    conflicted: true,
+  };
 }
 export async function readSafe(repo: string, path: string, limit: number) {
   if (
@@ -707,9 +839,10 @@ export async function readSafe(repo: string, path: string, limit: number) {
   if (!s.isFile() || s.isSymbolicLink()) throw new GitError("unsupported_file");
   const h = await open(real, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const opened = await realpath("/proc/self/fd/" + h.fd);
-    if (!inside(repo, opened)) throw new GitError("forbidden_path");
-    const size = (await h.stat()).size;
+    const stat = await verifyOpenedFile(repo, real, s, h).catch(() => {
+      throw new GitError("forbidden_path");
+    });
+    const size = stat.size;
     const b = Buffer.alloc(Math.min(size, limit));
     await h.read(b, 0, b.length, 0);
     const binary = b.includes(0);
@@ -740,6 +873,7 @@ export async function patch(
       )
     ).find((f) => f.path === path);
   if (!entry) throw new GitError("file_not_found");
+  if (entry.conflicted) throw new GitError("unmerged_conflict");
   if (entry.binary)
     return { patch: "", binary: true, truncated: false, collapsed: true };
   const cap = anyway ? 8 * 1024 * 1024 : 512 * 1024;
@@ -786,6 +920,8 @@ export async function patch(
             "--no-ext-diff",
             "--no-textconv",
             "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "-M",
             "--unified=" + context,
             ...cmp.args,

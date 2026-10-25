@@ -2,6 +2,7 @@ import { parsePatchFiles } from "@pierre/diffs";
 import {
   GitError,
   collapseHint,
+  conflictEntry,
   comparison,
   git,
   readSafe,
@@ -245,6 +246,8 @@ const DIFF_BIN = [
   "--no-ext-diff",
   "--no-textconv",
   "--no-color",
+  "--src-prefix=a/",
+  "--dst-prefix=b/",
   "-M",
 ];
 /** Parses diff text and adds line totals (disk or one batch) and the untracked files. */
@@ -316,7 +319,16 @@ export async function buildSnapshot(
     ));
   const untracked =
     m.mode === "uncommitted" && m.filter !== "staged" ? info.untracked : [];
-  return { context, files: await assemble(repo, m, text, untracked) };
+  let files = await assemble(repo, m, text, untracked);
+  if (m.mode === "uncommitted" && info.conflicts?.length) {
+    const paths = new Set(info.conflicts);
+    files = files.filter((file) => !paths.has(file.path));
+    files.push(
+      ...[...paths].map((path) => ({ ...conflictEntry(path), patch: "" })),
+    );
+    files.sort((a, b) => a.path.localeCompare(b.path));
+  }
+  return { context, files };
 }
 
 /**

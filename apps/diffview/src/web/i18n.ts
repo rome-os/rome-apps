@@ -183,6 +183,8 @@ const en = {
   pr_unavailable: "Pull request not found or unavailable.",
   invalid_pr: "Enter a valid pull request number.",
   file_not_found: "The file changed. Refresh this comparison.",
+  unmerged_conflict:
+    "Unresolved merge conflict — resolve it in the working tree.",
   unsupported_file: "Symlink or special file content is not displayed.",
   internal: "Unable to read repository.",
   invalid_mode: "Invalid comparison options.",
@@ -359,6 +361,7 @@ const zh: typeof en = {
   pr_unavailable: "PR 不存在或暂时无法读取。",
   invalid_pr: "请输入有效的 PR 编号。",
   file_not_found: "文件已发生变化，请刷新比较。",
+  unmerged_conflict: "合并冲突尚未解决，请在工作区处理。",
   unsupported_file: "不显示符号链接或特殊文件的内容。",
   internal: "无法读取仓库。",
   invalid_mode: "比较参数无效。",

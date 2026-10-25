@@ -90,3 +90,7 @@ production browser suites (worker, scroll and menu). Set
 `review.test.ts` and `cache.test.ts` run in the normal Vitest suite; they require
 no real GitHub account. See [review corrections](2026-10-25-review-fixes.md) for
 comparison identity, PR refresh, cache budgets and safe file-link behavior.
+
+The browser aggregate also runs `git-output.browser.mjs`: configured Git prefixes,
+visible unresolved conflicts, ordinary diff rendering and read-only merge/index
+checks. See [second-review follow-up](2026-10-25-review-followup.md).
