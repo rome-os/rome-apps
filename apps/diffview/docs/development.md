@@ -12,7 +12,7 @@ pnpm --filter @rome/app-diffview test
 pnpm --filter @rome/app-diffview build
 ```
 
-The app's 58 unit/API/memory tests use Vitest and are also discovered by the
+The app's unit/API/memory tests use Vitest and are also discovered by the
 repository-wide `pnpm test`. They create disposable Git fixtures and do not
 require a running Rome instance. `pnpm typecheck` includes the app too.
 
@@ -71,3 +71,13 @@ Publishing is separate from installation. The manual publish workflow includes
 scoped reading positions, including reload, close, context switching and lazy
 file anchors. It uses the same browser executable option as `test:worker`.
 See [scroll memory](2026-10-25-scroll-memory.md) for scope and storage behavior.
+
+## Scope menu regression
+
+`pnpm --filter @rome/app-diffview test:menu` builds and loads the production UI
+**and API** against disposable Git fixtures. It tests 360/447/1100px layouts
+(including a real iframe), flat ordering, staged/unstaged/unpushed semantics,
+commit pagination/root selection/reload, branch-only endpoint controls, keyboard
+selection, missing upstream and unchanged Git index. It uses the same browser
+executable override as `test:worker`; ordinary scopes never query GitHub.
+See [scope menu](2026-10-25-scope-menu.md) for comparison definitions.

@@ -1,6 +1,6 @@
 {
   "name": "@rome/app-diffview",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests/*.test.ts",
     "test:worker": "pnpm build && node --test tests/worker-bundle.browser.mjs",
+    "test:menu": "pnpm build && node --test tests/menu.browser.mjs",
     "test:scroll": "pnpm build && node --test tests/scroll.browser.mjs"
   },
   "dependencies": {

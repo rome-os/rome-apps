@@ -52,22 +52,32 @@ that top border and the two coincide. Both use one opaque colour (`HEADER_LINE`,
 
 ## What can be compared, and how the trigger reads
 
-Three comparison objects, listed at the top of the menu in this order and without a section title:
-**Local changes**, **Pull Request**, **Compare…**. Under them, after a separator, come that
-object's own options, so "Include" is plainly a sub-level of Local changes. "Branch" and "custom
-ref" used to be separate; both are a base compared with HEAD or the working tree, so they are one
-(**Compare…**). Old links and saved state (`mode=branch`) are migrated in `src/shared/mode.ts` and
-keep their meaning (committed work only).
+The scope menu is flat, in this order: **Unpushed**, **Uncommitted**, **Staged**,
+**Unstaged**, separator, **Branch ›**, **Committed ›**. There is no "Local changes /
+Include" layer and no "Last turn" placeholder: accurate turn snapshots are a separate
+platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged/Unstaged.
 
-| Object | Options under it | Trigger (the endpoints are the content) |
-|---|---|---|
-| Local changes | Include: all / staged / unstaged | One word: `Uncommitted` · `Staged` · `Unstaged` (the arrow `HEAD → Working tree` etc. is in the tooltip) |
-| Pull Request | One row that opens the list of open pull requests, with a filter box (type a number + Enter for one that is not listed) | `#1306`; `Choose a PR…` while none is chosen |
-| Compare… | Base (default: the default branch; opens a list of branches, tags and commits, or type any ref) · Compare to: working tree (default) / HEAD · Method: merge base (default) / two-dot | `origin/main → Working tree`; a non-default method adds a muted `Two-dot` |
+- Unpushed = the current branch's merge base with its tracking upstream → HEAD, excluding
+  dirty/index/untracked files. Never substitute the default branch and never fetch automatically.
+  The menu shows `↑N`. No upstream, detached HEAD, unborn HEAD and a missing upstream ref
+  have distinct explanations; the entry stays visible but disabled when unavailable.
+- Committed opens bounded pages of 40 reachable commits with title, short SHA and date;
+  the input filters the loaded page or accepts any commit expression on Enter. A selected
+  commit compares its first parent to the commit itself; roots use the empty tree. Merges
+  use the first parent, not a combined diff. The trigger reads `Committed abc1234`.
+- Branch opens an in-place branch/tag picker, with arbitrary refs accepted on Enter. Existing
+  target (HEAD / working tree) and method (merge base / two-dot) options are preserved.
+- The primary pill always holds scope + totals. Only Branch shows a second base → target pill.
+  At narrow widths this second pill gets its own toolbar row, rather than squeezing away the
+  scope or overflowing. Long names truncate and full semantics stay in the tooltip.
+- Pull Request moved to review options. Legacy PR links and their picker still work, while
+  ordinary local/branch/history browsing never makes GitHub requests.
+- Legacy `mode=branch` links still migrate to a committed-only `ref` comparison. New commit
+  and unpushed modes persist independently in conversation state, scroll keys and viewed marks.
 
 ### Second-level lists drill down in place, they do not open beside the menu
 
-The pull request and base pickers are a second level of the *same* menu: choosing their row swaps
+The branch, commit and legacy pull-request pickers are a second level of the *same* menu: choosing their row swaps
 the menu's content for the list, with a "‹ back" row on top, and the menu grows to
 `min(20rem, available width)`. A Radix sub-menu opens *beside* its parent and needs room there; in
 the chat's side panel the app is an iframe about 450px wide, where the parent menu alone takes 208px
@@ -78,7 +88,7 @@ is the way to keep the list readable at any width. Verified at 360, 447 and 1100
 - The pointer to the current commit is always written `HEAD`, never the branch name.
 - Counts (`+N −M`) appear only when there is a result. A half-made choice or an empty comparison
   shows none, so it never looks like a finished answer.
-- Every menu row that is not self-explanatory carries a one-line hint (e.g. "includes uncommitted").
+- Comparison rules stay in tooltips; unavailable scopes carry an inline reason.
 - The wording lives in `describeComparison` / `describeEmpty` (`src/shared/describe.ts`), pure
   functions covered by tests for every combination.
 

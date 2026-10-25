@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { RomeAppApiHandler, RomeAppContext } from "@rome-os/app-runtime";
 import {
   ROOT,
@@ -16,6 +17,8 @@ import {
   type Trace,
   patch,
   refs,
+  tracking,
+  history,
   scanRepos,
   type Mode,
 } from "../lib/git.js";
@@ -154,7 +157,14 @@ async function pageFor(
   }
   return { patches, next: end < eligible.length ? end : null };
 }
-const validModes = new Set(["uncommitted", "branch", "pr", "ref"]);
+const validModes = new Set([
+  "uncommitted",
+  "branch",
+  "pr",
+  "ref",
+  "unpushed",
+  "commit",
+]);
 export function createApiHandler(_ctx: RomeAppContext): RomeAppApiHandler {
   const inner = createInnerHandler();
   return {
@@ -209,6 +219,15 @@ function createInnerHandler(): RomeAppApiHandler {
           });
         }
         const repo = await allowedRepo(q.get("repo") || ROOT + "/default");
+        if (route === "tracking") return Response.json(await tracking(repo));
+        if (route === "history")
+          return Response.json(
+            await history(repo, Number(q.get("cursor") || 0)),
+          );
+        if (route === "revisions")
+          return Response.json(
+            await cached(repo + ":revisions", () => refs(repo, false), 5000),
+          );
         if (route === "refs")
           return Response.json(
             await cached(repo + ":refs", () => refs(repo), 30000),
@@ -229,6 +248,7 @@ function createInnerHandler(): RomeAppApiHandler {
           filter: q.get("filter") || "all",
           base: q.get("base") || (await defaultBase(repo)),
           pr: q.get("pr") || "",
+          commit: q.get("commit") || "",
           ref: q.get("ref") || "",
           dots: q.get("dots") || "three",
           target: q.get("target") || "worktree",
@@ -249,11 +269,31 @@ function createInnerHandler(): RomeAppApiHandler {
         const known = claimed ? views.get(lookup(claimed)) : undefined;
         const view = async (): Promise<{ v: View; fp: string }> => {
           if (known) return { v: await known.promise, fp: claimed };
-          const info = await fingerprintInfo(repo);
+          let info = await fingerprintInfo(repo);
+          if (m.mode === "unpushed") {
+            const upstream = await tracking(repo);
+            info = {
+              ...info,
+              hash: createHash("sha256")
+                .update(JSON.stringify([info.hash, upstream]))
+                .digest("hex"),
+            };
+          } else if (m.mode === "commit" || m.mode === "ref") {
+            const selected = await sha(
+              repo,
+              m.mode === "commit" ? m.commit || "" : m.ref || m.base || "HEAD",
+            );
+            info = {
+              ...info,
+              hash: createHash("sha256")
+                .update(JSON.stringify([info.hash, selected]))
+                .digest("hex"),
+            };
+          }
           const key = lookup(info.hash);
           let entry = views.get(key);
-          // The fingerprint covers the working tree and HEAD, not other refs: comparisons that
-          // involve other branches are rebuilt every few seconds.
+          // PR/legacy branch metadata may change independently of the worktree;
+          // periodically rebuild non-local views even when the fingerprint is stable.
           if (entry && m.mode !== "uncommitted" && Date.now() - entry.at > 5000)
             entry = undefined;
           if (!entry) {
@@ -261,10 +301,12 @@ function createInnerHandler(): RomeAppApiHandler {
             const fresh = { promise, at: Date.now(), bytes: 0 };
             entry = fresh;
             views.set(key, fresh);
-            void promise.then((v) => {
-              fresh.bytes = viewBytes(v);
-              trimViews(key);
-            });
+            void promise
+              .then((v) => {
+                fresh.bytes = viewBytes(v);
+                trimViews(key);
+              })
+              .catch(() => {});
             trimViews(key);
             // A failed build must not be remembered.
             promise.catch(() => views.delete(key));

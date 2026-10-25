@@ -2,11 +2,7 @@ import "./styles.css";
 import { scrollViewKey } from "../shared/scroll";
 import { useScrollMemory } from "./useScrollMemory";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {
-  fetchAppApi,
-  HOST_NAVIGATE_EVENT,
-  useChatSessionId,
-} from "@rome-os/app-web-sdk";
+import { HOST_NAVIGATE_EVENT, useChatSessionId } from "@rome-os/app-web-sdk";
 import {
   QueryClient,
   QueryClientProvider,
@@ -43,15 +39,12 @@ import {
   FolderGit2,
   WrapText,
   Keyboard,
-  ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   Undo2,
   LoaderCircle,
 } from "lucide-react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { CodeViewItem } from "@pierre/diffs";
-import type { Mode, FileEntry } from "../lib/git";
+import type { FileEntry } from "../lib/git";
 import { comparisonIdentity } from "../shared/comparison";
 import {
   projectFileUrl,
@@ -60,6 +53,9 @@ import {
 } from "../shared/projectLink";
 import { openProjectInChatPanel } from "./hostBridge";
 import { PAGE_LOOKAHEAD, isPageable } from "../shared/paging";
+import { ComparisonMenu } from "./ComparisonMenu";
+import { api } from "./api";
+import type { TrackingInfo } from "../lib/git";
 import { normalizeMode } from "../shared/mode";
 import { describeComparison, describeEmpty } from "../shared/describe";
 import {
@@ -79,7 +75,7 @@ import {
   reviewItemVersion,
 } from "../shared/review";
 import { Pool, Viewer, patchItem } from "./Renderer";
-import { Stats, Quiet, Pill, DiffHeader, FileTree } from "./ReviewParts";
+import { Quiet, Pill, DiffHeader, FileTree } from "./ReviewParts";
 import { useHost, messages, errorMessage } from "./i18n";
 import type {
   Repo,
@@ -108,6 +104,7 @@ function readState(): State {
       target: get("target"),
       dots: get("dots"),
       pr: get("pr"),
+      commit: get("commit"),
     });
     return {
       repo: q.get("repo") || "",
@@ -116,6 +113,7 @@ function readState(): State {
       base: n.base,
       ref: n.ref,
       pr: n.pr,
+      commit: n.commit,
       dots: n.dots,
       target: n.target,
       unified: q.get("unified") || "3",
@@ -123,36 +121,6 @@ function readState(): State {
   } catch {
     return { repo: "", mode: "uncommitted", unified: "3" };
   }
-}
-async function api<T>(
-  route: string,
-  q?: Record<string, string | undefined>,
-  signal?: AbortSignal,
-) {
-  const res = await fetchAppApi(
-    route +
-      (q
-        ? "?" +
-          new URLSearchParams(
-            Object.entries(q).filter(
-              (x): x is [string, string] => x[1] !== undefined,
-            ),
-          ).toString()
-        : ""),
-    { signal },
-  );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "internal");
-  return data as T;
-}
-/** The viewer's record for one delivered patch. */
-/** Muted explanation at the end of a menu row; the check mark sits in the row's right padding. */
-function MenuHint({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="ml-auto truncate pl-3 text-aux text-muted-foreground">
-      {children}
-    </span>
-  );
 }
 /** The one-line reason a comparison is empty, with the single useful next step. */
 function EmptyState({
@@ -181,17 +149,6 @@ function EmptyState({
     </div>
   );
 }
-/**
- * The pull request and base pickers are a second level of the same menu: choosing their row swaps
- * the menu's content for the list (with a way back) instead of opening a menu *beside* it. A side
- * menu needs room next to the main one; in the narrow side panel of a chat the app lives in an
- * iframe a few hundred pixels wide, where there is none and Radix squeezes it against the edge.
- * Swapping in place can always use the width that is left, which Radix reports as a CSS variable.
- */
-const PICKER_WIDTH =
-  "w-[min(20rem,var(--radix-dropdown-menu-content-available-width))]";
-const PICKER_LIST =
-  "max-h-[calc(min(22rem,var(--radix-dropdown-menu-content-available-height))-5.5rem)] overflow-y-auto";
 function recordFromPatch(
   path: string,
   result: PatchData,
@@ -240,9 +197,6 @@ function Browser() {
     [keysOpen, setKeysOpen] = useState(false),
     [treePop, setTreePop] = useState(false),
     [nonce, setNonce] = useState(0),
-    [prDraft, setPrDraft] = useState(""),
-    [refDraft, setRefDraft] = useState(""),
-    [pane, setPane] = useState<"root" | "pr" | "base">("root"),
     [pager, setPager] = useState<{
       stamp: string;
       busy: boolean;
@@ -320,8 +274,9 @@ function Browser() {
       // Saved before the branch/ref merge? Same migration as for links.
       const migrated = saved && {
         ...saved,
-        ...(({ mode, filter, ref, target, dots }) => ({
+        ...(({ mode, filter, ref, target, dots, commit }) => ({
           mode,
+          commit,
           filter,
           ref,
           target,
@@ -415,12 +370,29 @@ function Browser() {
       });
   }, [ready, repos.data, state.repo]);
   const refs = useQuery({
-    queryKey: ["refs", state.repo],
-    queryFn: ({ signal }) => api<RefData>("refs", { repo: state.repo }, signal),
+    queryKey: ["refs", state.repo, state.mode === "pr"],
+    queryFn: ({ signal }) =>
+      api<RefData>(
+        state.mode === "pr" ? "refs" : "revisions",
+        { repo: state.repo },
+        signal,
+      ),
     enabled: ready && !!state.repo,
     refetchInterval: 60000,
   });
-  const enabled = ready && !!state.repo && (state.mode !== "pr" || !!state.pr);
+  const tracking = useQuery({
+    queryKey: ["tracking", state.repo],
+    queryFn: ({ signal }) =>
+      api<TrackingInfo>("tracking", { repo: state.repo }, signal),
+    enabled: ready && !!state.repo,
+    refetchInterval: 15000,
+  });
+  const enabled =
+    ready &&
+    !!state.repo &&
+    (state.mode !== "pr" || !!state.pr) &&
+    (state.mode !== "commit" || !!state.commit) &&
+    (state.mode !== "unpushed" || tracking.data?.state === "ready");
   // Context lines every patch is cut with: the chosen amount, or the whole file when unchanged
   // lines are expanded. The server cuts all pages with it, so it is part of what a page *is*.
   const ctxParam = collapseContext ? state.unified : "10000";
@@ -1007,6 +979,8 @@ function Browser() {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["repos", project] });
     void qc.invalidateQueries({ queryKey: ["refs", state.repo] });
+    void qc.invalidateQueries({ queryKey: ["tracking", state.repo] });
+    void qc.invalidateQueries({ queryKey: ["history", state.repo] });
     void qc.invalidateQueries({ queryKey: ["files", scope] });
     // A new stamp resets what is loaded and re-seeds it from the refreshed list and pages.
     setNonce((n) => n + 1);
@@ -1016,17 +990,20 @@ function Browser() {
     repos.data?.repos.find((r) => r.path === state.repo)?.base ||
     data.data?.compare?.ref ||
     "";
-  const selectedPrInfo = refs.data?.prs.find(
+  const selectedPrInfo = refs.data?.prs?.find(
     (pr) => String(pr.number) === state.pr,
   );
   const desc = describeComparison(
     normalizeMode(state),
-    { defaultBase: defaultBaseName, pr: selectedPrInfo },
+    {
+      defaultBase: defaultBaseName,
+      pr: selectedPrInfo,
+      upstream: tracking.data?.upstream,
+    },
     t,
   );
   // Counts only mean something once there is a result; "+0 −0" next to a half-made choice or an
   // empty comparison would read as a finished answer.
-  const showStats = allFiles.length > 0;
   const copyPath = async (path: string) => {
     try {
       await navigator.clipboard.writeText(state.repo + "/" + path);
@@ -1149,14 +1126,6 @@ function Browser() {
       localStorage.setItem("diffview:tree-width", String(treeWidth));
     } catch {}
   }, [treeWidth]);
-  useEffect(() => {
-    // Filters and the drilled-into pane belong to one opening of the menu.
-    if (!comparisonOpen) {
-      setPrDraft("");
-      setRefDraft("");
-      setPane("root");
-    }
-  }, [comparisonOpen]);
   const keepOpen = (e: Event) => e.preventDefault();
   const [rememberedHome, setRememberedHome] = useState("");
   useEffect(() => {
@@ -1184,6 +1153,7 @@ function Browser() {
       base: repos.data?.repos.find((r) => r.path === repo)?.base || "",
       ref: "",
       pr: "",
+      commit: "",
     });
   // Context lines are typed freely: keep a local draft and commit a valid value shortly after typing.
   const ctxValid = /^\d{1,5}$/.test(ctxDraft) && Number(ctxDraft) <= 10000;
@@ -1197,269 +1167,12 @@ function Browser() {
     return () => clearTimeout(timer);
   }, [ctxDraft, ctxValid, state.unified]);
   const repoName = state.repo.split("/").at(-1) || t.repo;
-  const refChoices = [
-    ...(refs.data?.branches || []).map((v) => ({ value: v, label: v })),
-    ...(refs.data?.tags || [])
-      .filter((v) => !refs.data?.branches.includes(v))
-      .map((v) => ({ value: v, label: v })),
-    ...(refs.data?.commits || []).map((c) => ({
-      value: c.sha,
-      label: `${c.sha.slice(0, 7)} ${c.title}`,
-    })),
-  ];
-  const prQuery = prDraft.trim().toLowerCase();
-  const visiblePrs = (refs.data?.prs || []).filter(
-    (pr) =>
-      !prQuery ||
-      String(pr.number).includes(prQuery.replace(/^#/, "")) ||
-      pr.title.toLowerCase().includes(prQuery),
-  );
-  const refQuery = refDraft.trim().toLowerCase();
-  const visibleRefs = refChoices.filter(
-    (c) => !refQuery || c.label.toLowerCase().includes(refQuery),
-  );
-  const picked = () => setComparisonOpen(false);
-  /** A row that leads to a picker; keeps the menu open and swaps its content. */
-  const pickerRow = (target: "pr" | "base", label: React.ReactNode) => (
-    <DropdownMenuItem
-      onSelect={(e) => {
-        e.preventDefault();
-        setPane(target);
-      }}
-    >
-      {label}
-      <ChevronRight className="ml-auto shrink-0 text-muted-foreground" />
-    </DropdownMenuItem>
-  );
-  const pickerBack = (title: string) => (
-    <>
-      <DropdownMenuItem
-        aria-label={`${t.back}: ${title}`}
-        onSelect={(e) => {
-          e.preventDefault();
-          setPane("root");
-        }}
-      >
-        <ChevronLeft className="text-muted-foreground" />
-        <span className="font-medium">{title}</span>
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-    </>
-  );
-  const prPane = (
-    <>
-      {pickerBack(t.pr)}
-      <div className="p-1">
-        <Input
-          autoFocus
-          aria-label={t.prNumber}
-          placeholder={t.prFilter}
-          value={prDraft}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === "Enter" && /^\d+$/.test(prDraft.trim())) {
-              change({ pr: prDraft.trim() });
-              picked();
-            }
-          }}
-          onChange={(e) => setPrDraft(e.target.value)}
-        />
-      </div>
-      <div className={PICKER_LIST}>
-        <DropdownMenuRadioGroup
-          value={state.pr || ""}
-          onValueChange={(pr) => change({ pr })}
-        >
-          {visiblePrs.map((pr) => (
-            <DropdownMenuRadioItem
-              key={pr.number}
-              value={String(pr.number)}
-              title={`#${pr.number} ${pr.title}`}
-            >
-              <span className="truncate">
-                #{pr.number} {pr.title}
-              </span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        {!visiblePrs.length &&
-          (/^\d+$/.test(prDraft.trim()) ? (
-            <DropdownMenuItem onSelect={() => change({ pr: prDraft.trim() })}>
-              {t.prOpenNumber.replace("{n}", prDraft.trim())}
-            </DropdownMenuItem>
-          ) : (
-            <p className="px-2 py-1.5 text-aux text-muted-foreground">
-              {t.prNoMatch}
-            </p>
-          ))}
-      </div>
-    </>
-  );
-  const basePane = (
-    <>
-      {pickerBack(t.secBase)}
-      <div className="p-1">
-        <Input
-          autoFocus
-          aria-label={t.reference}
-          placeholder={t.refFilter}
-          value={refDraft}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === "Enter" && refDraft.trim()) {
-              change({ ref: refDraft.trim() });
-              picked();
-            }
-          }}
-          onChange={(e) => setRefDraft(e.target.value)}
-        />
-      </div>
-      <div className={PICKER_LIST}>
-        <DropdownMenuRadioGroup
-          value={state.ref}
-          onValueChange={(ref) => change({ ref })}
-        >
-          {!refQuery && (
-            <DropdownMenuRadioItem value="">
-              <span className="truncate">
-                {t.defaultBranch}
-                {defaultBaseName ? ` · ${defaultBaseName}` : ""}
-              </span>
-            </DropdownMenuRadioItem>
-          )}
-          {visibleRefs.map((c) => (
-            <DropdownMenuRadioItem
-              key={c.value}
-              value={c.value}
-              title={c.label}
-            >
-              <span className="truncate">{c.label}</span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        {refDraft.trim() &&
-          !visibleRefs.some((c) => c.value === refDraft.trim()) && (
-            <DropdownMenuItem onSelect={() => change({ ref: refDraft.trim() })}>
-              {t.refUse.replace("{ref}", refDraft.trim())}
-            </DropdownMenuItem>
-          )}
-        {!visibleRefs.length && !refDraft.trim() && (
-          <p className="px-2 py-1.5 text-aux text-muted-foreground">
-            {t.refNoMatch}
-          </p>
-        )}
-      </div>
-    </>
-  );
-  const rootPane = (
-    <>
-      <DropdownMenuRadioGroup
-        value={state.mode}
-        onValueChange={(mode) => change({ mode: mode as Mode["mode"] })}
-      >
-        {(["uncommitted", "pr", "ref"] as const).map((mode) => (
-          <DropdownMenuRadioItem key={mode} value={mode} onSelect={keepOpen}>
-            {t[mode]}
-          </DropdownMenuRadioItem>
-        ))}
-      </DropdownMenuRadioGroup>
-      <DropdownMenuSeparator />
-      {state.mode === "uncommitted" && (
-        <>
-          <DropdownMenuLabel>{t.secInclude}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={state.filter || "all"}
-            onValueChange={(filter) => change({ filter })}
-          >
-            {(["all", "staged", "unstaged"] as const).map((v) => (
-              <DropdownMenuRadioItem key={v} value={v}>
-                {t[v]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </>
-      )}
-      {state.mode === "pr" && (
-        <>
-          {pickerRow(
-            "pr",
-            <span className="min-w-0 flex-1 truncate">
-              {state.pr
-                ? `#${state.pr}${selectedPrInfo ? " " + selectedPrInfo.title : ""}`
-                : t.choosePrPlaceholder}
-            </span>,
-          )}
-          {prState && prState !== "ready" && (
-            <p className="px-2 py-1 text-aux text-muted-foreground">
-              {t[prState as "missing"] || t.unavailable}
-            </p>
-          )}
-        </>
-      )}
-      {state.mode === "ref" && (
-        <>
-          <DropdownMenuLabel>{t.secBase}</DropdownMenuLabel>
-          {pickerRow(
-            "base",
-            <>
-              <span className="min-w-0 flex-1 truncate">
-                {state.ref || defaultBaseName || t.reference}
-              </span>
-              {!state.ref && (
-                <span className="shrink-0 text-aux text-muted-foreground">
-                  {t.defaultBranch}
-                </span>
-              )}
-            </>,
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t.secTarget}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={state.target || "worktree"}
-            onValueChange={(target) => change({ target })}
-          >
-            <DropdownMenuRadioItem value="worktree" onSelect={keepOpen}>
-              {t.worktree}
-              <MenuHint>{t.tgtWorktreeHint}</MenuHint>
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="head" onSelect={keepOpen}>
-              {t.head}
-              <MenuHint>{t.tgtHeadHint}</MenuHint>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t.secMethod}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={state.dots || "three"}
-            onValueChange={(dots) => change({ dots })}
-          >
-            <DropdownMenuRadioItem value="three" onSelect={keepOpen}>
-              {t.three}
-              <MenuHint>{t.methThreeHint}</MenuHint>
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="two" onSelect={keepOpen}>
-              {t.two}
-              <MenuHint>{t.methTwoHint}</MenuHint>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </>
-      )}
-    </>
-  );
-  const compareMenu = (
-    <DropdownMenuContent
-      align="start"
-      collisionPadding={8}
-      className={pane === "root" ? "w-52" : PICKER_WIDTH}
-    >
-      {pane === "pr" ? prPane : pane === "base" ? basePane : rootPane}
-    </DropdownMenuContent>
-  );
   const empty = describeEmpty(normalizeMode(state), {
     hideViewed: hideViewed && allFiles.length > 0,
     same: !!data.data?.compare?.same,
     prState,
-    openPrs: refs.data?.prs.length ?? 0,
+    trackingState: tracking.data?.state,
+    openPrs: refs.data?.prs?.length ?? 0,
     // Known from the open-PR list, or because the comparison itself ran and found files.
     prKnown: !!selectedPrInfo || allFiles.length > 0,
   });
@@ -1467,7 +1180,8 @@ function Browser() {
     text
       .replace("{from}", desc.from)
       .replace("{to}", desc.to)
-      .replace("{pr}", state.pr || "");
+      .replace("{pr}", state.pr || "")
+      .replace("{upstream}", tracking.data?.upstream || "@{upstream}");
   const emptyAction = {
     "target-worktree": {
       label: t.emptyCompareWorktree,
@@ -1477,9 +1191,26 @@ function Browser() {
       label: t.emptyShowAll,
       run: () => change({ filter: "all" }),
     },
-    "open-menu": { label: t.emptyChoosePr, run: () => setComparisonOpen(true) },
+    "open-menu": {
+      label: state.mode === "commit" ? t.chooseCommit : t.emptyChoosePr,
+      run: () => setComparisonOpen(true),
+    },
   } as const;
   const emptyText: Record<typeof empty.kind, [string, string?]> = {
+    "unpushed-clean": [
+      tracking.data?.ahead
+        ? t.emptyUnpushedNetZero.replace("{n}", String(tracking.data.ahead))
+        : t.emptyUnpushed,
+      emptyFill(t.emptyUnpushedHint) +
+        (tracking.data?.behind
+          ? " " + t.behindUpstream.replace("{n}", String(tracking.data.behind))
+          : ""),
+    ],
+    "tracking-unavailable": [
+      errorMessage(tracking.data?.state || "internal", t),
+      t.trackingUnavailable,
+    ],
+    "pick-commit": [t.chooseCommit],
     "all-viewed": [t.allViewed],
     "local-clean": [t.emptyLocalClean, t.emptyLocalCleanHint],
     "local-staged": [t.emptyLocalStaged],
@@ -1561,115 +1292,85 @@ function Browser() {
       className="flex h-dvh min-h-96 flex-col overflow-hidden bg-[var(--app-canvas)] text-foreground"
     >
       <header
-        className="flex h-14 shrink-0 items-center gap-2 px-3"
+        className={
+          compact
+            ? "grid min-h-14 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-2 px-3 py-2"
+            : "flex min-h-14 shrink-0 items-center gap-2 px-3 py-2"
+        }
         aria-label={t.toolbar}
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Pill
-              aria-label={t.repo}
-              title={`${t.repo}: ${state.repo}`}
-              className={`${compact ? "max-w-32" : "max-w-48"} shrink ${awayFromHome ? "border-primary/40" : ""}`}
-            >
-              <FolderGit2
-                size={15}
-                className="shrink-0 text-muted-foreground"
-              />
-              <span className="truncate">{repoName}</span>
-              <ChevronDown
-                size={12}
-                className="shrink-0 text-muted-foreground"
-              />
-            </Pill>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="max-h-80 min-w-52 overflow-y-auto"
-          >
-            <DropdownMenuLabel>{t.repo}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={state.repo}
-              onValueChange={switchRepo}
-            >
-              {(repos.data?.repos || []).map((r) => (
-                <DropdownMenuRadioItem
-                  key={r.path}
-                  value={r.path}
-                  title={r.path}
-                >
-                  <span className="truncate">{r.name}</span>
-                  {r.path === homePath && (
-                    <span className="ml-auto pl-2 text-aux text-muted-foreground">
-                      {homeFromProject ? t.thisChat : t.openedFirst}
-                    </span>
-                  )}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {awayFromHome && (
-          <Quiet
-            label={(homeFromProject
-              ? t.backToChatRepo
-              : t.backToOpenedRepo
-            ).replace("{name}", homeName)}
-            className="border border-border/60"
-            onClick={() => switchRepo(homePath)}
-          >
-            <Undo2 size={15} />
-          </Quiet>
-        )}
-        <DropdownMenu open={comparisonOpen} onOpenChange={setComparisonOpen}>
-          <DropdownMenuTrigger asChild>
-            <Pill
-              aria-label={t.comparison}
-              title={`${repoName} · ${desc.tooltip}`}
-              className="max-w-full shrink"
-            >
-              {desc.badge && (
-                <span
-                  className={`shrink-0 tabular-nums ${desc.badgeOnly ? "" : "text-muted-foreground"}`}
-                >
-                  {desc.badge}
-                </span>
-              )}
-              {desc.placeholder ? (
-                <span className="truncate text-muted-foreground">
-                  {t.choosePrPlaceholder}
-                </span>
-              ) : desc.label ? (
-                <span className="truncate">{desc.label}</span>
-              ) : desc.badgeOnly ? null : (
-                <>
-                  <span className="min-w-0 truncate">{desc.from}</span>
-                  <ArrowRight
-                    size={12}
-                    className="shrink-0 text-muted-foreground"
-                  />
-                  <span className="shrink-0">{desc.to}</span>
-                </>
-              )}
-              {desc.twoDot && (
-                <span className="shrink-0 text-aux text-muted-foreground">
-                  {t.two}
-                </span>
-              )}
-              {showStats && (
-                <Stats
-                  added={allFiles.reduce((s, f) => s + f.added, 0)}
-                  deleted={allFiles.reduce((s, f) => s + f.deleted, 0)}
-                  zero
+        <div className="flex min-w-0 shrink items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Pill
+                aria-label={t.repo}
+                title={`${t.repo}: ${state.repo}`}
+                className={`${compact ? "max-w-32" : "max-w-48"} shrink ${awayFromHome ? "border-primary/40" : ""}`}
+              >
+                <FolderGit2
+                  size={15}
+                  className="shrink-0 text-muted-foreground"
                 />
-              )}
-              <ChevronDown
-                size={12}
-                className="shrink-0 text-muted-foreground"
-              />
-            </Pill>
-          </DropdownMenuTrigger>
-          {compareMenu}
-        </DropdownMenu>
+                <span className="truncate">{repoName}</span>
+                <ChevronDown
+                  size={12}
+                  className="shrink-0 text-muted-foreground"
+                />
+              </Pill>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="max-h-80 min-w-52 overflow-y-auto"
+            >
+              <DropdownMenuLabel>{t.repo}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={state.repo}
+                onValueChange={switchRepo}
+              >
+                {(repos.data?.repos || []).map((r) => (
+                  <DropdownMenuRadioItem
+                    key={r.path}
+                    value={r.path}
+                    title={r.path}
+                  >
+                    <span className="truncate">{r.name}</span>
+                    {r.path === homePath && (
+                      <span className="ml-auto pl-2 text-aux text-muted-foreground">
+                        {homeFromProject ? t.thisChat : t.openedFirst}
+                      </span>
+                    )}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {awayFromHome && (
+            <Quiet
+              label={(homeFromProject
+                ? t.backToChatRepo
+                : t.backToOpenedRepo
+              ).replace("{name}", homeName)}
+              className="border border-border/60"
+              onClick={() => switchRepo(homePath)}
+            >
+              <Undo2 size={15} />
+            </Quiet>
+          )}
+        </div>
+        <ComparisonMenu
+          state={state}
+          change={change}
+          desc={desc}
+          data={data.data}
+          refs={refs.data}
+          tracking={tracking.data}
+          defaultBase={defaultBaseName}
+          t={t}
+          zh={host.zh}
+          compact={compact}
+          open={comparisonOpen}
+          setOpen={setComparisonOpen}
+        />
         <div className="ml-auto flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-border/60 p-0.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1684,6 +1385,15 @@ function Browser() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem
+                onSelect={() => {
+                  change({ mode: "pr" });
+                  setComparisonOpen(true);
+                }}
+              >
+                {t.pr}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <div
                 className="flex min-h-[var(--control-min-h)] items-center gap-2 px-2 py-1 text-ui"
                 onKeyDown={(e) => e.stopPropagation()}
@@ -1896,7 +1606,7 @@ function Browser() {
             manualJump.current = undefined;
           }}
         >
-          {(repos.error || refs.error || data.error) && (
+          {(repos.error || refs.error || tracking.error || data.error) && (
             <div
               role="alert"
               className="m-3 rounded-lg bg-destructive-bg p-3 text-sm text-destructive"
@@ -1904,8 +1614,8 @@ function Browser() {
               {data.data
                 ? t.stale
                 : errorMessage(
-                    (data.error || refs.error || repos.error)?.message ||
-                      "internal",
+                    (data.error || tracking.error || refs.error || repos.error)
+                      ?.message || "internal",
                     t,
                   )}
               <Button variant="ghost" size="sm" onClick={refresh}>
@@ -1917,6 +1627,7 @@ function Browser() {
             {!ready ||
             repos.isPending ||
             (enabled && data.isPending) ||
+            (state.mode === "unpushed" && tracking.isPending) ||
             (items.length > 0 && revealed === 0) ? (
               loadingSkeleton
             ) : !repos.data?.repos.length ? (

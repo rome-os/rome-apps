@@ -2,7 +2,8 @@
 
 Review Git changes without leaving Rome — and without changing your files.
 
-- Browse working changes, staged files, branches, pull requests and custom comparisons.
+- Review unpushed commits, all uncommitted changes, staged or unstaged files, branch comparisons and individual commits.
+- Browse paginated local commit history; pull requests remain available in review options.
 - Navigate a folder tree with file status, change counts and remembered viewed marks.
 - Read unified or side-by-side diffs, with syntax highlighting and large-file safeguards.
 - Switch between local repositories and share a link to a comparison.

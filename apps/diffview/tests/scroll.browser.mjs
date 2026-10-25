@@ -48,7 +48,7 @@ test(
             defaultRepo: "/fixture",
             homeRepo: "/fixture",
           });
-        else if (route === "refs")
+        else if (route === "refs" || route === "revisions")
           json({
             branches: ["main", "feature"],
             tags: [],
@@ -56,6 +56,7 @@ test(
             prs: [],
             prState: "ok",
           });
+        else if (route === "tracking") json({ state: "no_upstream", upstream: "", ahead: 0, behind: 0 });
         else if (route === "events") json({ fingerprint: "one", ms: 0 });
         else if (route === "files") {
           // A slow list must not overwrite the saved position with an initial zero.

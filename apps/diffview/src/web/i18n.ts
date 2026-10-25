@@ -23,6 +23,37 @@ export function useHost() {
   return host;
 }
 const en = {
+  unpushed: "Unpushed",
+  committed: "Committed",
+  chooseCommit: "Choose a commit",
+  branchComparison: "Branch comparison",
+  hintUnpushed:
+    "Local commits absent from the tracking upstream; excludes uncommitted work. Uses local remote-tracking data, without fetching.",
+  hintCommit:
+    "This commit versus its first parent; root commits versus the empty tree",
+  commitFilter: "Filter this page, or enter a commit and press Enter",
+  commitUse: "View commit “{ref}”",
+  commitNoMatch: "No matching commits on this page.",
+  olderCommits: "Older commits",
+  newerCommits: "Newer commits",
+  noCommits: "No commits yet.",
+  emptyUnpushed: "No unpushed changes.",
+  emptyUnpushedHint:
+    "Compared with {upstream}, using local tracking data. Uncommitted changes are shown separately.",
+  emptyUnpushedNetZero: "{n} local commits have no net file changes.",
+  no_upstream: "This branch has no tracking upstream.",
+  detached: "Detached HEAD has no tracking upstream.",
+  unborn: "This repository has no commits yet.",
+  upstream_missing: "The configured upstream reference is missing locally.",
+  no_merge_base:
+    "No common ancestor found; the repository may be shallow or the histories unrelated.",
+  trackingUnavailable:
+    "Unpushed comparison needs a tracking upstream; no default branch is substituted.",
+  upstreamNone: "No upstream",
+  upstreamDetached: "Detached HEAD",
+  upstreamMissing: "Upstream missing",
+  behindUpstream: "{n} commits behind upstream",
+
   index: "Staging area",
   toolbar: "Review toolbar",
   scope: "Comparison scope",
@@ -171,6 +202,34 @@ const en = {
   prNumber: "PR number",
 };
 const zh: typeof en = {
+  unpushed: "未推送",
+  committed: "已提交",
+  chooseCommit: "选择提交",
+  branchComparison: "分支比较",
+  hintUnpushed:
+    "上游尚未包含的本地提交，不含未提交改动；依据本地远端跟踪信息，不自动拉取",
+  hintCommit: "本次提交相对第一父提交的改动；初始提交与空树比较",
+  commitFilter: "筛选本页，或输入提交号后回车",
+  commitUse: "查看提交“{ref}”",
+  commitNoMatch: "本页没有匹配的提交。",
+  olderCommits: "更早的提交",
+  newerCommits: "更新的提交",
+  noCommits: "暂无提交。",
+  emptyUnpushed: "没有未推送的文件改动。",
+  emptyUnpushedHint:
+    "相对 {upstream}，依据本地跟踪信息；未提交改动请单独查看。",
+  emptyUnpushedNetZero: "有 {n} 个本地提交，但没有净文件变化。",
+  no_upstream: "当前分支没有设置跟踪上游。",
+  detached: "当前处于游离 HEAD，没有跟踪上游。",
+  unborn: "仓库还没有提交。",
+  upstream_missing: "配置的上游引用在本地不存在。",
+  no_merge_base: "没有找到共同祖先，可能是浅克隆或不相关的历史。",
+  trackingUnavailable: "未推送比较需要跟踪上游，不会自动改用默认分支。",
+  upstreamNone: "未设置上游",
+  upstreamDetached: "游离 HEAD",
+  upstreamMissing: "上游不存在",
+  behindUpstream: "落后上游 {n} 个提交",
+
   index: "暂存区",
   toolbar: "变更工具栏",
   scope: "比较范围",

@@ -10,15 +10,16 @@ export const CHAT_FIELDS = [
   "base",
   "ref",
   "pr",
+  "commit",
   "dots",
   "target",
 ] as const;
 export type ChatField = (typeof CHAT_FIELDS)[number];
 export type ChatState = Partial<Record<ChatField, string>> & {
-  mode?: "uncommitted" | "branch" | "pr" | "ref";
+  mode?: "uncommitted" | "branch" | "pr" | "ref" | "unpushed" | "commit";
 };
 const ENUMS: Partial<Record<ChatField, readonly string[]>> = {
-  mode: ["uncommitted", "branch", "pr", "ref"],
+  mode: ["uncommitted", "branch", "pr", "ref", "unpushed", "commit"],
   filter: ["all", "staged", "unstaged"],
   dots: ["three", "two"],
   target: ["head", "worktree"],
@@ -30,6 +31,7 @@ export const DEFAULT_CHAT_STATE: Required<ChatState> = {
   base: "",
   ref: "",
   pr: "",
+  commit: "",
   dots: "three",
   target: "worktree",
 };

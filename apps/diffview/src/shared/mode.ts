@@ -2,7 +2,7 @@
  * What the guardian can pick as the thing to compare. "branch" used to be a separate mode; it is
  * now the same operation as comparing a ref, so old links and saved state are migrated here.
  */
-export type UiMode = "uncommitted" | "ref" | "pr";
+export type UiMode = "uncommitted" | "ref" | "pr" | "unpushed" | "commit";
 export interface RawMode {
   mode?: string;
   filter?: string;
@@ -11,6 +11,7 @@ export interface RawMode {
   target?: string;
   dots?: string;
   pr?: string;
+  commit?: string;
 }
 export interface NormalizedMode {
   mode: UiMode;
@@ -22,6 +23,7 @@ export interface NormalizedMode {
   /** `three` = from the merge base (only this branch's changes); `two` = both tips directly. */
   dots: "three" | "two";
   pr: string;
+  commit: string;
   base: string;
 }
 const pick = <T extends string>(
@@ -47,15 +49,21 @@ export function normalizeMode(raw: RawMode): NormalizedMode {
       target: "head",
       dots: "three",
       pr,
+      commit: raw.commit ?? "",
       base,
     };
   return {
-    mode: pick(raw.mode, ["uncommitted", "ref", "pr"] as const, "uncommitted"),
+    mode: pick(
+      raw.mode,
+      ["uncommitted", "ref", "pr", "unpushed", "commit"] as const,
+      "uncommitted",
+    ),
     filter,
     ref: raw.ref ?? "",
     target: pick(raw.target, ["worktree", "head"] as const, "worktree"),
     dots: pick(raw.dots, ["three", "two"] as const, "three"),
     pr,
+    commit: raw.commit ?? "",
     base,
   };
 }

@@ -4,6 +4,11 @@ import type { NormalizedMode } from "./mode.js";
 export interface DescribeLabels {
   /** One-word trigger labels for local changes. */
   triggerUncommitted: string;
+  unpushed: string;
+  committed: string;
+  chooseCommit: string;
+  hintUnpushed: string;
+  hintCommit: string;
   staged: string;
   unstaged: string;
   head: string;
@@ -43,8 +48,11 @@ export interface Description {
 }
 
 export function describeComparison(
-  m: Pick<NormalizedMode, "mode" | "filter" | "ref" | "target" | "dots" | "pr">,
-  ctx: { defaultBase: string; pr?: PrInfo },
+  m: Pick<
+    NormalizedMode,
+    "mode" | "filter" | "ref" | "target" | "dots" | "pr" | "commit"
+  >,
+  ctx: { defaultBase: string; pr?: PrInfo; upstream?: string },
   l: DescribeLabels,
 ): Description {
   if (m.mode === "uncommitted") {
@@ -55,6 +63,27 @@ export function describeComparison(
           ? [l.index, l.worktree, l.hintLocalUnstaged, l.unstaged]
           : [l.head, l.worktree, l.hintLocalAll, l.triggerUncommitted];
     return { from, to, label, tooltip: `${label} · ${from} → ${to} · ${hint}` };
+  }
+  if (m.mode === "unpushed") {
+    const from = ctx.upstream || "@{upstream}";
+    return {
+      label: l.unpushed,
+      from,
+      to: l.head,
+      tooltip: `${l.unpushed} · ${from} → ${l.head} · ${l.hintUnpushed}`,
+    };
+  }
+  if (m.mode === "commit") {
+    const label = m.commit
+      ? `${l.committed} ${m.commit.slice(0, 7)}`
+      : l.committed;
+    return {
+      label,
+      from: m.commit ? `${m.commit}^1` : "",
+      to: m.commit || "",
+      placeholder: !m.commit,
+      tooltip: m.commit ? `${m.commit} · ${l.hintCommit}` : l.chooseCommit,
+    };
   }
   if (m.mode === "pr") {
     if (!m.pr)
@@ -89,6 +118,9 @@ export function describeComparison(
 }
 
 export type EmptyKind =
+  | "unpushed-clean"
+  | "tracking-unavailable"
+  | "pick-commit"
   | "all-viewed"
   | "local-clean"
   | "local-staged"
@@ -107,7 +139,7 @@ export type EmptyAction = "target-worktree" | "filter-all" | "open-menu" | null;
  * base resolves to the very commit HEAD is on (nothing to compare, not a failed lookup).
  */
 export function describeEmpty(
-  m: Pick<NormalizedMode, "mode" | "filter" | "target" | "pr">,
+  m: Pick<NormalizedMode, "mode" | "filter" | "target" | "pr" | "commit">,
   ctx: {
     hideViewed: boolean;
     same: boolean;
@@ -115,9 +147,23 @@ export function describeEmpty(
     openPrs: number;
     /** The chosen PR number resolved to a real pull request. */
     prKnown?: boolean;
+    trackingState?: string;
   },
 ): { kind: EmptyKind; action: EmptyAction } {
   if (ctx.hideViewed) return { kind: "all-viewed", action: null };
+  if (m.mode === "unpushed")
+    return {
+      kind:
+        ctx.trackingState && ctx.trackingState !== "ready"
+          ? "tracking-unavailable"
+          : "unpushed-clean",
+      action: null,
+    };
+  if (m.mode === "commit")
+    return {
+      kind: m.commit ? "no-difference" : "pick-commit",
+      action: m.commit ? null : "open-menu",
+    };
   if (m.mode === "uncommitted")
     return m.filter === "staged"
       ? { kind: "local-staged", action: "filter-all" }

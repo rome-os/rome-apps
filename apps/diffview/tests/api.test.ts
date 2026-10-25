@@ -268,3 +268,61 @@ test("comparing a base with no ref chosen uses the default branch, and reports w
   const local = await call("files", { mode: "uncommitted" });
   assert.equal(local.body.compare, undefined);
 });
+
+test("local revisions/history/tracking APIs and commit pages are read-only and independent of GitHub", async () => {
+  const { repo, call } = await boot();
+  const g = (...args: string[]) =>
+    execFileSync("git", args, { cwd: repo, stdio: "pipe" }).toString().trim();
+  const root = g("rev-parse", "HEAD");
+  const index = g("ls-files", "--stage");
+  const revisions = await call("revisions", {});
+  assert.equal(revisions.status, 200);
+  assert.deepEqual(revisions.body.prs, []);
+  assert.ok(revisions.body.branches.includes("main"));
+  const commits = await call("history", {});
+  assert.equal(commits.body.commits[0].sha, root);
+  assert.equal((await call("tracking", {})).body.state, "no_upstream");
+  assert.equal(
+    (await call("files", { mode: "unpushed" })).body.error,
+    "no_upstream",
+  );
+  assert.equal((await call("history", { cursor: "-1" })).status, 400);
+  const selected = await call("files", { mode: "commit", commit: root });
+  assert.equal(selected.status, 200);
+  assert.equal(selected.body.files.length, 300);
+  const page = await call("patches", {
+    mode: "commit",
+    commit: root,
+    fp: selected.body.fingerprint,
+    cursor: String(selected.body.page.next),
+  });
+  assert.equal(page.status, 200);
+  assert.ok(Object.keys(page.body.patches).length > 0);
+  assert.equal(g("ls-files", "--stage"), index);
+});
+
+test("moving a selected commit alias invalidates conditional refresh even when HEAD/worktree do not change", async () => {
+  const { repo, call } = await boot();
+  const g = (...args: string[]) =>
+    execFileSync("git", args, { cwd: repo, stdio: "pipe" }).toString().trim();
+  const root = g("rev-parse", "HEAD");
+  g("add", "--", "f000.txt");
+  g("commit", "-m", "second");
+  const second = g("rev-parse", "HEAD");
+  g("update-ref", "refs/heads/selected", root);
+  const initial = await call("files", { mode: "commit", commit: "selected" });
+  assert.equal(initial.body.files.length, 300);
+  g("update-ref", "refs/heads/selected", second);
+  const updated = await call("files", {
+    mode: "commit",
+    commit: "selected",
+    have: initial.body.fingerprint,
+  });
+  assert.equal(updated.status, 200);
+  assert.notEqual(updated.body.fingerprint, initial.body.fingerprint);
+  assert.equal(updated.body.unchanged, undefined);
+  assert.deepEqual(
+    updated.body.files.map((f: { path: string }) => f.path),
+    ["f000.txt"],
+  );
+});

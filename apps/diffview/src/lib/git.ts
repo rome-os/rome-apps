@@ -293,13 +293,14 @@ export function collapseHint(path: string) {
   );
 }
 export interface Mode {
-  mode: "uncommitted" | "branch" | "pr" | "ref";
+  mode: "uncommitted" | "branch" | "pr" | "ref" | "unpushed" | "commit";
   filter?: string;
   base?: string;
   ref?: string;
   dots?: string;
   target?: string;
   pr?: string;
+  commit?: string;
 }
 export function diffArgs(m: Mode, from?: string, to = "HEAD") {
   if (m.mode === "uncommitted")
@@ -372,11 +373,106 @@ async function prCompare(repo: string, n: string) {
   if (prCache.size > 6) prCache.delete(prCache.keys().next().value!);
   return promise;
 }
+/** Tracking is local metadata only. Never fetch, change branches, or guess a base. */
+export interface TrackingInfo {
+  state: "ready" | "no_upstream" | "detached" | "unborn" | "upstream_missing";
+  upstream: string;
+  head: string;
+  upstreamHead: string;
+  ahead: number;
+  behind: number;
+}
+export async function tracking(repo: string): Promise<TrackingInfo> {
+  const result: TrackingInfo = {
+    state: "unborn",
+    upstream: "",
+    head: "",
+    upstreamHead: "",
+    ahead: 0,
+    behind: 0,
+  };
+  result.head = await tryGit(repo, ["rev-parse", "--verify", "HEAD"]);
+  if (!result.head) return result;
+  const branch = await tryGit(repo, ["symbolic-ref", "--quiet", "HEAD"]);
+  if (!branch) return { ...result, state: "detached" };
+  result.upstream = await tryGit(repo, [
+    "for-each-ref",
+    "--format=%(upstream:short)",
+    branch,
+  ]);
+  if (!result.upstream) return { ...result, state: "no_upstream" };
+  result.upstreamHead = await sha(repo, result.upstream).catch(() => "");
+  if (!result.upstreamHead) return { ...result, state: "upstream_missing" };
+  const counts = (
+    await git(repo, [
+      "rev-list",
+      "--left-right",
+      "--count",
+      result.upstreamHead + "..." + result.head,
+    ])
+  )
+    .trim()
+    .split(/\s+/)
+    .map(Number);
+  return { ...result, state: "ready", behind: counts[0], ahead: counts[1] };
+}
+export interface CommitInfo {
+  sha: string;
+  title: string;
+  timestamp: number;
+}
+/** Bounded pages, independent of GitHub availability. Empty repositories have no history. */
+export async function history(repo: string, cursor = 0) {
+  if (!Number.isInteger(cursor) || cursor < 0 || cursor > 1_000_000)
+    throw new GitError("invalid_cursor");
+  if (!(await tryGit(repo, ["rev-parse", "--verify", "HEAD"])))
+    return { commits: [] as CommitInfo[], next: null as number | null };
+  const text = await git(
+    repo,
+    ["log", "-41", "--skip=" + cursor, "--format=%H%x09%ct%x09%s"],
+    256 * 1024,
+  );
+  const rows = text.trimEnd().split("\n").filter(Boolean);
+  const commits: CommitInfo[] = rows.slice(0, 40).map((row) => {
+    const [sha, timestamp, ...title] = row.split("\t");
+    return { sha, timestamp: Number(timestamp), title: title.join("\t") };
+  });
+  return { commits, next: rows.length > 40 ? cursor + 40 : null };
+}
 export async function comparison(
   repo: string,
   m: Mode,
   head?: string,
 ): Promise<{ args: string[]; fallback?: string }> {
+  if (m.mode === "commit") {
+    const to = await sha(repo, m.commit || "");
+    const parents = (await git(repo, ["rev-list", "--parents", "-n", "1", to]))
+      .trim()
+      .split(/\s+/);
+    // First-parent diff for merges; root commits compare with the empty tree (also SHA-256 safe).
+    const from =
+      parents[1] ||
+      (
+        await git(
+          repo,
+          ["hash-object", "-t", "tree", "--stdin"],
+          undefined,
+          undefined,
+          "",
+        )
+      ).trim();
+    return { args: [from, to] };
+  }
+  if (m.mode === "unpushed") {
+    const info = await tracking(repo);
+    if (info.state !== "ready") throw new GitError(info.state);
+    const from = await git(repo, ["merge-base", info.upstreamHead, info.head])
+      .then((s) => s.trim())
+      .catch(() => {
+        throw new GitError("no_merge_base");
+      });
+    return { args: [from, info.head] };
+  }
   if (m.mode === "pr") {
     const r = await prCompare(repo, m.pr || "");
     return { ...r, args: r.fallback ? [] : diffArgs(m, r.from, r.to) };
@@ -744,7 +840,7 @@ export async function patch(
     collapsed: entry.collapsed,
   };
 }
-export async function refs(repo: string) {
+export async function refs(repo: string, includePr = true) {
   const [branches, commits, tags] = await Promise.all([
     git(repo, [
       "for-each-ref",
@@ -758,16 +854,17 @@ export async function refs(repo: string) {
   let prs: unknown[] = [],
     prState = "ready";
   try {
-    prs = JSON.parse(
-      await command(repo, "gh", [
-        "pr",
-        "list",
-        "--limit",
-        "50",
-        "--json",
-        "number,title,headRefName,baseRefName,author",
-      ]),
-    );
+    if (includePr)
+      prs = JSON.parse(
+        await command(repo, "gh", [
+          "pr",
+          "list",
+          "--limit",
+          "50",
+          "--json",
+          "number,title,headRefName,baseRefName,author",
+        ]),
+      );
   } catch (e) {
     const err = e as GitError;
     prState =

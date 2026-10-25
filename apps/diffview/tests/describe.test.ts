@@ -9,6 +9,11 @@ import {
 
 const L: DescribeLabels = {
   triggerUncommitted: "未提交",
+  unpushed: "未推送",
+  committed: "已提交",
+  chooseCommit: "选择提交",
+  hintUnpushed: "upstream",
+  hintCommit: "first parent",
   staged: "已暂存",
   unstaged: "未暂存",
   head: "HEAD",
@@ -205,4 +210,34 @@ test("empty states say why and offer the one useful next step", () => {
     kind: "all-viewed",
     action: null,
   });
+});
+
+test("unpushed and commit scopes have distinct descriptions and actionable empty states", () => {
+  assert.equal(d({ mode: "unpushed" }).label, "未推送");
+  assert.equal(
+    d({ mode: "unpushed" }, { upstream: "origin/feature" }).from,
+    "origin/feature",
+  );
+  assert.match(
+    d({ mode: "commit", commit: "123456789abc" }).tooltip,
+    /first parent/,
+  );
+  assert.equal(
+    d({ mode: "commit", commit: "123456789abc" }).label,
+    "已提交 1234567",
+  );
+  assert.equal(d({ mode: "commit" }).placeholder, true);
+  assert.equal(e({ mode: "commit" }).kind, "pick-commit");
+  assert.equal(
+    e({ mode: "unpushed" }, { trackingState: "ready" }).kind,
+    "unpushed-clean",
+  );
+  assert.equal(
+    e({ mode: "unpushed" }, { trackingState: "no_upstream" }).kind,
+    "tracking-unavailable",
+  );
+  assert.equal(
+    e({ mode: "unpushed" }, { hideViewed: true }).kind,
+    "all-viewed",
+  );
 });
