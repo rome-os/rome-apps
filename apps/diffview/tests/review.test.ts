@@ -205,9 +205,10 @@ async function fakeGh(repo: string, upstream?: string) {
     file,
     `#!/usr/bin/env node
 const fs=require('node:fs'),p=require('node:path'),cp=require('node:child_process');
-const root=p.dirname(p.dirname(__dirname)),dir=p.join(root,'.git'),n=process.argv[4];
+const root=p.dirname(p.dirname(__dirname)),dir=p.join(root,'.git'),isApi=process.argv[2]==='api',n=isApi?process.argv.find(a=>a.startsWith('repos/')).split('/').at(-1):process.argv[4];
 if(fs.existsSync(p.join(dir,'gh-fail')))process.exit(1);
-if(process.argv[3]==='view'){
+if(process.argv[3]==='view'){if(process.argv.at(-1)!=='url')process.exit(2);process.stdout.write(JSON.stringify({url:'https://github.com/fixture/upstream/pull/'+n}));}
+else if(isApi){
  const source=fs.readFileSync(p.join(dir,'gh-source'),'utf8');
  const sha=(ref)=>{try{return cp.execFileSync('git',['--git-dir='+source,'rev-parse','--verify',ref],{stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root}).toString().trim()}};
  const override=fs.existsSync(p.join(dir,'gh-head-override'))?fs.readFileSync(p.join(dir,'gh-head-override'),'utf8'):undefined;
@@ -489,6 +490,18 @@ test("fork PR uses gh's repository, verifies head identity, cleans refs, and dis
   g("push", "-q", "origin", "HEAD:refs/pull/1/head");
   g("reset", "--hard", root);
   await fakeGh(repo, upstream);
+  const bin = join(repo, ".git/test-bin"),
+    log = join(repo, ".git/git-args");
+  const realGit = execFileSync("which", ["git"], {
+    env: { ...process.env, PATH: original.PATH },
+  })
+    .toString()
+    .trim();
+  await writeFile(
+    join(bin, "git"),
+    `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');const r=cp.spawnSync(${JSON.stringify(realGit)},process.argv.slice(2),{stdio:'inherit'});process.exit(r.status||0);`,
+  );
+  await chmod(join(bin, "git"), 0o755);
   const first = await call("files", { mode: "pr", pr: "1" });
   assert.equal(first.status, 200);
   assert.deepEqual(
@@ -518,20 +531,16 @@ test("fork PR uses gh's repository, verifies head identity, cleans refs, and dis
   );
   assert.equal(g("rev-parse", `refs/diffview/tmp/${now}-active/head`), head);
   assert.equal(g("rev-parse", "refs/heads/user-keep"), root);
-  const bin = join(repo, ".git/test-bin"),
-    log = join(repo, ".git/git-args");
-  const realGit = execFileSync("which", ["git"], {
-    env: { ...process.env, PATH: original.PATH },
-  })
-    .toString()
-    .trim();
-  await writeFile(
-    join(bin, "git"),
-    `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');const r=cp.spawnSync(${JSON.stringify(realGit)},process.argv.slice(2),{stdio:'inherit'});process.exit(r.status||0);`,
-  );
-  await chmod(join(bin, "git"), 0o755);
   await lib.git(repo, ["status", "--porcelain"]);
-  const args = JSON.parse((await readFile(log, "utf8")).trim());
-  assert.ok(args.includes("gc.auto=0"));
-  assert.ok(args.includes("maintenance.auto=false"));
+  const calls = (await readFile(log, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as string[]);
+  const fetches = calls.filter((args) => args.includes("fetch"));
+  assert.ok(fetches.length >= 2);
+  for (const args of fetches) {
+    assert.ok(args.includes("gc.auto=0"));
+    assert.ok(args.includes("maintenance.auto=false"));
+    assert.ok(args.includes("--no-auto-maintenance"));
+  }
 });

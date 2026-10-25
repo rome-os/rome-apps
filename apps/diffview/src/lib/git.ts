@@ -341,21 +341,32 @@ interface PrMetadata {
   headRefOid: string;
   url: string;
 }
-export function prRepository(meta: PrMetadata, n: string) {
-  const url = new URL(meta.url);
+function prLocation(value: string, n: string) {
+  const url = new URL(value);
   const match = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(url.pathname);
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
     !match ||
-    match[3] !== n ||
+    match[3] !== n
+  )
+    throw new GitError("pr_unavailable");
+  return {
+    git: url.origin + "/" + match[1] + "/" + match[2] + ".git",
+    hostname: url.host,
+    api: "repos/" + match[1] + "/" + match[2] + "/pulls/" + n,
+  };
+}
+export function prRepository(meta: PrMetadata, n: string) {
+  const location = prLocation(meta.url, n);
+  if (
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(meta.headRefOid) ||
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(meta.baseRefOid)
   )
     throw new GitError("pr_unavailable");
   validateRef(meta.baseRefName);
-  return url.origin + "/" + match[1] + "/" + match[2] + ".git";
+  return location.git;
 }
 async function deleteReviewRefs(repo: string, entries: string[]) {
   if (!entries.length) return;
@@ -411,16 +422,24 @@ async function prCompare(repo: string, n: string, refresh = false) {
     async () => {
       let meta: PrMetadata, source: string;
       try {
+        // Older supported gh releases expose headRefOid but not baseRefOid in `pr view`.
+        // Resolve gh's canonical repository first, then read both OIDs from stable REST data.
+        const initial = JSON.parse(
+          await command(repo, "gh", ["pr", "view", n, "--json", "url"]),
+        );
+        const location = prLocation(initial.url, n);
         meta = JSON.parse(
           await command(repo, "gh", [
-            "pr",
-            "view",
-            n,
-            "--json",
-            "url,baseRefName,baseRefOid,headRefOid",
+            "api",
+            "--hostname",
+            location.hostname,
+            location.api,
+            "--jq",
+            "{url:.html_url,baseRefName:.base.ref,baseRefOid:.base.sha,headRefOid:.head.sha}",
           ]),
         );
         source = prRepository(meta, n);
+        if (source !== location.git) throw new GitError("pr_unavailable");
         await git(repo, ["check-ref-format", "refs/heads/" + meta.baseRefName]);
       } catch {
         throw new GitError("pr_unavailable");
@@ -437,6 +456,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
             repo,
             [
               "fetch",
+              "--no-auto-maintenance",
               "--atomic",
               "--no-tags",
               "--no-write-fetch-head",

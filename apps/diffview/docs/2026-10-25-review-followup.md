@@ -32,7 +32,9 @@ metadata while being ineligible for a cache hit.
 
 ## Authoritative PR repository and temporary refs
 
-`gh pr view` supplies the canonical PR URL, base branch and both commit OIDs.
+`gh pr view` resolves the canonical PR URL; `gh api` reads the base branch and
+both commit OIDs from that repository's REST PR resource. This also supports old
+GitHub CLI releases (including 2.23) without a `pr view --json baseRefOid` field.
 Fetch uses that PR repository's HTTPS Git URL, **not origin**, and verifies both
 fetched OIDs against the metadata. A repository/ref race or fetch failure falls
 back to the authoritative `gh pr diff` output rather than combining endpoints
