@@ -64,3 +64,10 @@ from this repository.
 
 Publishing is separate from installation. The manual publish workflow includes
 `diffview`, but migration does not push, open a PR, or publish anything.
+
+## Conversation scroll persistence
+
+`pnpm --filter @rome/app-diffview test:scroll` builds and tests conversation-
+scoped reading positions, including reload, close, context switching and lazy
+file anchors. It uses the same browser executable option as `test:worker`.
+See [scroll memory](2026-10-25-scroll-memory.md) for scope and storage behavior.

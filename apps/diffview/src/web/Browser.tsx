@@ -1,4 +1,6 @@
 import "./styles.css";
+import { scrollViewKey } from "../shared/scroll";
+import { useScrollMemory } from "./useScrollMemory";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   fetchAppApi,
@@ -277,11 +279,11 @@ function Browser() {
     [selected, setSelected] = useState(""),
     [records, setRecords] = useState<Record<string, Loaded>>({}),
     [viewed, setViewed] = useState<Set<string>>(new Set());
-  const manualJump = useRef<{ path: string; serial: number } | undefined>(
-    undefined,
-  );
+  const manualJump = useRef<
+    { path: string; serial: number; offset?: number } | undefined
+  >(undefined);
   const [jumpRequest, setJumpRequest] = useState<
-    { path: string; serial: number } | undefined
+    { path: string; serial: number; offset?: number } | undefined
   >();
   const contexts = useRef<Record<string, number>>({});
   const handle = useRef<CodeViewHandle<undefined, undefined>>(null),
@@ -305,6 +307,11 @@ function Browser() {
   );
   const [restoredId, setRestoredId] = useState<string | null>(null);
   const ready = scopeReady && restoredId === scopeId;
+  const scrollMemory = useScrollMemory(
+    scopeId,
+    scrollViewKey(state),
+    localStorage,
+  );
   useEffect(() => {
     if (!scopeReady || restoredId === scopeId) return;
     const first = restoredId === null;
@@ -461,7 +468,7 @@ function Browser() {
   // everything (`scopeStamp`). A new fingerprint on the same comparison only means the files
   // changed underneath: what did not change is kept as it is (see the merge below), so a repository
   // that is being edited does not make the whole viewer rebuild and jump back to the top.
-  const scopeStamp = scope + ":" + ctxParam + ":" + nonce;
+  const scopeStamp = scopeId + ":" + scope + ":" + ctxParam + ":" + nonce;
   const stamp = scopeStamp + ":" + data.data?.fingerprint;
   // Long-lived callbacks read the freshest list-level facts through refs.
   const fpRef = useRef("");
@@ -788,8 +795,8 @@ function Browser() {
   }, [pager, stamp, records, focusRank, eligibleQ, filterQ]);
   const shownItems = useMemo(() => items.slice(0, revealed), [items, revealed]);
   const selectFile = useCallback(
-    (path: string) => {
-      const request = { path, serial: Date.now() };
+    (path: string, offset = 0) => {
+      const request = { path, serial: Date.now(), offset };
       manualJump.current = request;
       setJumpRequest(request);
       setSelected(path);
@@ -797,12 +804,43 @@ function Browser() {
       if (index >= 0)
         setReveal((r) => ({
           scope,
-          n: Math.max(r.scope === scope ? r.n : 0, index + 1),
+          // Leave a viewport of trailing headers so the anchor is not clamped
+          // against an artificial end while earlier patches are still lazy.
+          n: Math.min(
+            visibleFiles.length,
+            Math.max(
+              r.scope === scope ? r.n : 0,
+              index + Math.ceil(window.innerHeight / 44) + 2,
+            ),
+          ),
         }));
-      handle.current?.scrollTo({ type: "item", id: path, align: "start" });
+      handle.current?.scrollTo({
+        type: "item",
+        id: path,
+        align: "start",
+        offset: -offset,
+      });
     },
     [visibleFiles, scope],
   );
+  useEffect(() => {
+    if (!ready || !data.data || !shownItems.length || !handle.current) return;
+    const instance = handle.current.getInstance();
+    if (!instance) return;
+    scrollMemory.restore(instance, (saved) => {
+      if (saved && visibleFiles.some((file) => file.path === saved.file))
+        selectFile(saved.file, saved.offset);
+      else handle.current?.scrollTo({ type: "position", position: 0 });
+    });
+  }, [
+    ready,
+    data.data,
+    shownItems,
+    visibleFiles,
+    selectFile,
+    scrollMemory,
+    host.zh,
+  ]);
   // Lazy patches change estimated heights. Honor the explicit navigation intent until
   // the patch/prefetch queue settles; wheel/touch/pointer input always wins.
   useEffect(() => {
@@ -822,7 +860,11 @@ function Browser() {
         const delta =
           element.getBoundingClientRect().top -
           container.getBoundingClientRect().top;
-        if (Math.abs(delta) > 1) container.scrollTop += delta;
+        const offset = Math.min(
+          request.offset ?? 0,
+          Math.max(0, element.getBoundingClientRect().height - 44),
+        );
+        if (Math.abs(delta + offset) > 1) container.scrollTop += delta + offset;
       }
     };
     const frame = requestAnimationFrame(() => {
@@ -832,6 +874,7 @@ function Browser() {
           type: "item",
           id: request.path,
           align: "start",
+          offset: -(request.offset ?? 0),
         });
         third = requestAnimationFrame(alignRendered);
         if (!pagerBusy.current && !pending.current.has(request.path))
@@ -847,7 +890,7 @@ function Browser() {
       cancelAnimationFrame(third);
       if (quiet) clearTimeout(quiet);
     };
-  }, [records, jumpRequest]);
+  }, [records, shownItems, jumpRequest]);
   useEffect(() => {
     if (!jumpRequest) return;
     const timer = setTimeout(() => {
@@ -1068,7 +1111,18 @@ function Browser() {
     }));
     // The toolbar is outside this scroll container; do not double-count its 44px header.
     const id = activeFileAt(rows, _top, 1);
-    if (id) setSelected((prev) => (prev === id ? prev : id));
+    if (id) {
+      setSelected((prev) => (prev === id ? prev : id));
+      if (ready)
+        scrollMemory.remember(
+          {
+            top: _top,
+            file: id,
+            offset: Math.max(0, _top - (instance.getTopForItem(id) ?? _top)),
+          },
+          instance,
+        );
+    }
   };
   const allCollapsed =
     visibleFiles.length > 0 &&
@@ -1874,7 +1928,7 @@ function Browser() {
             ) : (
               <Pool>
                 <Viewer
-                  key={scope + ":" + host.zh}
+                  key={scopeId + ":" + scope + ":" + host.zh}
                   handle={handle}
                   items={shownItems}
                   dark={host.dark}
