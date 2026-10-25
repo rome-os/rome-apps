@@ -67,7 +67,7 @@ platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged
   use the first parent, not a combined diff. The trigger reads `Committed abc1234`.
 - Branch opens an in-place branch/tag picker, with arbitrary refs accepted on Enter. Existing
   target (HEAD / working tree) and method (merge base / two-dot) options are preserved.
-- The primary pill always holds scope + totals. Only Branch shows a second base → target pill.
+- The primary pill always holds scope + totals. It is content-sized, may shrink, and never grows or stretches into spare grid space. Only Branch shows a second base → target pill.
   At narrow widths this second pill gets its own toolbar row, rather than squeezing away the
   scope or overflowing. Long names truncate and full semantics stay in the tooltip.
 - Pull Request moved to review options. Legacy PR links and their picker still work, while
@@ -99,7 +99,7 @@ staged → show all changes; no PR chosen → choose one; a PR number that match
 
 ## Repository menu
 
-Two sections: **Current directory repositories**, **Other repositories**. Membership follows
+Two sections: **Related repositories**, **Other repositories**. Membership follows
 `repos.selectedProject` (the selected conversation project directory), including the project
 itself and nested repositories with segment-aware path boundaries. It never follows the active
 diff repository or a remembered first-opened repository. Empty sections explain that no repos

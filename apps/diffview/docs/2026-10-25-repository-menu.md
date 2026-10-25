@@ -3,7 +3,7 @@
 The toolbar no longer has a return/revert-shaped arrow beside the repository chip.
 The repository popup has exactly two named sections:
 
-1. Current directory repositories (`当前目录仓库`)
+1. Related repositories (`关联仓库`)
 2. Other repositories (`其它仓库`)
 
 "Current directory" is the selected conversation project directory, as returned by

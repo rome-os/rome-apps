@@ -1333,7 +1333,7 @@ function Browser() {
                 onValueChange={switchRepo}
               >
                 <DropdownMenuLabel title={repos.data?.selectedProject}>
-                  {t.currentDirectoryRepos}
+                  {t.relatedRepos}
                 </DropdownMenuLabel>
                 {repoGroups.current.length ? (
                   repoGroups.current.map((r) => (
@@ -1347,7 +1347,7 @@ function Browser() {
                   ))
                 ) : (
                   <p className="px-2 py-1.5 text-aux text-muted-foreground">
-                    {t.noCurrentDirectoryRepos}
+                    {t.noRelatedRepos}
                   </p>
                 )}
                 <DropdownMenuSeparator />

@@ -163,6 +163,19 @@ test(
           file = (name) =>
             v.getByRole("button", { name: "折叠文件: " + name, exact: true });
         await v.locator("diffs-container").first().waitFor();
+        const scopeSizing = await scope.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            grow: style.flexGrow,
+            shrink: style.flexShrink,
+            alignment: style.justifySelf,
+          };
+        });
+        assert.deepEqual(scopeSizing, {
+          grow: "0",
+          shrink: "1",
+          alignment: "start",
+        });
         const bounds = async () => {
           await v.waitForTimeout(150);
           const r = await v.evaluate(() => {
@@ -236,7 +249,7 @@ test(
         assert.equal(overlap, false, "toolbar controls must not overlap");
         const repoButton = v.getByRole("button", { name: "仓库", exact: true });
         await repoButton.click();
-        await v.getByText("当前目录仓库", { exact: true }).waitFor();
+        await v.getByText("关联仓库", { exact: true }).waitFor();
         await v.getByText("其它仓库", { exact: true }).waitFor();
         await bounds();
         const rows = v.locator('[role="menu"] [role="menuitemradio"]');

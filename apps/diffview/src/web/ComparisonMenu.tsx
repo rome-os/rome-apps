@@ -442,6 +442,7 @@ export function ComparisonMenu({
           <Pill
             aria-label={t.comparison}
             title={scopeTooltip}
+            style={{ flex: "0 1 auto", justifySelf: "start" }}
             className="min-w-0 max-w-full shrink"
           >
             <span className="min-w-0 truncate">{scopeLabel}</span>
