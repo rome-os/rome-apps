@@ -13,6 +13,9 @@ The secondary selector uses the same text inset for Base, Committed, section lab
 and radio choices, with drill arrows in the radio-check column. Committed mode
 keeps its additional selected check beside the arrow, never before its label.
 
+The primary scope menu and secondary settings root use a compact 14rem width;
+branch/ref choices and commit history retain the wider, viewport-bounded 20rem layout.
+
 ## Comparison rules
 
 - **Unpushed** uses locally recorded tracking upstream, not the default/main branch.

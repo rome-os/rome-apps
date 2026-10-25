@@ -524,7 +524,7 @@ export function ComparisonMenu({
             <DropdownMenuContent
               align="start"
               collisionPadding={8}
-              className={WIDTH}
+              className={revisionPane === "root" ? "w-56" : WIDTH}
             >
               {revisionPane === "branch" ? (
                 branches

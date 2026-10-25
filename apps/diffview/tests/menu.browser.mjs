@@ -56,6 +56,11 @@ async function scopeAlignment(view, branchSelected) {
 
 // Both drill-down entries share the local radio rows' text and trailing-icon rails.
 async function revisionAlignment(view, committed = false) {
+  const popup = await view.getByRole("menu").boundingBox();
+  assert.ok(
+    Math.abs(popup.width - 224) < 1,
+    "Revision settings use the compact 14rem width",
+  );
   const base = view.getByRole("menuitem", { name: /^基准/ });
   const history = view.getByRole("menuitem", { name: "已提交", exact: true });
   const geometry = (item) =>
@@ -457,6 +462,10 @@ test(
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         await v.getByRole("menuitemradio", { name: /Local feature/ }).waitFor();
         await bounds();
+        assert.ok(
+          Math.abs((await v.getByRole("menu").boundingBox()).width - 320) < 1,
+          "Commit history keeps the wider 20rem layout",
+        );
         await shot("history");
         await v
           .getByRole("menuitem", { name: "更早的提交", exact: true })
@@ -496,6 +505,10 @@ test(
           .getByRole("textbox", { name: "分支、标签或提交", exact: true })
           .waitFor();
         await bounds();
+        assert.ok(
+          Math.abs((await v.getByRole("menu").boundingBox()).width - 320) < 1,
+          "Branch names keep the wider 20rem layout",
+        );
         await v
           .getByRole("menuitemradio", { name: "HEAD", exact: true })
           .click();
