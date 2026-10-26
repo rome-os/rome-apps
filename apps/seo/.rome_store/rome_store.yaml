@@ -1,0 +1,28 @@
+title: SEO
+description: Check any page in seconds. Turn SEO findings into an action plan.
+image: assets/store-card.png
+image_alt: SEO dashboard with instant page health checks and AI workflows
+category: Productivity
+keywords:
+  - seo
+  - geo
+  - page audit
+  - metadata
+  - structured data
+homepage: https://romeos.cc/store/seo
+repository: https://github.com/rome-os/rome-apps/tree/main/apps/seo
+preview: off
+long_description: |
+  Check a public page in seconds, see what needs attention, and turn findings
+  into a concrete SEO action plan.
+
+  - Instant checks for page metadata, headings, indexing signals, structured data,
+    image alternatives, links, robots.txt, and XML sitemap presence.
+  - Prioritized fixes plus search and social snippet previews.
+  - Nine AI workflows for audits, research, metadata, schema, content, reports,
+    and alerting plans, powered by 20 SEO and GEO skills.
+  - Saved checks and AI reports with status, re-run, and delete controls.
+
+  Instant checks read server HTML, not JavaScript-rendered content. Scores are
+  heuristics, not ranking predictions. AI output needs review; the app does
+  not modify your site or activate monitoring.

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RomeAppContext } from "@rome-os/app-runtime";
 import { createAction } from "./workflow-action.js";
-import { buildSeoWorkflowPrompt, validateSeoWorkflowArgs } from "./workflows.js";
+import {
+  buildSeoWorkflowPrompt,
+  validateSeoWorkflowArgs,
+} from "./workflows.js";
 
 describe("seo workflow prompts", () => {
   it("builds a keyword research prompt with the expected inputs and skills", () => {
@@ -23,9 +26,9 @@ describe("seo workflow prompts", () => {
   });
 
   it("validates required fields", () => {
-    expect(validateSeoWorkflowArgs("write_content", { topic: "React perf" })).toBe(
-      "keyword is required",
-    );
+    expect(
+      validateSeoWorkflowArgs("write_content", { topic: "React perf" }),
+    ).toBe("keyword is required");
     expect(
       validateSeoWorkflowArgs("write_content", {
         topic: "React perf",
@@ -66,8 +69,8 @@ describe("seo workflow action", () => {
     });
 
     expect(runAction).toHaveBeenCalledTimes(1);
-    expect(runAction).toHaveBeenCalledWith("summon", {
-      agentName: "seo",
+    expect(runAction).toHaveBeenCalledWith("system:summon", {
+      agentName: "seo:seo",
       prompt: expect.stringContaining('Handle the SEO workflow "Audit Page".'),
       sessionId: "resume-seo",
     });

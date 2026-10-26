@@ -1,13 +1,37 @@
 {
   "name": "@rome/app-seo",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.26.2",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "rome build",
+    "dev": "rome dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@rome-os/app-runtime": "^0.3.0"
+    "@rome-os/app-runtime": "^0.5.8",
+    "@rome-os/app-web-sdk": "^0.3.4",
+    "@rome-os/ui": "^0.3.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "lucide-react": "^0.468.0",
+    "drizzle-orm": "^0.45.1",
+    "cheerio": "^1.2.0",
+    "ipaddr.js": "^2.2.0",
+    "undici": "^7.24.0",
+    "streamdown": "^2.6.0",
+    "@streamdown/code": "^1.1.1",
+    "@streamdown/math": "^1.0.2",
+    "pele": "^1.8.0",
+    "katex": "^0.16.27"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "drizzle-kit": "^0.31.9",
+    "typescript": "^5.9.3"
   }
 }
