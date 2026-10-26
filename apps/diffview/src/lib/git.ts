@@ -1,5 +1,5 @@
 import { syntheticPatch } from "./patchFormat.js";
-import { parsePatchFiles } from "@pierre/diffs";
+import { parsePatchFiles } from "../shared/patchParser.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { verifyOpenedFile } from "./fileSafety.js";
 import { BoundedCache } from "./cache.js";
@@ -1010,15 +1010,7 @@ export async function patch(
     text = syntheticPatch(path, data.text, lines.length);
   } else {
     const cmp = resolved ?? (await comparison(repo, m));
-    if (cmp.fallback !== undefined)
-      text =
-        splitPatch(cmp.fallback).find((chunk) =>
-          parsePatchFiles(chunk, "fallback", true).some((patch) =>
-            patch.files.some(
-              (file) => file.name === path || file.prevName === path,
-            ),
-          ),
-        ) || "";
+    if (cmp.fallback !== undefined) text = cmp.fallback;
     else
       try {
         text = await git(
@@ -1048,6 +1040,14 @@ export async function patch(
           return { patch: "", binary: false, truncated: true, collapsed: true };
         throw e;
       }
+    // Literal pathspecs still select descendants when a rename's old path is now
+    // a directory. Keep only the requested destination before deriving blob metadata.
+    text =
+      splitPatch(text).find((chunk) =>
+        parsePatchFiles(chunk, "file", true).some((patch) =>
+          patch.files.some((file) => file.name === path),
+        ),
+      ) || "";
   }
   // The line count makes the final omitted-context bar exact without shipping blobs to the UI.
   if (totalLines === undefined) {

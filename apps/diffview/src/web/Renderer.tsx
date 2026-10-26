@@ -1,10 +1,10 @@
+import { parsePatchFiles } from "../shared/patchParser.js";
 import {
   CodeView,
   WorkerPoolContextProvider,
   type CodeViewHandle,
 } from "@pierre/diffs/react";
 import {
-  parsePatchFiles,
   getFiletypeFromFileName,
   type CodeViewItem,
   registerCustomCSSVariableTheme,

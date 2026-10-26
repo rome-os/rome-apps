@@ -2,7 +2,7 @@ import { dictionary } from "../shared/dictionary.js";
 import { syntheticPatch } from "./patchFormat.js";
 import { worktreeSide } from "../shared/comparison.js";
 export { worktreeSide } from "../shared/comparison.js";
-import { parsePatchFiles } from "@pierre/diffs";
+import { parsePatchFiles } from "../shared/patchParser.js";
 import {
   GitError,
   collapseHint,

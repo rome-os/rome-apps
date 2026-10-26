@@ -1,6 +1,6 @@
 /** Git's C-style pathname quoting, including control characters that cannot appear in headers. */
-export function quoteDiffPath(path: string) {
-  if (!/["\\\x00-\x1f\x7f]/.test(path)) return path;
+export function quoteDiffPath(path: string, force = false) {
+  if (!force && !/["\\\x00-\x1f\x7f]/.test(path)) return path;
   const escapes: Record<string, string> = {
     '"': '\\"',
     "\\": "\\\\",

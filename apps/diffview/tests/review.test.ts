@@ -1003,3 +1003,143 @@ test("aggregate candidate overflow keeps payload and cursor budgets for individu
   assert.equal(last.status, 200);
   assert.equal(check(last.body, 69), 70);
 }, 60000);
+
+for (const paged of [false, true])
+  test(`expanded rename patch excludes descendants of its old path (${paged ? "paged" : "snapshot"})`, async () => {
+    const { repo, g, write, call } = await fixture();
+    const lines = Array.from({ length: 100 }, (_, i) => `original line ${i}`);
+    await write("a.txt", lines.join("\n") + "\n");
+    g("add", ".");
+    g("commit", "-qm", "rename base");
+    g("mv", "a.txt", "z.txt");
+    lines[99] = "renamed destination change";
+    await write("z.txt", lines.join("\n") + "\n");
+    await mkdir(join(repo, "a.txt"));
+    await write("a.txt/child.txt", "unrelated child change\n");
+    g("add", ".");
+    const index = g("ls-files", "--stage"),
+      status = g("status", "--porcelain=v2");
+    if (paged) process.env.DIFFVIEW_DIFF_CAP = "1";
+    const q = { filter: "staged" };
+    const list = await call("files", q);
+    assert.equal(list.status, 200);
+    assert.equal(
+      list.body.files.find((f: any) => f.path === "z.txt").oldPath,
+      "a.txt",
+    );
+    const { parsePatchFiles } = await import("@pierre/diffs");
+    for (const extra of [{ unified: "40" }, { anyway: "1" }]) {
+      const expanded = await call("patch", {
+        ...q,
+        ...extra,
+        fp: list.body.fingerprint,
+        path: "z.txt",
+      });
+      assert.equal(expanded.status, 200);
+      assert.deepEqual(
+        parsePatchFiles(expanded.body.patch, "test", true).flatMap((p) =>
+          p.files.map((f) => f.name),
+        ),
+        ["z.txt"],
+      );
+      assert.equal(expanded.body.totalLines, 100);
+      assert.match(expanded.body.patch, /renamed destination change/);
+      assert.doesNotMatch(expanded.body.patch, /unrelated child change/);
+    }
+    assert.equal(g("ls-files", "--stage"), index);
+    assert.equal(g("status", "--porcelain=v2"), status);
+  });
+
+test("explicit fallback selection matches destination, not another rename's previous name", async () => {
+  const { repo } = await fixture();
+  const { patch } = await import("../src/lib/git");
+  const fallback = [
+    "diff --git a/a.txt b/z.txt\nsimilarity index 100%\nrename from a.txt\nrename to z.txt\n",
+    "diff --git a/a.txt b/a.txt\nnew file mode 100644\n--- /dev/null\n+++ b/a.txt\n@@ -0,0 +1 @@\n+new a content\n",
+  ].join("");
+  const result = await patch(
+    repo,
+    { mode: "uncommitted" },
+    "a.txt",
+    3,
+    false,
+    { path: "a.txt", status: "A", added: 1, removed: 0 },
+    { args: [], fallback },
+  );
+  const { parsePatchFiles } = await import("@pierre/diffs");
+  assert.deepEqual(
+    parsePatchFiles(result.patch, "test", true).flatMap((p) =>
+      p.files.map((f) => f.name),
+    ),
+    ["a.txt"],
+  );
+  assert.match(result.patch, /new a content/);
+});
+
+test("expanded deletion keeps the requested deleted pathname", async () => {
+  const { repo, call } = await fixture();
+  await rm(join(repo, "seed.txt"));
+  const list = await call("files");
+  const expanded = await call("patch", {
+    fp: list.body.fingerprint,
+    path: "seed.txt",
+    unified: "40",
+  });
+  assert.equal(expanded.status, 200);
+  const { parsePatchFiles } = await import("@pierre/diffs");
+  assert.deepEqual(
+    parsePatchFiles(expanded.body.patch, "test", true).flatMap((p) =>
+      p.files.map((f) => f.name),
+    ),
+    ["seed.txt"],
+  );
+  assert.match(expanded.body.patch, /-seed/);
+  assert.equal(expanded.body.totalLines, 1);
+});
+
+for (const paged of [false, true])
+  test(`trailing whitespace paths remain distinct in snapshot, page and expansion (${paged ? "paged" : "snapshot"})`, async () => {
+    const { g, write, call } = await fixture();
+    for (const name of ["foo", "foo ", "foo  ", "rename ", "binary", "binary "])
+      await write(
+        name,
+        name.startsWith("binary") ? "before\0binary\n" : `before ${name}\n`,
+      );
+    g("add", ".");
+    g("commit", "-qm", "space paths");
+    for (const name of ["foo", "foo ", "foo  "])
+      await write(name, `after ${JSON.stringify(name)}\n`);
+    for (const name of ["binary", "binary "])
+      await write(name, "after\0binary\n");
+    g("mv", "rename ", "renamed ");
+    if (paged) process.env.DIFFVIEW_DIFF_CAP = "1";
+    const list = await call("files");
+    assert.equal(list.status, 200);
+    const names = ["foo", "foo ", "foo  ", "renamed ", "binary", "binary "];
+    assert.deepEqual(
+      list.body.files.map((f: any) => f.path).sort(),
+      [...names].sort(),
+    );
+    assert(list.body.files.every((f: any) => !f.typeChanged));
+    assert.equal(
+      list.body.files.find((f: any) => f.path === "renamed ").oldPath,
+      "rename ",
+    );
+    const { parsePatchFiles } = await import("../src/shared/patchParser");
+    for (const path of names.filter((n) => !n.startsWith("binary"))) {
+      if (path.startsWith("foo"))
+        assert(Object.hasOwn(list.body.page.patches, path));
+      for (const extra of [{}, { unified: "40" }]) {
+        const expanded = await call("patch", {
+          fp: list.body.fingerprint,
+          path,
+          ...extra,
+        });
+        assert.equal(expanded.status, 200);
+        assert.equal(
+          parsePatchFiles(expanded.body.patch, "test", true)[0].files[0].name,
+          path,
+        );
+      }
+    }
+  });

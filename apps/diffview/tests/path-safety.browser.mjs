@@ -45,8 +45,35 @@ test(
       "a".repeat(33 * 1024 * 1024) + "\n",
     );
     await writeFile(join(repo, "z.txt"), "normal before\n");
+    for (const path of ["foo", "foo "])
+      await writeFile(join(repo, path), "space before\n");
+    const renameLines = Array.from(
+      { length: 100 },
+      (_, i) => `rename original ${i}`,
+    );
+    await writeFile(
+      join(repo, "rename-old.txt"),
+      renameLines.join("\n") + "\n",
+    );
     g("add", ".");
     g("commit", "-qm", "base");
+    g("mv", "rename-old.txt", "rename-new.txt");
+    renameLines[99] = "renamed destination change";
+    await writeFile(
+      join(repo, "rename-new.txt"),
+      renameLines.join("\n") + "\n",
+    );
+    await mkdir(join(repo, "rename-old.txt"));
+    await writeFile(
+      join(repo, "rename-old.txt/child.txt"),
+      "unrelated child change\n",
+    );
+    g("add", ".");
+    for (const path of ["foo", "foo "])
+      await writeFile(
+        join(repo, path),
+        `space after ${JSON.stringify(path)}\n`,
+      );
     await rm(join(repo, "00-regular.txt"));
     await symlink("z.txt", join(repo, "00-regular.txt"));
     await rm(join(repo, "01-link.txt"));
@@ -170,6 +197,51 @@ test(
         assert.equal(payload.files.filter((f) => f.typeChanged).length, 2);
         if (paged) assert.equal(payload.patches["huge.txt"].truncated, true);
         assert(Object.hasOwn(payload.patches, "__proto__"));
+        for (const path of ["foo", "foo "]) {
+          assert(payload.files.some((f) => f.path === path && !f.typeChanged));
+          assert(Object.hasOwn(payload.patches, path));
+          await page
+            .getByRole("navigation", { name: "文件", exact: true })
+            .locator(`[title=${JSON.stringify(path)}]`)
+            .click();
+          await page
+            .locator(
+              `button[aria-label=${JSON.stringify(`文件操作: ${path}`)}]`,
+            )
+            .waitFor();
+        }
+
+        await page
+          .getByRole("navigation", { name: "文件", exact: true })
+          .getByTitle("rename-new.txt", { exact: true })
+          .click();
+        await page
+          .getByRole("button", {
+            name: "文件操作: rename-new.txt",
+            exact: true,
+          })
+          .click();
+        const expandedResponse = page.waitForResponse((r) => {
+          const u = new URL(r.url());
+          return (
+            u.pathname.endsWith("/patch") &&
+            u.searchParams.get("path") === "rename-new.txt"
+          );
+        });
+        await page
+          .getByRole("menuitem", { name: "更多未变上下文", exact: true })
+          .click();
+        const expanded = await (await expandedResponse).json();
+        const { parsePatchFiles } = await import("@pierre/diffs");
+        assert.deepEqual(
+          parsePatchFiles(expanded.patch, "test", true).flatMap((p) =>
+            p.files.map((f) => f.name),
+          ),
+          ["rename-new.txt"],
+        );
+        assert.equal(expanded.totalLines, 100);
+        assert.match(expanded.patch, /renamed destination change/);
+        assert.doesNotMatch(expanded.patch, /unrelated child change/);
         await page
           .getByRole("button", { name: "文件操作: __proto__", exact: true })
           .click();
