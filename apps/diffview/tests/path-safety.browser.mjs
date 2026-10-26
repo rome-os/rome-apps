@@ -243,6 +243,10 @@ test(
         assert.match(expanded.patch, /renamed destination change/);
         assert.doesNotMatch(expanded.patch, /unrelated child change/);
         await page
+          .getByRole("navigation", { name: "文件", exact: true })
+          .getByTitle("__proto__", { exact: true })
+          .click();
+        await page
           .getByRole("button", { name: "文件操作: __proto__", exact: true })
           .click();
         await page
