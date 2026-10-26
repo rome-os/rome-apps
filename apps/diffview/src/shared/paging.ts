@@ -45,3 +45,25 @@ export function pageEnd(
 
 /** How many pageable files, from the one in focus on, the viewer keeps loaded ahead of itself. */
 export const PAGE_LOOKAHEAD = 150;
+
+/** Visible lookahead mapped onto the server's (possibly unhidden) pageable sequence. */
+export function pageDemand(
+  visible: readonly { path: string }[],
+  selected: string,
+  ranks: ReadonlyMap<string, number>,
+): number[] {
+  const demand: number[] = [];
+  const start = Math.max(
+    0,
+    visible.findIndex((file) => file.path === selected),
+  );
+  for (
+    let i = start;
+    i < visible.length && demand.length < PAGE_LOOKAHEAD;
+    i++
+  ) {
+    const rank = ranks.get(visible[i].path);
+    if (rank !== undefined) demand.push(rank);
+  }
+  return demand;
+}

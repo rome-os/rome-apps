@@ -692,19 +692,22 @@ async function fingerprintInfoUncached(repo: string): Promise<FingerprintInfo> {
       paths.push(e.slice(2));
     }
   }
-  // mtime and size make editing an already-modified file visible. With tens of thousands of
-  // changed paths that is thousands of lstat calls per poll (measured: +252 MB of transient memory
-  // for 60,000 untracked files), so past a limit only the status text itself is hashed.
-  const info =
-    paths.length <= 5000
-      ? await mapLimit(paths, 64, async (path) => {
-          const s = await lstat(join(repo, path)).catch(() => null);
-          return [path, s?.mtimeMs, s?.size];
-        })
-      : [];
-  const hash = createHash("sha256")
-    .update(status + JSON.stringify(info))
-    .digest("hex");
+  // Keep content-change detection for every changed path, including large trees. Only one
+  // small batch of stat results is retained; concurrency and scratch memory do not grow with
+  // the repository. ctime also catches same-size edits whose mtime was restored by a tool.
+  const digest = createHash("sha256").update(status);
+  for (let start = 0; start < paths.length; start += 256) {
+    const info = await mapLimit(
+      paths.slice(start, start + 256),
+      64,
+      async (path) => {
+        const s = await lstat(join(repo, path)).catch(() => null);
+        return [path, s?.mtimeMs, s?.ctimeMs, s?.size];
+      },
+    );
+    digest.update(JSON.stringify(info));
+  }
+  const hash = digest.digest("hex");
   return { hash, head, untracked, conflicts, changed: paths.length };
 }
 /** Concurrent callers (several tabs polling) share one `git status` instead of each running it. */
@@ -940,6 +943,7 @@ export async function patch(
             "--no-ext-diff",
             "--no-textconv",
             "--no-color",
+            "--submodule=short",
             "--src-prefix=a/",
             "--dst-prefix=b/",
             "-M",

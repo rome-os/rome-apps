@@ -544,3 +544,94 @@ test("fork PR uses gh's repository, verifies head identity, cleans refs, and dis
     assert.ok(args.includes("--no-auto-maintenance"));
   }
 });
+
+test("5001 changed paths still detect edits to dirty and untracked files", async () => {
+  const { repo, write, call } = await fixture();
+  await write("seed.txt", "dirty\n");
+  for (let start = 0; start < 5000; start += 100)
+    await Promise.all(
+      Array.from({ length: 100 }, (_, i) =>
+        write(`loose-${String(start + i).padStart(5, "0")}.txt`, "before\n"),
+      ),
+    );
+  const first = await call("files");
+  assert.equal(first.status, 200);
+  assert.equal(first.body.files.length, 5001);
+  const initial = await call("events");
+  await write("seed.txt", "dirty content changed\n");
+  const dirty = await call("events");
+  assert.notEqual(dirty.body.fingerprint, initial.body.fingerprint);
+  const changed = await call("files", { have: first.body.fingerprint });
+  assert.equal(changed.status, 200);
+  assert(!changed.body.unchanged);
+  assert.match(
+    changed.body.page.patches["seed.txt"]?.patch ??
+      (await call("patch", { fp: changed.body.fingerprint, path: "seed.txt" }))
+        .body.patch,
+    /dirty content changed/,
+  );
+  await write("loose-04999.txt", "untracked content changed\n");
+  const loose = await call("events");
+  assert.notEqual(loose.body.fingerprint, dirty.body.fingerprint);
+  assert.equal(
+    (await call("files", { have: changed.body.fingerprint })).body.unchanged,
+    undefined,
+  );
+}, 30000);
+
+for (const setting of ["log", "diff"])
+  test(`submodule=${setting}: snapshot, page and explicit patch preserve gitlink paths`, async () => {
+    const { repo, g, call } = await fixture();
+    const sub = join(repo, "child");
+    await mkdir(sub);
+    const sg = (...args: string[]) =>
+      execFileSync("git", args, { cwd: sub, stdio: "pipe" }).toString().trim();
+    sg("init", "-qb", "main");
+    sg("config", "user.name", "Test");
+    sg("config", "user.email", "test@example.invalid");
+    await writeFile(join(sub, "inner.txt"), "one\n");
+    sg("add", ".");
+    sg("commit", "-qm", "one");
+    const from = sg("rev-parse", "HEAD");
+    g("update-index", "--add", "--cacheinfo", `160000,${from},child`);
+    g("commit", "-qm", "add gitlink");
+    await writeFile(join(sub, "inner.txt"), "two\n");
+    sg("add", ".");
+    sg("commit", "-qm", "two");
+    const to = sg("rev-parse", "HEAD");
+    g("update-index", "--cacheinfo", `160000,${to},child`);
+    g("config", "diff.submodule", setting);
+    const index = g("ls-files", "--stage"),
+      status = g("status", "--porcelain=v2");
+    for (const paged of [false, true]) {
+      if (paged) process.env.DIFFVIEW_MAX_FILES = "1";
+      // One additional dirty path forces paged mode at the changed-path threshold.
+      await writeFile(join(repo, "seed.txt"), "changed\n");
+      const q = { filter: "staged", ctx: paged ? "5" : "3" };
+      const list = await call("files", q);
+      assert.equal(list.status, 200);
+      assert.deepEqual(
+        list.body.files.map((f: any) => f.path),
+        ["child"],
+      );
+      assert.match(list.body.page.patches.child.patch, /Subproject commit/);
+      const page = await call("patches", {
+        ...q,
+        fp: list.body.fingerprint,
+        cursor: "0",
+      });
+      assert.match(page.body.patches.child.patch, /Subproject commit/);
+      const expanded = await call("patch", {
+        ...q,
+        fp: list.body.fingerprint,
+        path: "child",
+        anyway: "1",
+      });
+      assert.match(expanded.body.patch, /Subproject commit/);
+      assert(!expanded.body.patch.includes("inner.txt"));
+      assert.equal(g("ls-files", "--stage"), index);
+    }
+    // Only this test's deliberate seed edit changes status; API requests never do.
+    await writeFile(join(repo, "seed.txt"), "seed\n");
+    assert.equal(g("status", "--porcelain=v2"), status);
+  });

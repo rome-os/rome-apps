@@ -54,3 +54,24 @@ test("paging every page covers each file exactly once", () => {
     [...seen].sort((a, b) => a - b),
   );
 });
+
+test("visible paging demand skips viewed gaps but keeps server cursor ranks", async () => {
+  const { pageDemand, PAGE_LOOKAHEAD } = await import("../src/shared/paging");
+  const paths = Array.from({ length: 600 }, (_, i) => `file-${i}`);
+  const rank = new Map(paths.map((path, i) => [path, i]));
+  const visible = paths
+    .filter((_, i) => i === 0 || i > 200)
+    .map((path) => ({ path }));
+  const demand = pageDemand(visible, paths[0], rank);
+  assert.equal(demand.length, PAGE_LOOKAHEAD);
+  assert.deepEqual(demand.slice(0, 3), [0, 201, 202]);
+  assert.equal(demand.at(-1), 349);
+  assert.equal(pageDemand(visible, paths[250], rank)[0], 250);
+  assert.equal(pageDemand(visible, "missing", rank)[0], 0);
+  assert.deepEqual(pageDemand([], "", rank), []);
+  const filteredRank = new Map([
+    [paths[201], 0],
+    [paths[203], 1],
+  ]);
+  assert.deepEqual(pageDemand(visible, paths[0], filteredRank), [0, 1]);
+});

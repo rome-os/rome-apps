@@ -94,3 +94,10 @@ comparison identity, PR refresh, cache budgets and safe file-link behavior.
 The browser aggregate also runs `git-output.browser.mjs`: configured Git prefixes,
 visible unresolved conflicts, ordinary diff rendering and read-only merge/index
 checks. See [second-review follow-up](2026-10-25-review-followup.md).
+
+
+### Refresh/paging regression boundaries (2026-10-26)
+
+`tests/refresh-paging.browser.mjs` uses the production bundle to cover a 200-file hidden-viewed gap, single-flight/idle paging, delayed old `/files` behind a new `/events`, an unchanged event across comparison-scope switches, and the reverse (old event/new list) without invalidation loops. Run it with `node --test --test-concurrency=1 tests/refresh-paging.browser.mjs` after building. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` selects an installed Chromium; `DIFFVIEW_TEST_WEB_ROOT` can point at a frozen old bundle for a red/green comparison. These cases are included in `test:browser`.
+
+`review.test.ts` covers edits to dirty and untracked files with 5,001 changed paths, plus `diff.submodule=log|diff` across snapshots, forced paged lists, and explicit expanded patches. Stat work is bounded at 64 concurrent operations and 256 retained result tuples per batch, rather than disabled above a path-count threshold.

@@ -2,6 +2,7 @@ import "./styles.css";
 import { loadViewed, saveViewed } from "../shared/viewed";
 import { scrollViewKey } from "../shared/scroll";
 import { useScrollMemory } from "./useScrollMemory";
+import { useWorktreeFreshness } from "./useWorktreeFreshness";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { HOST_NAVIGATE_EVENT, useChatSessionId } from "@rome-os/app-web-sdk";
 import {
@@ -47,7 +48,7 @@ import type { CodeViewItem } from "@pierre/diffs";
 import type { FileEntry } from "../lib/git";
 import { comparisonIdentity } from "../shared/comparison";
 import { projectFileUrl } from "../shared/projectLink";
-import { PAGE_LOOKAHEAD, isPageable } from "../shared/paging";
+import { pageDemand, isPageable } from "../shared/paging";
 import { ComparisonMenu } from "./ComparisonMenu";
 import { api } from "./api";
 import type { TrackingInfo } from "../lib/git";
@@ -433,15 +434,13 @@ function Browser() {
     enabled: ready && !!state.repo && state.mode === "uncommitted",
     refetchInterval: (query) => Math.max(3000, (query.state.data?.ms ?? 0) * 6),
   });
-  useEffect(() => {
-    if (
-      data.data &&
-      events.data &&
-      state.mode === "uncommitted" &&
-      data.data.fingerprint !== events.data.fingerprint
-    )
-      void qc.invalidateQueries({ queryKey: ["files", scope] });
-  }, [events.data?.fingerprint]);
+  useWorktreeFreshness({
+    scope,
+    context: ctxParam,
+    mode: state.mode,
+    listFingerprint: data.data?.fingerprint,
+    eventFingerprint: events.data?.fingerprint,
+  });
   // Two kinds of change. A different comparison, context size or an explicit refresh resets
   // everything (`scopeStamp`). A new fingerprint on the same comparison only means the files
   // changed underneath: what did not change is kept as it is (see the merge below), so a repository
@@ -710,7 +709,7 @@ function Browser() {
     return () => clearTimeout(timer);
   }, [settledPrefix, scope, reveal]);
   // Pages are fetched on demand around where the guardian is looking, never ahead of everything:
-  // from the focused file on, the next LOOKAHEAD files with a text diff must be loaded. The server
+  // from the focused file on, the next visible pageable files must be loaded. The server
   // applies the same filter and accepts any cursor, so jumping or filtering costs one request, not
   // a walk through every earlier page. At most one request is in flight.
   const filterQ = filter.trim().toLowerCase();
@@ -725,23 +724,15 @@ function Browser() {
     () => new Map(eligibleQ.map((path, i) => [path, i] as const)),
     [eligibleQ],
   );
-  const focusRank = useMemo(() => {
-    const at = visibleFiles.findIndex((f) => f.path === selected);
-    for (let i = Math.max(at, 0); i >= 0; i--) {
-      const r = rankQ.get(visibleFiles[i]?.path);
-      if (r !== undefined) return r;
-    }
-    return 0;
-  }, [visibleFiles, selected, rankQ]);
+  const demand = useMemo(
+    () => pageDemand(visibleFiles, selected, rankQ),
+    [visibleFiles, selected, rankQ],
+  );
   const asked = useRef(new Set<string>());
   useEffect(() => {
     if (pager.stamp !== stamp || pager.busy || pager.error) return;
     let target = -1;
-    for (
-      let r = focusRank;
-      r < Math.min(eligibleQ.length, focusRank + PAGE_LOOKAHEAD);
-      r++
-    )
+    for (const r of demand)
       if (records[eligibleQ[r]]?.fp !== fpRef.current) {
         target = r;
         break;
@@ -789,7 +780,7 @@ function Browser() {
         }));
       })
       .finally(() => controllers.current.delete(controller));
-  }, [pager, stamp, records, focusRank, eligibleQ, filterQ]);
+  }, [pager, stamp, records, demand, eligibleQ, filterQ]);
   const shownItems = useMemo(() => items.slice(0, revealed), [items, revealed]);
   const selectFile = useCallback(
     (path: string, offset = 0) => {

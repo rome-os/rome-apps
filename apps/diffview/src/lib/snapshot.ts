@@ -246,6 +246,7 @@ const DIFF_BIN = [
   "--no-ext-diff",
   "--no-textconv",
   "--no-color",
+  "--submodule=short",
   "--src-prefix=a/",
   "--dst-prefix=b/",
   "-M",

@@ -1,6 +1,6 @@
 {
   "name": "@rome/app-diffview",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "test:worker": "pnpm build && node --test tests/worker-bundle.browser.mjs",
     "test:menu": "pnpm build && node --test tests/menu.browser.mjs",
     "test:scroll": "pnpm build && node --test tests/scroll.browser.mjs",
-    "test:browser": "pnpm build && node --test --test-concurrency=1 tests/worker-bundle.browser.mjs tests/scroll.browser.mjs tests/menu.browser.mjs tests/git-output.browser.mjs"
+    "test:browser": "pnpm build && node --test --test-concurrency=1 tests/worker-bundle.browser.mjs tests/scroll.browser.mjs tests/menu.browser.mjs tests/git-output.browser.mjs tests/refresh-paging.browser.mjs"
   },
   "dependencies": {
     "@pierre/diffs": "1.6.1",
