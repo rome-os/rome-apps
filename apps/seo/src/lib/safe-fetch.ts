@@ -102,10 +102,11 @@ export async function safeFetch(input: string, timeoutMs = 10_000) {
         }
         chunks.push(chunk);
       }
+      const contentType = response.headers.get("content-type") || "";
       return {
-        text: Buffer.concat(chunks).toString("utf8"),
+        text: decodeBody(Buffer.concat(chunks), contentType),
         status: response.status,
-        contentType: response.headers.get("content-type") || "",
+        contentType,
         xRobotsTag: response.headers.get("x-robots-tag") || "",
         finalUrl: url.href,
         redirects,
@@ -116,6 +117,20 @@ export async function safeFetch(input: string, timeoutMs = 10_000) {
     }
   }
   throw new Error("Too many redirects.");
+}
+
+/** Decode with the charset from Content-Type, else an early <meta> declaration, else UTF-8. */
+export function decodeBody(bytes: Buffer, contentType: string): string {
+  const declared =
+    /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType)?.[1] ||
+    /<meta[^>]+charset\s*=\s*["']?([\w.:-]+)/i.exec(
+      bytes.subarray(0, 1024).toString("latin1"),
+    )?.[1];
+  try {
+    return new TextDecoder(declared || "utf-8").decode(bytes);
+  } catch {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
 }
 
 export async function checkPage(input: string) {

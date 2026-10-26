@@ -19,6 +19,7 @@ import {
   isPublicAddress,
   safeFetch,
   validateUrl,
+  decodeBody,
 } from "./safe-fetch.js";
 beforeEach(() => {
   vi.clearAllMocks();
@@ -127,5 +128,18 @@ describe("network guard", () => {
     expect(p.sitemap.found).toBe(false);
     expect(p.robots.found).toBe(false);
     expect(p).not.toHaveProperty("text");
+  });
+});
+
+describe("decodeBody", () => {
+  const cafe = Buffer.from([0x43, 0x61, 0x66, 0xe9]); // "Café" in Windows-1252
+  it("uses the Content-Type charset", () => {
+    expect(decodeBody(cafe, "text/html; charset=windows-1252")).toBe("Café");
+  });
+  it("falls back to an early meta charset, then UTF-8", () => {
+    const html = Buffer.concat([Buffer.from('<meta charset="gbk"><title>'), Buffer.from([0xc4, 0xe3, 0xba, 0xc3])]);
+    expect(decodeBody(html, "text/html")).toBe('<meta charset="gbk"><title>你好');
+    expect(decodeBody(Buffer.from("héllo"), "text/html")).toBe("héllo");
+    expect(decodeBody(Buffer.from("ok"), "text/html; charset=bogus")).toBe("ok");
   });
 });

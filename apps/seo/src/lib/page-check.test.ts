@@ -84,4 +84,11 @@ describe("deterministic page parser and scoring", () => {
     expect(p.score).toBe(parsePage(healthy, transport).score);
     expect(p.findings.find((f) => f.key === "indexing")?.status).toBe("pass");
   });
+  it("counts words across compact block markup", () => {
+    const p = parsePage(
+      `<body>${Array.from({ length: 150 }, (_, i) => `<p>w${i}</p>`).join("")}<span>a<br>b</span></body>`,
+      transport,
+    );
+    expect(p.wordCount).toBe(152);
+  });
 });

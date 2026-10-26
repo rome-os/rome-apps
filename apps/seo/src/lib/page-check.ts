@@ -121,6 +121,10 @@ export function parsePage(html: string, transport: PageTransport): PageCheck {
     }
   });
   $("script,style,noscript,template,svg,[hidden]").remove();
+  // .text() joins adjacent elements ("<p>a</p><p>b</p>" → "ab"); keep block boundaries for word counts.
+  $("body")
+    .find("br,p,div,li,td,th,tr,h1,h2,h3,h4,h5,h6,section,article,header,footer,nav,aside,main,blockquote,pre,dt,dd,figcaption")
+    .after(" ");
   const text = clean($("body").text());
   const page: PageCheck = {
     ...transport,
