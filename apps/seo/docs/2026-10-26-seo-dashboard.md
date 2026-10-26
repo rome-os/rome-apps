@@ -28,8 +28,14 @@ Validation and runtime evidence will be recorded after installation.
 
 ## Evidence
 
-Real browser screenshots are in `.rome_store/assets/`: `dashboard-empty.png`, `page-check.png`, `workflows.png`, `workflows-dark.png`, `workflows-mobile.png`, `ai-report.png`, `report-code.png`, `history.png`, `report-loading-mobile.png`, and `private-url-error.png`. Desktop captures are cropped only to remove unrelated sidebar/account details; app contents are not composited.
+Real browser screenshots are in `.rome_store/assets/`: `dashboard-empty.png`, `page-check.png`, `workflows.png`, `workflows-dark.png`, `workflows-mobile.png`, `ai-report.png`, `report-code.png`, `history.png`, `page-check-mobile.png`, and `private-url-error.png`. Desktop captures are cropped only to remove unrelated sidebar/account details; app contents are not composited.
 
 ## Remaining limits
 
 Instant checks do not execute JavaScript or measure Core Web Vitals. Social cards intentionally omit remote image loading. AI output is advisory, with model/tool availability affecting completion. Dashboard jobs survive tab closure, but are not automatically resumed after a daemon interruption: stale jobs fail after 30 minutes and can be re-run. History lists the newest 200 records (older records remain in SQLite and are addressable by deep link). No PR or publishing performed.
+
+## Final verification
+
+- Final independent follow-up verdict: **PASS**. Source app.yaml and web entry exactly matched the installed artifact, version 0.3.0; singular labels corrected; both original completed runs retained; dashboard API 200 and no console errors.
+- The test script excludes daemon-managed `.rome/` artifacts so `pnpm --filter ./apps/seo test` runs the 47 source tests exactly once (rather than also testing the packed source copies). Frozen-lockfile install was checked again successfully.
+- Refreshed desktop, dark, and mobile screenshots from the final installed UI; cropped unrelated sidebar/account details from desktop store media.

@@ -7,7 +7,7 @@
     "build": "rome build",
     "dev": "rome dev",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src",
+    "test": "vitest run src --exclude '**/.rome/**'",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
