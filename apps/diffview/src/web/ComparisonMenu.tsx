@@ -40,6 +40,7 @@ interface Props {
   compact: boolean;
   open: boolean;
   commitEntry?: boolean;
+  prEntry?: boolean;
   setOpen(open: boolean): void;
 }
 type Pane = "root" | "branch" | "commit" | "pr";
@@ -60,6 +61,7 @@ export function ComparisonMenu({
   compact,
   open,
   commitEntry = false,
+  prEntry = false,
   setOpen,
 }: Props) {
   const [pane, setPane] = useState<Pane>("root");
@@ -69,6 +71,7 @@ export function ComparisonMenu({
   const revisionScope = state.mode === "ref" || state.mode === "commit";
   const revisionOpen = branchOpen || (open && commitEntry);
   const revisionPane = open && commitEntry ? "commit" : pane;
+  const comparisonPane = open && prEntry ? "pr" : pane;
   const commits = useQuery({
     queryKey: ["history", state.repo, cursor],
     queryFn: ({ signal }) =>
@@ -525,9 +528,9 @@ export function ComparisonMenu({
         <DropdownMenuContent
           align="start"
           collisionPadding={8}
-          className={pane === "root" ? "w-56" : WIDTH}
+          className={comparisonPane === "root" ? "w-56" : WIDTH}
         >
-          {pane === "pr" ? (
+          {comparisonPane === "pr" ? (
             prs
           ) : (
             <>

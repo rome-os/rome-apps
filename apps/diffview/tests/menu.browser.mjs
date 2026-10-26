@@ -243,7 +243,10 @@ test(
         const page = await browser.newPage({
             viewport: { width, height: 720 },
           }),
-          errors = [];
+          errors = [],
+          prRequestsAtStart = requests.filter((request) =>
+            request.endsWith("/refs"),
+          ).length;
         page.on("pageerror", (e) => errors.push(e.message));
         page.on("console", (m) => {
           if (m.type() === "error" && !m.text().includes("409 (Conflict)"))
@@ -587,9 +590,34 @@ test(
           await v.getByRole("button", { name: "刷新", exact: true }).click();
           await forced;
         }
+        assert.ok(
+          requests.filter((request) => request.endsWith("/refs")).length ===
+            prRequestsAtStart,
+          "normal scopes must not query GitHub PRs",
+        );
         await v.getByRole("button", { name: "审阅选项", exact: true }).click();
+        await page.route("**/api/apps/diffview/refs?*", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              branches: ["main"],
+              commits: [],
+              tags: [],
+              prs: [],
+              prState: "ready",
+            }),
+          }),
+        );
+        const prRequest = page.waitForRequest((request) =>
+          new URL(request.url()).pathname.endsWith("/refs"),
+        );
         await v
           .getByRole("menuitem", { name: "对比 Pull Request…", exact: true })
+          .click();
+        await prRequest;
+        await v
+          .getByRole("textbox", { name: "PR 编号", exact: true })
           .waitFor();
         assert.equal(
           await v
@@ -598,6 +626,7 @@ test(
           0,
         );
         await v.getByRole("menu").press("Escape");
+        await page.unroute("**/api/apps/diffview/refs?*");
         await bounds();
         if (process.env.DIFFVIEW_MENU_SCREENSHOTS)
           await page.screenshot({
@@ -631,10 +660,6 @@ test(
         .getByRole("menuitem", { name: "已提交", exact: true })
         .waitFor();
       await emptyCommit.close();
-      assert.ok(
-        !requests.some((r) => r.endsWith("/refs")),
-        "normal scopes must not query GitHub PRs",
-      );
       assert.equal(g("ls-files", "--stage"), index);
       assert.equal(g("status", "--porcelain=v2"), status);
       g("config", "--unset", `branch.${branch}.remote`);

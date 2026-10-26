@@ -200,7 +200,7 @@ function Browser() {
     [hideViewed, setHideViewed] = useState(stored.hideViewed ?? false),
     [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set()),
     [comparisonOpen, setComparisonOpen] = useState(false),
-    [comparisonEntry, setComparisonEntry] = useState<"scope" | "commit">(
+    [comparisonEntry, setComparisonEntry] = useState<"scope" | "commit" | "pr">(
       "scope",
     ),
     [keysOpen, setKeysOpen] = useState(false),
@@ -1446,6 +1446,7 @@ function Browser() {
           compact={compact}
           open={comparisonOpen}
           commitEntry={comparisonEntry === "commit"}
+          prEntry={comparisonEntry === "pr"}
           setOpen={(value) => {
             setComparisonEntry("scope");
             setComparisonOpen(value);
@@ -1467,7 +1468,8 @@ function Browser() {
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem
                 onSelect={() => {
-                  change({ mode: "pr" });
+                  change({ mode: "pr", pr: "" });
+                  setComparisonEntry("pr");
                   setComparisonOpen(true);
                 }}
               >
