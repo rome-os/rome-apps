@@ -1,0 +1,9 @@
+# PR review follow-up, round 7 — 2026-10-26
+
+v0.3.13 isolates explicit tracked-file patch output by its parsed destination pathname. A literal Git pathspec still includes descendants when the old side of a rename has become a directory. The old path remains in the command so rename detection retains the real source; the returned patch is selected before blob line-count and binary metadata are calculated. Fallback output uses the same destination-only selection, never another rename's previous name.
+
+Red/green API regressions stage a 100-line `a.txt → z.txt` rename together with `a.txt/child.txt`. Snapshot and forced-paged views both exercise expanded context and full-file requests, verify the one requested block and correct 100-line metadata, and preserve index/status. Additional tests cover deleted paths and a fallback containing a rename followed by a new file at the old pathname. The real production browser regression opens the rename's context menu in both view modes and verifies the expanded response contains only its destination patch.
+
+No UI design, credential, merge, or Store publication changes are included. Validation totals and installed-runtime evidence are recorded in the local validation artifact and PR reply.
+
+A subsequent P2 on `3e0112d` exposed the pinned parser's trimming of unquoted pathname whitespace. A shared parser adapter now C-quotes header operands before parsing, preserving exact names in snapshot/page construction, fallback selection, explicit-file selection and client rendering. Only metadata headers are adapted; hunks and original stored patch payloads are unchanged. Two distinct `foo`/`foo ` files, multiple trailing spaces, pure rename old/new names and binary pairs are covered in snapshot/paged API regressions; the production browser navigates both whitespace-distinct text files without treating them as an unsupported type transition.

@@ -1,0 +1,14 @@
+title: Diff
+description: Review working changes, branches and pull requests in a read-only Git browser.
+long_description: |
+  Read code changes in one focused view, with a folder tree, unified or split diffs,
+  syntax highlighting and remembered viewed marks. Switch between local repositories,
+  compare refs and follow new working changes automatically.
+  Diff never stages, reverts or commits your files.
+categories:
+  - Developer Tools
+keywords:
+  - git
+  - diff
+  - code review
+  - pull request

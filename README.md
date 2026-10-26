@@ -42,6 +42,7 @@ Each directory under [`apps/`](apps/) is an independent app package with an `app
 | [Brainstorm](apps/brainstorm/) | Turns rough ideas into approved design specifications before implementation |
 | [Code Review](apps/code-review/) | Reviews GitHub pull requests, posts inline findings, and tracks review history |
 | [Company Research](apps/company-research/) | Builds structured company, market, team, financing, and product research |
+| [Diff](apps/diffview/) | Reviews local Git changes, branches, pull requests and arbitrary refs in a read-only diff browser |
 | [Discord Digest](apps/discord-digest/) | Periodically summarizes Discord channel activity |
 | [Facebook](apps/facebook/) | Extracts public Facebook page data |
 | [Learning](apps/learning/) | Provides learning and vocabulary actions |
