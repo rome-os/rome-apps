@@ -12,3 +12,5 @@ Real API regressions cover both type directions in snapshot/paged and all/staged
 Playwright's object transport itself can lose an own `__proto__` field when deserializing structured results, so the regression transfers that diagnostic payload as JSON text and parses it explicitly rather than mistaking a test-transport limitation for a server failure.
 
 All previous storage, tracking, PR, worker, sidebar and scroll regressions remain enabled. Final test totals, installed-runtime evidence and CI are recorded in the PR/local validation artifact. Draft remains, no merge or Store publication; no native platform or long-duration soak claim is added.
+
+The finalized review also retained an aggregate-cap variant: 70 individually pageable files each replacing a 250,000-character line. Its regression checks initial/next/final pages, ≤1-MiB actual patch bytes and cursor advancement only over delivered files. The earlier draft type-change/quoting comments became unavailable before replies (their endpoints return 404), so those extra hardening fixes are recorded in the PR summary rather than claimed as successfully replied-to threads.

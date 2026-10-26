@@ -948,3 +948,58 @@ test("oversized tracked page degrades its path without hiding ordinary files", a
   assert.equal(expanded.status, 200);
   assert.equal(expanded.body.truncated, true);
 }, 60000);
+
+test("aggregate candidate overflow keeps payload and cursor budgets for individually pageable files", async () => {
+  const { g, write, call } = await fixture();
+  const old = "a".repeat(250000) + "\n",
+    next = "b".repeat(250000) + "\n";
+  for (let start = 0; start < 70; start += 10)
+    await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        write(`f${String(start + i).padStart(2, "0")}.txt`, old),
+      ),
+    );
+  g("add", ".");
+  g("commit", "-qm", "candidate base");
+  for (let start = 0; start < 70; start += 10)
+    await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        write(`f${String(start + i).padStart(2, "0")}.txt`, next),
+      ),
+    );
+  const first = await call("files");
+  assert.equal(first.status, 200);
+  assert.equal(first.body.files.length, 70);
+  const check = (page: any, start: number) => {
+    const entries = Object.entries<any>(page.patches);
+    assert(entries.length > 0);
+    assert(
+      entries.reduce((n, [, p]) => n + Buffer.byteLength(p.patch), 0) <=
+        1024 * 1024,
+    );
+    for (const [, patch] of entries) {
+      assert.equal(patch.truncated, false);
+      assert(patch.patch.includes("+bbbbb"));
+    }
+    const end = start + entries.length;
+    assert.equal(page.next, end < 70 ? end : null);
+    return end;
+  };
+  const cursor = check(first.body.page, 0);
+  const second = await call("patches", {
+    fp: first.body.fingerprint,
+    cursor: String(cursor),
+  });
+  assert.equal(second.status, 200);
+  check(second.body, cursor);
+  assert.equal(
+    Object.keys(second.body.patches)[0],
+    `f${String(cursor).padStart(2, "0")}.txt`,
+  );
+  const last = await call("patches", {
+    fp: first.body.fingerprint,
+    cursor: "69",
+  });
+  assert.equal(last.status, 200);
+  assert.equal(check(last.body, 69), 70);
+}, 60000);
