@@ -82,6 +82,7 @@ export function command(
   input?: string,
   /** `latin1` keeps every byte of binary output (cat-file); text output stays utf8. */
   encoding: "utf8" | "latin1" = "utf8",
+  extraEnv?: NodeJS.ProcessEnv,
 ): Promise<string> {
   const trace = traceStore.getStore();
   const started = performance.now();
@@ -97,6 +98,7 @@ export function command(
         GIT_TERMINAL_PROMPT: "0",
         GIT_OPTIONAL_LOCKS: "0",
         GH_PROMPT_DISABLED: "true",
+        ...extraEnv,
       },
       stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
@@ -153,6 +155,7 @@ export function git(
   timeout?: number,
   input?: string,
   encoding?: "utf8" | "latin1",
+  extraEnv?: NodeJS.ProcessEnv,
 ) {
   return command(
     cwd,
@@ -172,6 +175,7 @@ export function git(
     timeout,
     input,
     encoding,
+    extraEnv,
   );
 }
 export async function sha(repo: string, ref: string) {
@@ -261,7 +265,18 @@ export interface FileEntry {
   untracked?: boolean;
   conflicted?: boolean;
   typeChanged?: boolean;
+  /** Review-weight category resolved from the comparison target's Git attributes. */
+  category?: FileCategory;
 }
+export type SupportingCategory =
+  | "generated"
+  | "lockfile"
+  | "test"
+  | "fixture"
+  | "snapshot"
+  | "vendored"
+  | "documentation";
+export type FileCategory = "primary" | SupportingCategory;
 export function parseNumstat(text: string) {
   const fields = text.split("\0");
   const out = new Map<
@@ -852,6 +867,7 @@ export async function files(
         collapseHint(f.path) ||
         (counts.get(f.path)?.added || 0) + (counts.get(f.path)?.deleted || 0) >
           2000,
+      category: "primary",
     }));
   }
   if (m.mode === "uncommitted" && m.filter !== "staged") {
@@ -882,6 +898,7 @@ export async function files(
         binary,
         collapsed: large || added > 2000 || collapseHint(path),
         untracked: true,
+        category: "primary" as const,
       };
     });
     entries.push(...read);
@@ -936,6 +953,7 @@ export function conflictEntry(path: string): FileEntry {
     binary: false,
     collapsed: true,
     conflicted: true,
+    category: "primary",
   };
 }
 export async function readSafe(repo: string, path: string, limit: number) {

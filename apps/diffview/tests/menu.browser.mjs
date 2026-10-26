@@ -147,6 +147,10 @@ test(
     g("init", "-b", "main");
     g("config", "user.name", "Diff Test");
     g("config", "user.email", "test@example.invalid");
+    await writeFile(
+      join(repo, ".gitattributes"),
+      "loose.txt diffview-category=test\n",
+    );
     await writeFile(join(repo, "initial.txt"), "initial\n");
     g("add", ".");
     g("commit", "-m", "Initial commit");
@@ -392,6 +396,10 @@ test(
         await bounds();
         await scope.click();
         await v.getByRole("menuitemradio", { name: /未推送/ }).waitFor();
+        const changeSummary = v.getByLabel("变更统计", { exact: true });
+        assert.match(await changeSummary.textContent(), /主要变更 · 1\+1−1/);
+        assert.match(await changeSummary.textContent(), /辅助变更 · 1\+1−0/);
+        assert.match(await changeSummary.textContent(), /全部变更 · 2\+2−1/);
         const entries = await v
           .locator('[role="menu"] [role^="menuitem"]')
           .allTextContents();

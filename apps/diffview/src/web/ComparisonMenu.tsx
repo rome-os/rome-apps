@@ -25,6 +25,7 @@ import type { Messages } from "./i18n";
 import { errorMessage } from "./i18n";
 import { api } from "./api";
 import { Pill, Stats } from "./ReviewParts";
+import type { ChangeCount } from "../lib/attributes";
 
 interface Props {
   state: State;
@@ -447,6 +448,45 @@ export function ComparisonMenu({
     </>
   );
   const files = data?.files || [];
+  const fallbackCount = (supporting: boolean): ChangeCount =>
+    files
+      .filter(
+        (file) => ((file.category ?? "primary") !== "primary") === supporting,
+      )
+      .reduce(
+        (count, file) => ({
+          files: count.files + 1,
+          added: count.added + file.added,
+          deleted: count.deleted + file.deleted,
+        }),
+        { files: 0, added: 0, deleted: 0 },
+      );
+  const primary = data?.totals?.primary ?? fallbackCount(false);
+  const supporting = data?.totals?.supporting ?? fallbackCount(true);
+  const all = data?.totals?.all ?? {
+    files: primary.files + supporting.files,
+    added: primary.added + supporting.added,
+    deleted: primary.deleted + supporting.deleted,
+  };
+  const summary = (label: string, count: ChangeCount) => (
+    <div className="flex items-center justify-between gap-3 px-2 py-1 text-xs">
+      <span className="text-muted-foreground">
+        {label} · {count.files}
+      </span>
+      <Stats added={count.added} deleted={count.deleted} zero />
+    </div>
+  );
+  const changeSummary = files.length > 0 && (
+    <>
+      <DropdownMenuLabel>{t.changeSummary}</DropdownMenuLabel>
+      <div aria-label={t.changeSummary}>
+        {summary(t.primaryChanges, primary)}
+        {supporting.files > 0 && summary(t.supportingChanges, supporting)}
+        {supporting.files > 0 && summary(t.allChanges, all)}
+      </div>
+      <DropdownMenuSeparator />
+    </>
+  );
   const scopeLabel = revisionScope
     ? t.branch
     : state.mode === "pr"
@@ -460,18 +500,14 @@ export function ComparisonMenu({
         <DropdownMenuTrigger asChild>
           <Pill
             aria-label={t.comparison}
-            title={scopeTooltip}
+            title={`${scopeTooltip}${files.length ? `\n${t.primaryChanges}: +${primary.added} −${primary.deleted}\n${t.allChanges}: +${all.added} −${all.deleted}` : ""}`}
             style={{ flex: "0 1 auto", justifySelf: "start" }}
             className="min-w-0 max-w-full shrink"
           >
             <span className="min-w-0 truncate">{scopeLabel}</span>
             <ChevronDown size={12} className="shrink-0 text-muted-foreground" />
             {files.length > 0 && (
-              <Stats
-                added={files.reduce((n, f) => n + f.added, 0)}
-                deleted={files.reduce((n, f) => n + f.deleted, 0)}
-                zero
-              />
+              <Stats added={primary.added} deleted={primary.deleted} zero />
             )}
           </Pill>
         </DropdownMenuTrigger>
@@ -480,7 +516,14 @@ export function ComparisonMenu({
           collisionPadding={8}
           className={pane === "root" ? "w-56" : WIDTH}
         >
-          {pane === "pr" ? prs : root}
+          {pane === "pr" ? (
+            prs
+          ) : (
+            <>
+              {changeSummary}
+              {root}
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       {revisionScope && (

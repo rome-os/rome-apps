@@ -158,6 +158,18 @@ export function DiffHeader({
   contextAvailable?: boolean;
 }) {
   const { directory, basename } = pathParts(file.path);
+  const category =
+    file.category && file.category !== "primary"
+      ? {
+          generated: t.categoryGenerated,
+          lockfile: t.categoryLockfile,
+          test: t.categoryTest,
+          fixture: t.categoryFixture,
+          snapshot: t.categorySnapshot,
+          vendored: t.categoryVendored,
+          documentation: t.categoryDocumentation,
+        }[file.category]
+      : "";
   const label = file.typeChanged
     ? t.unsupported_type_change
     : file.conflicted
@@ -170,9 +182,11 @@ export function DiffHeader({
             ? t.large
             : record?.empty
               ? t.noText
-              : !record?.item && file.collapsed
-                ? t.generated
-                : "";
+              : category
+                ? category
+                : !record?.item && file.collapsed
+                  ? t.generated
+                  : "";
   return (
     <div
       className={`dv-header flex h-11 items-center gap-2 border-t bg-[var(--app-canvas)] px-3 text-[13px] ${viewed ? "dv-viewed" : ""}`}
