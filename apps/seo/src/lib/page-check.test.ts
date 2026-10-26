@@ -54,6 +54,14 @@ describe("deterministic page parser and scoring", () => {
       expect(p.findings.find((f) => f.key === "indexing")?.status).toBe("fail");
     },
   );
+  it("applies the most restrictive of repeated robots meta tags", () => {
+    const p = parsePage(
+      '<meta name="robots" content="index, follow"><meta name="robots" content="noindex"><title>t</title>',
+      transport,
+    );
+    expect(p.robotsMeta).toBe("index, follow, noindex");
+    expect(p.findings.find((f) => f.key === "indexing")?.status).toBe("fail");
+  });
   it("detects googlebot meta, unsuccessful responses, missing crawl files, and long redirects", () => {
     const p = parsePage(
       '<meta name="googlebot" content="NOINDEX"><title>short</title>',

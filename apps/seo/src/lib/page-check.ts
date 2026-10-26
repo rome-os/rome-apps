@@ -46,14 +46,18 @@ export function parsePage(html: string, transport: PageTransport): PageCheck {
   const $ = load(html);
   const clean = (s: string) => s.replace(/\s+/g, " ").trim();
   const metas: Record<string, string> = {};
+  // Every robots/googlebot tag counts: Google applies the most restrictive one.
+  const robotsDirectives: string[] = [];
   $("meta").each((_, el) => {
     const key = (
       $(el).attr("name") ||
       $(el).attr("property") ||
       ""
     ).toLowerCase();
-    if (key && !(key in metas))
-      metas[key] = $(el).attr("content")?.trim() || "";
+    const content = $(el).attr("content")?.trim() || "";
+    if ((key === "robots" || key === "googlebot") && content)
+      robotsDirectives.push(content);
+    if (key && !(key in metas)) metas[key] = content;
   });
   const group = (prefix: string) =>
     Object.fromEntries(
@@ -123,7 +127,7 @@ export function parsePage(html: string, transport: PageTransport): PageCheck {
     title: clean($("title").first().text()),
     description: metas.description || "",
     canonical,
-    robotsMeta: [metas.robots, metas.googlebot].filter(Boolean).join(", "),
+    robotsMeta: robotsDirectives.join(", "),
     lang: $("html").attr("lang") || "",
     viewport: metas.viewport || "",
     headings,
