@@ -9,9 +9,23 @@ keywords:
   - page audit
   - metadata
   - structured data
-homepage: https://romeos.cc/store/seo
 repository: https://github.com/rome-os/rome-apps/tree/main/apps/seo
 preview: off
+media:
+  - path: assets/page-check.png
+    alt: Instant page check with a health score, search preview and social preview
+  - path: assets/workflows.png
+    alt: Nine AI SEO workflows, from domain audits to schema and content
+  - path: assets/ai-report.png
+    alt: A completed Optimize Meta report with a current-state analysis table
+  - path: assets/report-code.png
+    alt: Recommended meta tags as copyable HTML inside an AI report
+  - path: assets/history.png
+    alt: History of saved page checks and AI reports
+  - path: assets/workflows-dark.png
+    alt: The workflow launcher in dark mode
+  - path: assets/page-check-mobile.png
+    alt: Page check on a phone
 long_description: |
   Check a public page in seconds, see what needs attention, and turn findings
   into a concrete SEO action plan.
