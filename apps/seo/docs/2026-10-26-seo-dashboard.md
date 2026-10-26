@@ -8,3 +8,9 @@
 - Results are heuristics. Robots rules and sitemap membership are not evaluated. Word count is whitespace-based and image alt coverage distinguishes missing vs empty alt. AI content remains untrusted rendered Markdown.
 
 Validation and runtime evidence will be recorded after installation.
+
+## Initial validation
+
+- Typecheck, production build, and 47 tests pass (including existing workflow tests, parser/scoring, network guards, detached job outcomes).
+- `pnpm install --frozen-lockfile` succeeds. Root lock refresh also fills the previously missing existing Diffview workspace importer; no other app source was changed.
+- Initial runtime install succeeded, exposing a production-only ESM chunk cycle in Rspack's shared Markdown bundle (`__webpack_require__` before initialization). Extracted the ESM runtime into its own chunk in the app's rslib config; dynamic language/highlighter imports remain lazy. Rebuilding/reinstalling to verify the actual mounted UI.
