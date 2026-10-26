@@ -199,7 +199,18 @@ export function ComparisonMenu({
       <DropdownMenuSeparator />
       <DropdownMenuItem
         className="relative pr-8"
-        onSelect={() => pick({ mode: "ref" })}
+        onSelect={() =>
+          pick(
+            state.mode === "ref"
+              ? { mode: "ref" }
+              : {
+                  mode: "ref",
+                  ref: "",
+                  target: "worktree",
+                  dots: "three",
+                },
+          )
+        }
       >
         {revisionScope && <Check className="absolute right-2 size-4" />}
         <span>{t.branch}</span>

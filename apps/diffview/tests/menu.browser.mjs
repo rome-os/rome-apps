@@ -158,6 +158,8 @@ test(
     g("checkout", "-b", branch);
     g("remote", "add", "origin", "/nonexistent/diffview-test-remote");
     g("update-ref", "refs/remotes/origin/feature", base);
+    g("update-ref", "refs/remotes/origin/main", base);
+    g("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
     g("config", `branch.${branch}.remote`, "origin");
     g("config", `branch.${branch}.merge`, "refs/heads/feature");
     await writeFile(join(repo, "local.txt"), "local feature\n");
@@ -541,6 +543,11 @@ test(
         await local.focus();
         await local.press("Enter");
         assert.equal(await endpoints.count(), 0);
+        await scope.click();
+        await v.getByRole("menuitem", { name: "分支", exact: true }).click();
+        await endpoints.waitFor();
+        assert.match(await endpoints.textContent(), /origin\/main.*工作区/);
+        assert.doesNotMatch(await endpoints.textContent(), /两点比较/);
         if (width === 1100) {
           // A page/patch view can expire while another comparison is open. Recover with a
           // fresh list, not an infinite error or patches stamped with the stale fingerprint.
