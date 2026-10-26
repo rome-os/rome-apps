@@ -61,6 +61,10 @@ const en = {
   index: "Staging area",
   toolbar: "Review toolbar",
   scope: "Comparison scope",
+  fallback_context_unavailable:
+    "Context expansion is unavailable for a GitHub-provided diff.",
+  fallbackDiff:
+    "Showing GitHub-provided hunks only; context expansion and full-file loading are unavailable.",
   comparison: "Compare revisions",
   options: "Review options",
   collapseAll: "Collapse all files",
@@ -244,6 +248,8 @@ const zh: typeof en = {
   index: "暂存区",
   toolbar: "变更工具栏",
   scope: "比较范围",
+  fallback_context_unavailable: "GitHub 提供的差异不支持展开上下文。",
+  fallbackDiff: "仅显示 GitHub 提供的差异；无法展开上下文或加载完整文件。",
   comparison: "比较版本",
   options: "审阅选项",
   collapseAll: "折叠全部文件",

@@ -1,3 +1,8 @@
+import {
+  readConversation,
+  writeConversation,
+  CONVERSATION_ENTRY_BYTES,
+} from "./conversationStorage.js";
 import { comparisonIdentity } from "./comparison.js";
 import type { Mode } from "../lib/git.js";
 import type { KV } from "./prefs.js";
@@ -31,7 +36,7 @@ function valid(value: unknown): value is ScrollPosition {
 function positions(scope: string, storage?: KV): [string, ScrollPosition][] {
   try {
     const raw: unknown = JSON.parse(
-      storage?.getItem(storageKey(scope)) ?? "null",
+      readConversation(storage, storageKey(scope)) ?? "null",
     );
     if (!Array.isArray(raw)) return [];
     return raw
@@ -66,12 +71,12 @@ export function saveScroll(
     view,
     { top: position.top, file: position.file, offset: position.offset },
   ]);
-  try {
-    storage?.setItem(
-      storageKey(scope),
-      JSON.stringify(next.slice(-SCROLL_VIEW_LIMIT)),
-    );
-  } catch {
-    /* Best effort when browser storage is blocked or full. */
-  }
+  const key = storageKey(scope);
+  let bounded = next.slice(-SCROLL_VIEW_LIMIT);
+  while (
+    bounded.length > 1 &&
+    (key.length + JSON.stringify(bounded).length) * 2 > CONVERSATION_ENTRY_BYTES
+  )
+    bounded.shift();
+  writeConversation(storage, key, JSON.stringify(bounded));
 }

@@ -13,6 +13,13 @@ import {
 function memory(): KV {
   const m = new Map<string, string>();
   return {
+    get length() {
+      return m.size;
+    },
+    key: (i: number) => [...m.keys()][i] ?? null,
+    removeItem: (key: string) => {
+      m.delete(key);
+    },
     getItem: (k) => m.get(k) ?? null,
     setItem: (k, v) => void m.set(k, v),
   };

@@ -106,6 +106,7 @@ export function Viewer({
   dark = false,
   split = false,
   expanded = false,
+  contextAvailable = true,
   wrap = false,
   header,
   onScroll,
@@ -118,6 +119,7 @@ export function Viewer({
   dark?: boolean;
   split?: boolean;
   expanded?: boolean;
+  contextAvailable?: boolean;
   wrap?: boolean;
   header?: (item: CodeViewItem<undefined>) => ReactNode;
   onScroll?: (
@@ -128,8 +130,8 @@ export function Viewer({
   records?: Record<string, Loaded>;
   t?: Messages;
 }) {
-  const live = useRef({ records, t, onContext });
-  live.current = { records, t, onContext };
+  const live = useRef({ records, t, onContext, contextAvailable });
+  live.current = { records, t, onContext, contextAvailable };
   const decorate = useCallback(
     (
       node: HTMLElement,
@@ -157,6 +159,9 @@ export function Viewer({
       ) => {
         const existing = el.querySelector(".dv-context");
         if (existing) {
+          existing.querySelectorAll("button").forEach((button) => {
+            button.disabled = !current.contextAvailable;
+          });
           const label = existing.querySelector("span");
           if (label)
             label.textContent =
@@ -171,6 +176,7 @@ export function Viewer({
         const button = (direction: "up" | "down", points: string) => {
           const b = document.createElement("button");
           b.type = "button";
+          b.disabled = !current.contextAvailable;
           b.title = current.t.expandTwenty;
           b.setAttribute(
             "aria-label",

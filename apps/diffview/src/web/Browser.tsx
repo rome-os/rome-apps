@@ -386,20 +386,33 @@ function Browser() {
     enabled: ready && !!state.repo,
     refetchInterval: 15000,
   });
+  const trackingUnavailable =
+    state.mode === "unpushed" &&
+    (!!tracking.error || tracking.data?.state !== "ready");
   const enabled =
     ready &&
     !!state.repo &&
     (state.mode !== "pr" || !!state.pr) &&
     (state.mode !== "commit" || !!state.commit) &&
-    (state.mode !== "unpushed" || tracking.data?.state === "ready");
+    (state.mode !== "unpushed" || !trackingUnavailable);
   // Context lines every patch is cut with: the chosen amount, or the whole file when unchanged
   // lines are expanded. The server cuts all pages with it, so it is part of what a page *is*.
   const ctxParam = collapseContext ? state.unified : "10000";
   const refreshScope = useRef<string | undefined>(undefined);
-  const data = useQuery({
-    queryKey: ["files", scope, ctxParam],
+  const filesKey =
+    state.mode === "unpushed"
+      ? [
+          "files",
+          scope,
+          ctxParam,
+          tracking.data?.head,
+          tracking.data?.upstreamHead,
+        ]
+      : ["files", scope, ctxParam];
+  const fileQuery = useQuery({
+    queryKey: filesKey,
     queryFn: async ({ signal }) => {
-      const held = qc.getQueryData<FilesData>(["files", scope, ctxParam]);
+      const held = qc.getQueryData<FilesData>(filesKey);
       const force = refreshScope.current === scope;
       if (force) refreshScope.current = undefined;
       const res = await api<FilesData | { unchanged: true; ms: number }>(
@@ -423,6 +436,18 @@ function Browser() {
         ? false
         : Math.max(15000, (query.state.data?.ms ?? 0) * 6),
   });
+  // Disabled queries retain cached results. Never present a previous branch's Unpushed diff
+  // after its tracking source disappears (or while a different HEAD is being loaded).
+  const data = {
+    ...fileQuery,
+    data:
+      trackingUnavailable ||
+      (state.mode === "unpushed" &&
+        fileQuery.data?.head !== tracking.data?.head)
+        ? undefined
+        : fileQuery.data,
+  };
+  const fallback = !!data.data?.fallback;
   const events = useQuery({
     queryKey: ["events", state.repo],
     queryFn: ({ signal }) =>
@@ -445,7 +470,16 @@ function Browser() {
   // everything (`scopeStamp`). A new fingerprint on the same comparison only means the files
   // changed underneath: what did not change is kept as it is (see the merge below), so a repository
   // that is being edited does not make the whole viewer rebuild and jump back to the top.
-  const scopeStamp = scopeId + ":" + scope + ":" + ctxParam + ":" + nonce;
+  const scopeStamp =
+    scopeId +
+    ":" +
+    scope +
+    ":" +
+    ctxParam +
+    ":" +
+    nonce +
+    ":" +
+    trackingUnavailable;
   const stamp = scopeStamp + ":" + data.data?.fingerprint;
   // Long-lived callbacks read the freshest list-level facts through refs.
   const fpRef = useRef("");
@@ -506,6 +540,7 @@ function Browser() {
   // context. Bulk loading never goes through here; it is paged (see the pager below).
   const load = useCallback(
     (path: string, anyway = false, requestedContext?: number) => {
+      if (fallback && (anyway || requestedContext !== undefined)) return;
       if (pending.current.has(path)) return;
       pending.current.add(path);
       const generation = epoch.current,
@@ -559,7 +594,7 @@ function Browser() {
             setNonce((n) => n + 1);
             void qc.resetQueries({
               queryKey: ["files", scope, ctxParam],
-              exact: true,
+              exact: false,
             });
             return;
           }
@@ -574,7 +609,7 @@ function Browser() {
         }
       })();
     },
-    [scope, ctxParam],
+    [scope, ctxParam, fallback],
   );
   const allFiles = data.data?.files || [],
     visibleFiles = useMemo(
@@ -769,7 +804,7 @@ function Browser() {
           setNonce((n) => n + 1);
           void qc.resetQueries({
             queryKey: ["files", scope, ctxParam],
-            exact: true,
+            exact: false,
           });
           return;
         }
@@ -1047,12 +1082,14 @@ function Browser() {
   const expandContext = (
     path: string,
     direction: "up" | "down" | "all" = "down",
-  ) =>
+  ) => {
+    if (fallback) return;
     load(
       path,
       direction === "all",
       nextContext(contexts.current[path] ?? Number(state.unified), direction),
     );
+  };
   const toggleFile = (file: FileEntry) => {
     if (file.conflicted) return;
     if (!records[file.path]?.item) {
@@ -1418,6 +1455,7 @@ function Browser() {
                 </label>
                 <Input
                   id="dv-context"
+                  disabled={fallback}
                   type="text"
                   inputMode="numeric"
                   autoComplete="off"
@@ -1439,6 +1477,7 @@ function Browser() {
                 {t.wrap}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
+                disabled={fallback}
                 checked={collapseContext}
                 onCheckedChange={setCollapseContext}
                 onSelect={keepOpen}
@@ -1599,6 +1638,14 @@ function Browser() {
           )}
         </div>
       </header>
+      {fallback && (
+        <p
+          role="status"
+          className="shrink-0 px-3 pb-2 text-aux text-muted-foreground"
+        >
+          {t.fallbackDiff}
+        </p>
+      )}
       {copied && (
         <div
           role="status"
@@ -1641,7 +1688,7 @@ function Browser() {
           <div className="relative min-h-0 flex-1">
             {!ready ||
             repos.isPending ||
-            (enabled && data.isPending) ||
+            (enabled && (data.isPending || (!data.data && data.isFetching))) ||
             (state.mode === "unpushed" && tracking.isPending) ||
             (items.length > 0 && revealed === 0) ? (
               loadingSkeleton
@@ -1659,7 +1706,8 @@ function Browser() {
                   items={shownItems}
                   dark={host.dark}
                   split={split}
-                  expanded={!collapseContext}
+                  expanded={!fallback && !collapseContext}
+                  contextAvailable={!fallback}
                   wrap={wrap}
                   onScroll={onViewerScroll}
                   t={t}
@@ -1671,6 +1719,7 @@ function Browser() {
                     return (
                       <DiffHeader
                         file={f}
+                        contextAvailable={!fallback}
                         record={records[f.path]}
                         collapsed={
                           collapsedPaths.has(f.path) ||

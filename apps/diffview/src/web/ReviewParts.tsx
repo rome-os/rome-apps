@@ -139,6 +139,7 @@ export function DiffHeader({
   openUrl,
   onContext,
   collapsed = false,
+  contextAvailable = true,
 }: {
   file: FileEntry;
   record?: Loaded;
@@ -154,6 +155,7 @@ export function DiffHeader({
   openUrl?: string;
   onContext: () => void;
   collapsed?: boolean;
+  contextAvailable?: boolean;
 }) {
   const { directory, basename } = pathParts(file.path);
   const label = file.conflicted
@@ -229,6 +231,7 @@ export function DiffHeader({
         file.added + file.deleted > 0 ? (
         <button
           className="rounded-md bg-muted px-2 py-1 text-xs hover:bg-accent"
+          disabled={!contextAvailable && !!record?.truncated}
           onClick={() => onLoad(!!record?.truncated)}
         >
           {record?.error ? t.retry : t.load}
@@ -289,14 +292,14 @@ export function DiffHeader({
             {collapsed ? t.expand : t.collapse}
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={file.binary || file.conflicted}
+            disabled={file.binary || file.conflicted || !contextAvailable}
             onSelect={() => onLoad(true)}
           >
             <FileDown size={14} />
             {t.loadFull}
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={file.binary || file.conflicted}
+            disabled={file.binary || file.conflicted || !contextAvailable}
             onSelect={onContext}
           >
             <UnfoldVertical size={14} />

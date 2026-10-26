@@ -11,6 +11,13 @@ import type { KV } from "../src/shared/prefs";
 function memory(): KV {
   const values = new Map<string, string>();
   return {
+    get length() {
+      return values.size;
+    },
+    key: (i: number) => [...values.keys()][i] ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => void values.set(key, value),
   };
@@ -87,6 +94,9 @@ test("malformed positions and unavailable storage cannot break the viewer", () =
     assert.equal(loadScroll("chat:a", "view", storage), undefined);
   }
   const unavailable: KV = {
+    length: 0,
+    key: () => null,
+    removeItem: () => {},
     getItem() {
       throw Error("blocked");
     },

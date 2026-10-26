@@ -1,3 +1,8 @@
+import {
+  readConversation,
+  writeConversation,
+  type StorageKV,
+} from "./conversationStorage.js";
 /**
  * What is remembered, and where.
  *  - Per conversation: which repo and comparison is being reviewed.
@@ -44,10 +49,7 @@ export interface Prefs {
   unified?: string;
   treeWidth?: number;
 }
-export interface KV {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
+export interface KV extends StorageKV {}
 const PREFS_KEY = "diffview:prefs:v1";
 const chatKey = (scope: string) => "diffview:chat:v1:" + scope;
 function read(storage: KV | undefined, key: string): unknown {
@@ -98,18 +100,31 @@ export function loadChatState(
   scope: string,
   storage?: KV,
 ): ChatState | undefined {
-  const raw = read(storage, chatKey(scope));
+  const raw = (() => {
+    try {
+      return JSON.parse(readConversation(storage, chatKey(scope)) || "null");
+    } catch {
+      return null;
+    }
+  })();
   if (!raw || typeof raw !== "object") return undefined;
   return pickChatState(raw as ChatState);
 }
 export function saveChatState(scope: string, state: ChatState, storage?: KV) {
-  write(storage, chatKey(scope), pickChatState(state));
+  writeConversation(
+    storage,
+    chatKey(scope),
+    JSON.stringify(pickChatState(state)),
+  );
 }
 
 const homeKey = (scope: string) => "diffview:home:v1:" + scope;
 /** The first repository a conversation reviewed; never overwritten once set. */
 export function loadHome(scope: string, storage?: KV): string {
-  const v = read(storage, homeKey(scope));
+  let v: unknown;
+  try {
+    v = JSON.parse(readConversation(storage, homeKey(scope)) || "null");
+  } catch {}
   return typeof v === "string" ? v : "";
 }
 export function rememberHome(
@@ -119,6 +134,6 @@ export function rememberHome(
 ): string {
   const existing = loadHome(scope, storage);
   if (existing || !repo) return existing;
-  write(storage, homeKey(scope), repo);
+  writeConversation(storage, homeKey(scope), JSON.stringify(repo));
   return repo;
 }

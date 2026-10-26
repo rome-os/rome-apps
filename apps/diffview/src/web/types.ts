@@ -20,6 +20,8 @@ export interface RefData {
   prState: string;
 }
 export interface FilesData {
+  /** Only GitHub-provided hunks are available; no local context/full-file expansion. */
+  fallback?: boolean;
   /** How long the server took, so polling can back off on large repositories. */
   ms?: number;
   files: import("../lib/git").FileEntry[];

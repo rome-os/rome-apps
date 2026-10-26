@@ -18,6 +18,14 @@ const patch = (path, marker = "after") => ({
 });
 async function fixture(scenario) {
   const root = resolve(process.env.DIFFVIEW_TEST_WEB_ROOT || "dist/web");
+  let trackingState = scenario === "tracking" ? "ready" : "no_upstream";
+  let trackingHead = "abc";
+  const forFile = (path, marker) => {
+    const result = patch(path, marker);
+    if (scenario === "fallback")
+      result.patch = result.patch.replace("@@ -1 +1 @@", "@@ -10 +10 @@");
+    return result;
+  };
   const counts = new Map(),
     cursors = [],
     errors = [];
@@ -55,11 +63,28 @@ async function fixture(scenario) {
             branches: ["main"],
             tags: [],
             commits: [],
-            prs: [],
-            prState: "ok",
+            prs:
+              scenario === "fallback"
+                ? [
+                    {
+                      number: 7,
+                      title: "Fixture PR",
+                      baseRefName: "main",
+                      headRefName: "feature",
+                    },
+                  ]
+                : [],
+            prState: "ready",
           });
         else if (route === "tracking")
-          json({ state: "no_upstream", upstream: "", ahead: 0, behind: 0 });
+          json({
+            state: trackingState,
+            upstream: trackingState === "ready" ? "origin/main" : "",
+            head: trackingHead,
+            upstreamHead: "base",
+            ahead: trackingState === "ready" ? 1 : 0,
+            behind: 0,
+          });
         else if (route === "events") {
           if (scenario === "stale-event") await pause(900);
           json({
@@ -77,6 +102,7 @@ async function fixture(scenario) {
           }
           const fp = scenario === "stale-list" && n === 1 ? "old" : "new";
           json({
+            fallback: scenario === "fallback",
             files: paths.map((path) => ({
               path,
               status: "M",
@@ -86,11 +112,11 @@ async function fixture(scenario) {
               collapsed: false,
             })),
             page: {
-              patches: { [paths[0]]: patch(paths[0], fp) },
+              patches: { [paths[0]]: forFile(paths[0], fp) },
               next: paths.length > 1 ? 1 : null,
             },
             fingerprint: fp,
-            head: "abc",
+            head: trackingHead,
             base: "main",
             ms: 0,
           });
@@ -105,12 +131,13 @@ async function fixture(scenario) {
           );
           json({
             patches: Object.fromEntries(
-              eligible.slice(start, start + 150).map((p) => [p, patch(p)]),
+              eligible.slice(start, start + 150).map((p) => [p, forFile(p)]),
             ),
             next: start + 150 < eligible.length ? start + 150 : null,
           });
           activePages--;
-        } else if (route === "patch") json(patch(url.searchParams.get("path")));
+        } else if (route === "patch")
+          json(forFile(url.searchParams.get("path")));
         else json({});
         return;
       }
@@ -169,11 +196,15 @@ async function fixture(scenario) {
         JSON.stringify(names.slice(1, 201)),
       );
     }, names);
-  const href = `http://127.0.0.1:${server.address().port}/?lang=zh#repo=%2Ffixture&mode=uncommitted&filter=all&base=main&unified=3`;
+  const href = `http://127.0.0.1:${server.address().port}/?lang=zh#repo=%2Ffixture&mode=${scenario === "tracking" ? "unpushed" : scenario === "fallback" ? "pr" : "uncommitted"}&pr=${scenario === "fallback" ? "7" : ""}&filter=all&base=main&unified=3`;
   return {
     page,
     href,
     counts,
+    setTracking: (state, head = trackingHead) => {
+      trackingState = state;
+      trackingHead = head;
+    },
     cursors,
     errors,
     get maxPages() {
@@ -251,3 +282,106 @@ for (const scenario of ["stale-list", "stale-event"])
       }
     },
   );
+
+for (const unavailable of ["no_upstream", "detached"])
+  test(
+    `production Unpushed hides retained results when tracking becomes ${unavailable}`,
+    { timeout: 65000 },
+    async () => {
+      const f = await fixture("tracking");
+      try {
+        await f.page.goto(f.href);
+        await f.page
+          .getByRole("button", { name: `已读: ${names[0]}`, exact: true })
+          .waitFor();
+        f.setTracking(unavailable);
+        await f.page
+          .getByText(
+            unavailable === "no_upstream"
+              ? "当前分支没有设置跟踪上游。"
+              : "当前处于游离 HEAD，没有跟踪上游。",
+            { exact: true },
+          )
+          .waitFor({ timeout: 23000 });
+        assert.equal(await f.page.locator("diffs-container").count(), 0);
+        assert(
+          !/\+1/.test(
+            await f.page
+              .getByRole("button", { name: "比较版本", exact: true })
+              .innerText(),
+          ),
+        );
+        assert.equal(
+          await f.page
+            .getByRole("button", { name: `已读: ${names[0]}`, exact: true })
+            .count(),
+          0,
+        );
+        const count = f.counts.get("all");
+        await pause(1000);
+        assert.equal(f.counts.get("all"), count);
+        if (unavailable === "no_upstream") {
+          f.setTracking("ready", "new-head");
+          await f.page
+            .getByRole("button", { name: `已读: ${names[0]}`, exact: true })
+            .waitFor({ timeout: 23000 });
+          assert(
+            (f.counts.get("all") || 0) > count,
+            "new tracking HEAD must get its own list query",
+          );
+        }
+        assert.deepEqual(f.errors, []);
+      } finally {
+        await f.close();
+      }
+    },
+  );
+
+test(
+  "production PR fallback labels degraded hunks and disables context/full-file actions",
+  { timeout: 30000 },
+  async () => {
+    const f = await fixture("fallback");
+    try {
+      await f.page.goto(f.href);
+      await f.page
+        .getByText("仅显示 GitHub 提供的差异；无法展开上下文或加载完整文件。", {
+          exact: true,
+        })
+        .waitFor();
+      await f.page
+        .getByRole("button", { name: `文件操作: ${names[0]}`, exact: true })
+        .click();
+      for (const name of ["加载完整文件", "更多未变上下文"])
+        assert.equal(
+          await f.page
+            .getByRole("menuitem", { name, exact: true })
+            .getAttribute("aria-disabled"),
+          "true",
+        );
+      await f.page.keyboard.press("Escape");
+      const expanders = f.page
+        .locator("diffs-container")
+        .locator('button[title="展开 20 行"]');
+      assert((await expanders.count()) > 0);
+      for (const button of await expanders.all())
+        assert(await button.isDisabled());
+      await f.page
+        .getByRole("button", { name: "审阅选项", exact: true })
+        .click();
+      assert(await f.page.locator("#dv-context").isDisabled());
+      assert.equal(
+        await f.page
+          .getByRole("menuitemcheckbox", {
+            name: "折叠未变上下文",
+            exact: true,
+          })
+          .getAttribute("aria-disabled"),
+        "true",
+      );
+      assert.deepEqual(f.errors, []);
+    } finally {
+      await f.close();
+    }
+  },
+);

@@ -1,3 +1,4 @@
+import { parsePatchFiles } from "@pierre/diffs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { verifyOpenedFile } from "./fileSafety.js";
 import { BoundedCache } from "./cache.js";
@@ -368,6 +369,45 @@ export function prRepository(meta: PrMetadata, n: string) {
   validateRef(meta.baseRefName);
   return location.git;
 }
+/** Compare repository identity without confusing a same-named PR in a different fork. */
+export function remoteRepository(value: string): string | undefined {
+  let host: string, path: string;
+  try {
+    const scp = /^(?:[^@/:]+@)?([^/:]+):([^/].*)$/.exec(value);
+    if (scp && !value.includes("://")) {
+      host = scp[1];
+      path = scp[2];
+    } else {
+      const url = new URL(value);
+      if (
+        !["https:", "http:", "ssh:", "git:"].includes(url.protocol) ||
+        url.search ||
+        url.hash
+      )
+        return;
+      host = url.hostname;
+      path = url.pathname.replace(/^\//, "");
+    }
+    const match = /^([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(path);
+    if (match) return (host + "/" + match[1] + "/" + match[2]).toLowerCase();
+  } catch {
+    /* local paths and unsupported URLs cannot establish repository identity */
+  }
+}
+export async function prFetchSource(repo: string, canonical: string) {
+  const expected = remoteRepository(canonical);
+  const names = (await git(repo, ["remote"]))
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  for (const name of names) {
+    const urls = await tryGit(repo, ["remote", "get-url", "--all", name]);
+    // Fetch uses the first fetch URL, not a push URL or a later alternative URL.
+    const url = urls.split("\n")[0];
+    if (expected && remoteRepository(url) === expected) return name;
+  }
+  return canonical;
+}
 async function deleteReviewRefs(repo: string, entries: string[]) {
   if (!entries.length) return;
   // Compare-and-delete: do not delete a ref if another writer changed its value.
@@ -450,6 +490,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
           () => pruneReviewRefs(repo),
           60000,
         );
+        source = await prFetchSource(repo, source);
         const temp = "refs/diffview/tmp/" + Date.now() + "-" + randomUUID();
         try {
           await git(
@@ -461,6 +502,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
               "--no-tags",
               "--no-write-fetch-head",
               "--refmap=",
+              "--",
               source,
               "+refs/heads/" + meta.baseRefName + ":" + temp + "/base",
               "+refs/pull/" + n + "/head:" + temp + "/head",
@@ -610,7 +652,17 @@ export async function comparison(
       m.filter !== "unstaged" &&
       !(head ?? (await tryGit(repo, ["rev-parse", "--verify", "HEAD"])))
     )
-      args = ["--cached"];
+      args = [
+        (
+          await git(
+            repo,
+            ["hash-object", "-t", "tree", "--stdin"],
+            undefined,
+            undefined,
+            "",
+          )
+        ).trim(),
+      ];
     if (args[0] === "HEAD" && head) args = [head];
     return { args };
   }
@@ -751,20 +803,35 @@ export async function files(
   const cmp = resolved ?? (await comparison(repo, m));
   let entries: FileEntry[] = [];
   if (cmp.fallback !== undefined) {
-    entries = splitPatch(cmp.fallback).map((p) => {
-      const path =
-        /^\+\+\+ b\/(.*)$/m.exec(p)?.[1] ||
-        /^diff --git a\/(.*?) b\//m.exec(p)?.[1] ||
-        "";
-      return {
-        path,
-        status: "M",
-        added: (p.match(/^\+(?!\+\+)/gm) || []).length,
-        deleted: (p.match(/^-(?!--)/gm) || []).length,
-        binary: /Binary files/.test(p),
-        collapsed: collapseHint(path),
-      };
-    });
+    entries = splitPatch(cmp.fallback).flatMap((chunk) =>
+      parsePatchFiles(chunk, "fallback-list", true)
+        .flatMap((patch) => patch.files)
+        .map((file) => {
+          const binary = /^Binary files |^GIT binary patch/m.test(chunk);
+          const added = binary
+            ? 0
+            : file.hunks.reduce((n, h) => n + h.additionLines, 0);
+          const deleted = binary
+            ? 0
+            : file.hunks.reduce((n, h) => n + h.deletionLines, 0);
+          return {
+            path: file.name,
+            oldPath: file.prevName !== file.name ? file.prevName : undefined,
+            status:
+              file.type === "new"
+                ? "A"
+                : file.type === "deleted"
+                  ? "D"
+                  : file.type.startsWith("rename")
+                    ? "R"
+                    : "M",
+            added,
+            deleted,
+            binary,
+            collapsed: collapseHint(file.name) || added + deleted > 2000,
+          };
+        }),
+    );
   } else {
     const base = ["diff", "--no-ext-diff", "--no-textconv", "-M", ...cmp.args];
     const [num, raw] = await Promise.all([
@@ -926,10 +993,12 @@ export async function patch(
     const cmp = resolved ?? (await comparison(repo, m));
     if (cmp.fallback !== undefined)
       text =
-        splitPatch(cmp.fallback).find(
-          (p) =>
-            p.includes("\n+++ b/" + path + "\n") ||
-            p.includes("\n--- a/" + path + "\n"),
+        splitPatch(cmp.fallback).find((chunk) =>
+          parsePatchFiles(chunk, "fallback", true).some((patch) =>
+            patch.files.some(
+              (file) => file.name === path || file.prevName === path,
+            ),
+          ),
         ) || "";
     else
       try {

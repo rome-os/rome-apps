@@ -635,3 +635,133 @@ for (const setting of ["log", "diff"])
     await writeFile(join(repo, "seed.txt"), "seed\n");
     assert.equal(g("status", "--porcelain=v2"), status);
   });
+
+test("unborn all mode compares the worktree to the empty tree, not just the index", async () => {
+  const { repo, g, write, call } = await fixture();
+  g("symbolic-ref", "HEAD", "refs/heads/unborn");
+  await write("seed.txt", "staged\n");
+  g("add", "seed.txt");
+  await write("seed.txt", "unstaged after staging\n");
+  const status = g("status", "--porcelain=v2"),
+    index = g("ls-files", "--stage");
+  for (const paged of [false, true]) {
+    if (paged) process.env.DIFFVIEW_MAX_FILES = "1";
+    await write("loose.txt", "untracked\n");
+    for (const filter of ["all", "staged", "unstaged"]) {
+      const q = { filter, ctx: paged ? "5" : "3" };
+      const list = await call("files", q);
+      assert.equal(list.status, 200);
+      assert.match(
+        list.body.page.patches["seed.txt"].patch,
+        filter === "staged" ? /\+staged/ : /\+unstaged after staging/,
+      );
+      const expanded = await call("patch", {
+        ...q,
+        fp: list.body.fingerprint,
+        path: "seed.txt",
+        unified: "40",
+      });
+      assert.match(
+        expanded.body.patch,
+        filter === "staged" ? /\+staged/ : /\+unstaged after staging/,
+      );
+      if (filter !== "staged")
+        assert(list.body.files.some((f: any) => f.path === "loose.txt"));
+      assert.equal(g("ls-files", "--stage"), index);
+    }
+  }
+  await rm(join(repo, "loose.txt"));
+  assert.equal(g("status", "--porcelain=v2"), status);
+});
+
+test("fallback advertises limits, matches spaced names, and rejects context/full-file expansion", async () => {
+  const { repo, g, call } = await fixture();
+  g("remote", "add", "origin", join(home, "absent-fallback.git"));
+  await fakeGh(repo);
+  const text =
+    "diff --git a/space name.ts b/space name.ts\nindex 1111111..2222222 100644\n--- a/space name.ts\t\n+++ b/space name.ts\t\n@@ -10 +10 @@\n-before\n+after\n";
+  await writeFile(join(repo, ".git/gh-diff"), text);
+  for (const paged of [false, true]) {
+    if (paged)
+      vi.spyOn(snapshot, "buildSnapshot").mockRejectedValueOnce(
+        new GitError("output_limit"),
+      );
+    const q = { mode: "pr", pr: "6", ctx: paged ? "5" : "3" };
+    const list = await call("files", q);
+    assert.equal(list.status, 200);
+    assert.equal(list.body.fallback, true);
+    assert.deepEqual(
+      list.body.files.map((f: any) => f.path),
+      ["space name.ts"],
+    );
+    const normal = await call("patch", {
+      ...q,
+      fp: list.body.fingerprint,
+      path: "space name.ts",
+    });
+    assert.equal(normal.status, 200);
+    assert.match(normal.body.patch, /\+after/);
+    for (const extra of [{ unified: "23" }, { anyway: "1" }]) {
+      const denied = await call("patch", {
+        ...q,
+        fp: list.body.fingerprint,
+        path: "space name.ts",
+        ...extra,
+      });
+      assert.equal(denied.status, 400);
+      assert.equal(denied.body.error, "fallback_context_unavailable");
+    }
+  }
+});
+
+test("PR fetching reuses a matching SSH remote, not a same-repo-name fork or synthetic HTTPS", async () => {
+  const { repo, g, write, call } = await fixture();
+  const root = g("rev-parse", "HEAD"),
+    bare = join(home, `ssh-${counter}.git`);
+  execFileSync("git", ["init", "--bare", "-q", "-b", "main", bare]);
+  g("push", "-q", bare, "main");
+  await write("ssh.txt", "SSH PR\n");
+  g("add", ".");
+  g("commit", "-qm", "PR");
+  g("push", "-q", bare, "HEAD:refs/pull/1/head");
+  g("reset", "--hard", root);
+  g("remote", "add", "origin", "git@github.com:some-fork/upstream.git");
+  g("remote", "add", "upstream", "git@github.com:fixture/upstream.git");
+  await fakeGh(repo, bare);
+  const bin = join(repo, ".git/test-bin"),
+    realGit = execFileSync("which", ["git"], {
+      env: { ...process.env, PATH: original.PATH },
+    })
+      .toString()
+      .trim();
+  const log = join(repo, ".git/fetch-sources");
+  await writeFile(
+    join(bin, "git"),
+    `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');let a=process.argv.slice(2);if(a.includes('fetch')){const i=a.indexOf('--');fs.appendFileSync(${JSON.stringify(log)},a[i+1]+'\\n');if(a[i+1]!=='upstream')process.exit(1);a[i+1]=${JSON.stringify(bare)}}const r=cp.spawnSync(${JSON.stringify(realGit)},a,{stdio:'inherit'});process.exit(r.status??1);`,
+  );
+  await chmod(join(bin, "git"), 0o755);
+  const list = await call("files", { mode: "pr", pr: "1" });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.fallback, false);
+  assert.deepEqual(
+    list.body.files.map((f: any) => f.path),
+    ["ssh.txt"],
+  );
+  assert.equal((await readFile(log, "utf8")).trim(), "upstream");
+  assert.equal(g("for-each-ref", "--format=%(refname)", "refs/diffview/"), "");
+  const { remoteRepository, prFetchSource } = await import("../src/lib/git");
+  for (const url of [
+    "git@github.com:Fixture/Upstream.git",
+    "ssh://git@github.com:2222/fixture/upstream.git",
+    "https://github.com/fixture/upstream.git",
+  ])
+    assert.equal(remoteRepository(url), "github.com/fixture/upstream");
+  assert.notEqual(
+    remoteRepository("git@other.example:fixture/upstream.git"),
+    "github.com/fixture/upstream",
+  );
+  assert.equal(
+    await prFetchSource(repo, "https://github.com/elsewhere/other.git"),
+    "https://github.com/elsewhere/other.git",
+  );
+});

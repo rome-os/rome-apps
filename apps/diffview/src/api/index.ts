@@ -360,6 +360,7 @@ function createInnerHandler(): RomeAppApiHandler {
           return Response.json({
             ms: Math.round(performance.now() - started),
             files: v.list,
+            fallback: v.comparison.fallback !== undefined,
             // The first page travels with the list, so the first paint needs no further request.
             page: await pageFor(repo, m, ctx, v, 0),
             compare: v.compare,
@@ -393,6 +394,11 @@ function createInnerHandler(): RomeAppApiHandler {
           const entry = v.list.find((f) => f.path === path);
           if (!entry) throw new GitError("file_not_found");
           if (entry.conflicted) throw new GitError("unmerged_conflict");
+          if (
+            v.comparison.fallback !== undefined &&
+            (anyway || context !== ctx)
+          )
+            throw new GitError("fallback_context_unavailable");
           // Untracked files the snapshot did not keep are read from disk now.
           if (file?.lazy)
             return Response.json(await loadUntrackedPatch(repo, path, anyway));
