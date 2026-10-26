@@ -1,3 +1,4 @@
+import { dictionary } from "../shared/dictionary";
 import {
   invalidateConversationInventory,
   isConversationStorageKey,
@@ -156,8 +157,13 @@ function recordFromPatch(
 ): Loaded {
   let item: CodeViewItem<undefined> | undefined;
   const version = result.patch ? contentVersion(result.patch) : undefined;
-  if (result.patch && !result.truncated && !result.binary)
-    item = patchItem(path, result.patch, version);
+  if (result.patch && !result.truncated && !result.binary) {
+    try {
+      item = patchItem(path, result.patch, version);
+    } catch {
+      return { error: "invalid_patch", context, fp };
+    }
+  }
   return {
     item,
     context,
@@ -233,7 +239,9 @@ function Browser() {
     ),
     [filter, setFilter] = useState(""),
     [selected, setSelected] = useState(""),
-    [records, setRecords] = useState<Record<string, Loaded>>({}),
+    [records, setRecords] = useState<Record<string, Loaded>>(() =>
+      dictionary(),
+    ),
     [viewed, setViewed] = useState<Set<string>>(new Set());
   useEffect(() => {
     const changed = (event: StorageEvent) => {
@@ -252,7 +260,7 @@ function Browser() {
   const [jumpRequest, setJumpRequest] = useState<
     { path: string; serial: number; offset?: number } | undefined
   >();
-  const contexts = useRef<Record<string, number>>({});
+  const contexts = useRef<Record<string, number>>(dictionary());
   const handle = useRef<CodeViewHandle<undefined, undefined>>(null),
     scope = JSON.stringify(state),
     epoch = useRef(0),
@@ -504,8 +512,8 @@ function Browser() {
     pending.current.clear();
     controllers.current.forEach((c) => c.abort());
     controllers.current.clear();
-    setRecords({});
-    contexts.current = {};
+    setRecords(dictionary());
+    contexts.current = dictionary();
     manualJump.current = undefined;
     setSelected("");
     return () => {
@@ -569,10 +577,11 @@ function Browser() {
         n.delete(path);
         return n;
       });
-      setRecords((r) => ({
-        ...r,
-        [path]: { ...r[path], busy: true, error: undefined },
-      }));
+      setRecords((r) =>
+        Object.assign(dictionary<Loaded>(), r, {
+          [path]: { ...r[path], busy: true, error: undefined },
+        }),
+      );
       const controller = new AbortController();
       controllers.current.add(controller);
       void (async () => {
@@ -591,13 +600,14 @@ function Browser() {
           );
           if (generation === epoch.current && requestFp === fpRef.current) {
             const record = recordFromPatch(path, result, context, requestFp);
-            setRecords((r) => ({
-              ...r,
-              [path]: {
-                ...record,
-                error: anyway && result.truncated ? "tooLarge" : undefined,
-              },
-            }));
+            setRecords((r) =>
+              Object.assign(dictionary<Loaded>(), r, {
+                [path]: {
+                  ...record,
+                  error: anyway && result.truncated ? "tooLarge" : record.error,
+                },
+              }),
+            );
           }
         } catch (e) {
           if (
@@ -614,10 +624,11 @@ function Browser() {
             return;
           }
           if (!controller.signal.aborted && generation === epoch.current)
-            setRecords((r) => ({
-              ...r,
-              [path]: { error: e instanceof Error ? e.message : "internal" },
-            }));
+            setRecords((r) =>
+              Object.assign(dictionary<Loaded>(), r, {
+                [path]: { error: e instanceof Error ? e.message : "internal" },
+              }),
+            );
         } finally {
           controllers.current.delete(controller);
           if (generation === epoch.current) pending.current.delete(path);
@@ -654,7 +665,7 @@ function Browser() {
    */
   const seed = (patches: PageData["patches"], forFp: string) =>
     setRecords((r) => {
-      const next = { ...r };
+      const next = dictionary(r);
       for (const [path, result] of Object.entries(patches)) {
         const old = r[path];
         const version = result.patch ? contentVersion(result.patch) : undefined;
@@ -677,7 +688,7 @@ function Browser() {
     if (!page || !data.data) return;
     const listed = new Map(data.data.files.map((f) => [f.path, f]));
     setRecords((prev) => {
-      const kept: Record<string, Loaded> = {};
+      const kept = dictionary<Loaded>();
       for (const [path, record] of Object.entries(prev)) {
         const file = listed.get(path);
         if (
@@ -691,7 +702,7 @@ function Browser() {
       }
       return kept;
     });
-    contexts.current = {};
+    contexts.current = dictionary();
     seed(page.patches, data.data.fingerprint);
     setPager({ stamp, busy: false });
   }, [stamp]);
@@ -1107,7 +1118,7 @@ function Browser() {
     );
   };
   const toggleFile = (file: FileEntry) => {
-    if (file.conflicted) return;
+    if (file.conflicted || file.typeChanged) return;
     if (!records[file.path]?.item) {
       // Waiting for its page: nothing to ask for. Otherwise it is collapsed/large: load on request.
       if (!file.binary && !(rank.has(file.path) && !records[file.path]))
@@ -1751,7 +1762,9 @@ function Browser() {
                         onToggle={() => toggleFile(f)}
                         onCopy={() => void copyPath(f.path)}
                         openUrl={
-                          !worktreeSide(state) || f.status.startsWith("D")
+                          !worktreeSide(state) ||
+                          f.typeChanged ||
+                          f.status.startsWith("D")
                             ? undefined
                             : projectFileUrl(state.repo, f.path)
                         }

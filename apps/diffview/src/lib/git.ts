@@ -1,3 +1,4 @@
+import { syntheticPatch } from "./patchFormat.js";
 import { parsePatchFiles } from "@pierre/diffs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { verifyOpenedFile } from "./fileSafety.js";
@@ -259,6 +260,7 @@ export interface FileEntry {
   collapsed: boolean;
   untracked?: boolean;
   conflicted?: boolean;
+  typeChanged?: boolean;
 }
 export function parseNumstat(text: string) {
   const fields = text.split("\0");
@@ -903,7 +905,27 @@ export async function files(
     entries = entries.filter((entry) => !unmerged.has(entry.path));
     entries.push(...[...unmerged].map(conflictEntry));
   }
-  return entries.sort((a, b) => a.path.localeCompare(b.path));
+  return normalizeEntries(entries).sort((a, b) => a.path.localeCompare(b.path));
+}
+/** Git can emit delete/add blocks for one type-changing pathname; IDs must remain unique. */
+export function normalizeEntries<T extends FileEntry>(entries: T[]): T[] {
+  const byPath = new Map<string, T>();
+  for (const entry of entries) {
+    const old = byPath.get(entry.path);
+    if (old || entry.status === "T" || entry.typeChanged) {
+      const merged = {
+        ...entry,
+        status: "T",
+        typeChanged: true,
+        collapsed: true,
+        added: entry.added + (old?.added ?? 0),
+        deleted: entry.deleted + (old?.deleted ?? 0),
+      };
+      if ("patch" in merged) Object.assign(merged, { patch: "" });
+      byPath.set(entry.path, merged);
+    } else byPath.set(entry.path, entry);
+  }
+  return [...byPath.values()];
 }
 export function conflictEntry(path: string): FileEntry {
   return {
@@ -965,6 +987,7 @@ export async function patch(
     ).find((f) => f.path === path);
   if (!entry) throw new GitError("file_not_found");
   if (entry.conflicted) throw new GitError("unmerged_conflict");
+  if (entry.typeChanged) throw new GitError("unsupported_type_change");
   if (entry.binary)
     return { patch: "", binary: true, truncated: false, collapsed: true };
   const cap = anyway ? 8 * 1024 * 1024 : 512 * 1024;
@@ -984,12 +1007,7 @@ export async function patch(
     const lines = data.text.split("\n");
     if (lines.at(-1) === "") lines.pop();
     totalLines = lines.length;
-    text =
-      `diff --git a/${path} b/${path}\nnew file mode 100644\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n` +
-      lines.map((l) => "+" + l + "\n").join("") +
-      (data.text && !data.text.endsWith("\n")
-        ? "\\ No newline at end of file\n"
-        : "");
+    text = syntheticPatch(path, data.text, lines.length);
   } else {
     const cmp = resolved ?? (await comparison(repo, m));
     if (cmp.fallback !== undefined)

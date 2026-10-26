@@ -1,3 +1,4 @@
+import { dictionary } from "../shared/dictionary.js";
 import { createHash } from "node:crypto";
 import type { RomeAppApiHandler, RomeAppContext } from "@rome-os/app-runtime";
 import {
@@ -155,7 +156,7 @@ async function pageFor(
         },
     );
   }
-  const patches: PageData["patches"] = {};
+  const patches: PageData["patches"] = dictionary();
   let bytes = 0,
     count = 0;
   for (const file of subset) {
@@ -394,6 +395,7 @@ function createInnerHandler(): RomeAppApiHandler {
           const entry = v.list.find((f) => f.path === path);
           if (!entry) throw new GitError("file_not_found");
           if (entry.conflicted) throw new GitError("unmerged_conflict");
+          if (entry.typeChanged) throw new GitError("unsupported_type_change");
           if (
             v.comparison.fallback !== undefined &&
             (anyway || context !== ctx)
@@ -420,7 +422,11 @@ function createInnerHandler(): RomeAppApiHandler {
               e instanceof GitError
                 ? e.code === "forbidden_path"
                   ? 403
-                  : ["stale_view", "unmerged_conflict"].includes(e.code)
+                  : [
+                        "stale_view",
+                        "unmerged_conflict",
+                        "unsupported_type_change",
+                      ].includes(e.code)
                     ? 409
                     : 400
                 : 500,

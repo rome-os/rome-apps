@@ -109,3 +109,7 @@ checks. See [second-review follow-up](2026-10-25-review-followup.md).
 ### PR submodules / warm scroll / file fidelity (2026-10-26)
 
 `review.test.ts` has a real parent/submodule-remote regression requiring `--recurse-submodules=no`, including immutable child refs/index/FETCH_HEAD checks. `conversationStorage.test.ts` counts origin-key and index operations over 100 warm scroll saves with 2,000 unrelated keys. `refresh-paging.browser.mjs` verifies local project-file actions appear only when the right side is the working tree. The storage-event invalidation listener is mounted/cleaned with the Browser component.
+
+### Type changes, special paths and oversized pages (2026-10-26)
+
+`path-safety.browser.mjs` serves the production API/UI against real fixtures containing file↔symlink changes, quoted filenames, `__proto__`/constructor-like keys, and an oversized tracked line plus ordinary files. It runs snapshot and paged variants and checks explicit context loading and surviving UI. `DIFFVIEW_TEST_API_ROOT` and `DIFFVIEW_TEST_WEB_ROOT` can select a frozen older bundle for a red check. Transfer prototype-key diagnostic objects as JSON text across Playwright's evaluate boundary. API variants also live in `review.test.ts`.

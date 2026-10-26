@@ -158,19 +158,21 @@ export function DiffHeader({
   contextAvailable?: boolean;
 }) {
   const { directory, basename } = pathParts(file.path);
-  const label = file.conflicted
-    ? t.unmerged_conflict
-    : record?.error
-      ? errorMessage(record.error, t)
-      : record?.binary || file.binary
-        ? t.binary
-        : record?.truncated
-          ? t.large
-          : record?.empty
-            ? t.noText
-            : !record?.item && file.collapsed
-              ? t.generated
-              : "";
+  const label = file.typeChanged
+    ? t.unsupported_type_change
+    : file.conflicted
+      ? t.unmerged_conflict
+      : record?.error
+        ? errorMessage(record.error, t)
+        : record?.binary || file.binary
+          ? t.binary
+          : record?.truncated
+            ? t.large
+            : record?.empty
+              ? t.noText
+              : !record?.item && file.collapsed
+                ? t.generated
+                : "";
   return (
     <div
       className={`dv-header flex h-11 items-center gap-2 border-t bg-[var(--app-canvas)] px-3 text-[13px] ${viewed ? "dv-viewed" : ""}`}
@@ -189,6 +191,7 @@ export function DiffHeader({
       <button
         className="dv-path-button flex h-full min-w-0 flex-1 items-center gap-2.5 text-left"
         onClick={onToggle}
+        disabled={file.typeChanged || file.conflicted}
         aria-label={`${collapsed ? t.expand : t.collapse}: ${file.path}`}
         title={file.oldPath ? file.oldPath + " → " + file.path : file.path}
       >
@@ -228,6 +231,7 @@ export function DiffHeader({
         />
       ) : (!record || record.error || record.truncated) &&
         !file.binary &&
+        !file.typeChanged &&
         file.added + file.deleted > 0 ? (
         <button
           className="rounded-md bg-muted px-2 py-1 text-xs hover:bg-accent"
@@ -289,19 +293,32 @@ export function DiffHeader({
               </a>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onSelect={onToggle}>
+          <DropdownMenuItem
+            disabled={file.typeChanged || file.conflicted}
+            onSelect={onToggle}
+          >
             <ChevronsUpDown size={14} />
             {collapsed ? t.expand : t.collapse}
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={file.binary || file.conflicted || !contextAvailable}
+            disabled={
+              file.binary ||
+              file.conflicted ||
+              file.typeChanged ||
+              !contextAvailable
+            }
             onSelect={() => onLoad(true)}
           >
             <FileDown size={14} />
             {t.loadFull}
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={file.binary || file.conflicted || !contextAvailable}
+            disabled={
+              file.binary ||
+              file.conflicted ||
+              file.typeChanged ||
+              !contextAvailable
+            }
             onSelect={onContext}
           >
             <UnfoldVertical size={14} />

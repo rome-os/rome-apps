@@ -6,6 +6,7 @@ import {
   writeFile,
   rm,
   chmod,
+  symlink,
   readFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -845,3 +846,105 @@ test("PR fetch never recurses into initialized submodules or changes their refs/
   });
   assert.equal(g("for-each-ref", "--format=%(refname)", "refs/diffview/"), "");
 }, 30000);
+
+for (const paged of [false, true])
+  test(`type transitions become unique unsupported entries (${paged ? "paged" : "snapshot"})`, async () => {
+    const { repo, g, write, call } = await fixture();
+    await write("regular.txt", "regular before\n");
+    await symlink("seed.txt", join(repo, "link.txt"));
+    g("add", ".");
+    g("commit", "-qm", "types");
+    await rm(join(repo, "regular.txt"));
+    await symlink("seed.txt", join(repo, "regular.txt"));
+    await rm(join(repo, "link.txt"));
+    await write("link.txt", "regular after\n");
+    await write("seed.txt", "normal after\n");
+    if (paged) process.env.DIFFVIEW_DIFF_CAP = "1";
+    for (const filter of ["unstaged", "all", "staged"]) {
+      if (filter === "staged") g("add", ".");
+      const q = { filter, ctx: paged ? "5" : "3" };
+      const list = await call("files", q);
+      assert.equal(list.status, 200);
+      assert.equal(
+        new Set(list.body.files.map((f: any) => f.path)).size,
+        list.body.files.length,
+      );
+      for (const path of ["regular.txt", "link.txt"]) {
+        const f = list.body.files.find((f: any) => f.path === path);
+        assert.equal(f?.typeChanged, true);
+        assert.equal(f?.collapsed, true);
+        assert(!Object.hasOwn(list.body.page.patches, path));
+        const denied = await call("patch", {
+          ...q,
+          fp: list.body.fingerprint,
+          path,
+        });
+        assert.equal(denied.status, 409);
+        assert.equal(denied.body.error, "unsupported_type_change");
+      }
+      assert.match(list.body.page.patches["seed.txt"].patch, /normal after/);
+    }
+  });
+
+for (const paged of [false, true])
+  test(`synthetic paths are quoted and reserved path dictionaries retain own values (${paged ? "paged" : "snapshot"})`, async () => {
+    const { write, call } = await fixture();
+    const names = [
+      "line\nbreak.ts",
+      "tab\tname.ts",
+      'quote"name.ts',
+      "back\\slash.ts",
+      "中文\nname.ts",
+      "__proto__",
+      "constructor",
+      "toString",
+      "z.txt",
+    ];
+    for (const path of names) await write(path, "export const special = 1;\n");
+    if (paged) process.env.DIFFVIEW_MAX_FILES = "1";
+    const list = await call("files");
+    assert.equal(list.status, 200);
+    const { parsePatchFiles } = await import("@pierre/diffs");
+    for (const path of names) {
+      assert(Object.hasOwn(list.body.page.patches, path), JSON.stringify(path));
+      const patch = list.body.page.patches[path].patch;
+      assert.equal(parsePatchFiles(patch, "test", true)[0].files[0].name, path);
+      const expanded = await call("patch", {
+        fp: list.body.fingerprint,
+        path,
+        anyway: "1",
+      });
+      assert.equal(expanded.status, 200);
+      assert.equal(
+        parsePatchFiles(expanded.body.patch, "test", true)[0].files[0].name,
+        path,
+      );
+    }
+    assert.equal(list.body.page.next, null);
+  });
+
+test("oversized tracked page degrades its path without hiding ordinary files", async () => {
+  const { g, write, call } = await fixture();
+  await write("huge.txt", "a".repeat(33 * 1024 * 1024) + "\n");
+  await write("z.txt", "before\n");
+  g("add", ".");
+  g("commit", "-qm", "huge base");
+  await write("huge.txt", "b".repeat(33 * 1024 * 1024) + "\n");
+  await write("z.txt", "ordinary after\n");
+  const list = await call("files");
+  assert.equal(list.status, 200);
+  assert.deepEqual(
+    list.body.files.map((f: any) => f.path),
+    ["huge.txt", "z.txt"],
+  );
+  assert.equal(list.body.page.patches["huge.txt"].truncated, true);
+  assert.equal(list.body.page.patches["huge.txt"].patch, "");
+  assert.match(list.body.page.patches["z.txt"].patch, /ordinary after/);
+  const expanded = await call("patch", {
+    fp: list.body.fingerprint,
+    path: "huge.txt",
+    anyway: "1",
+  });
+  assert.equal(expanded.status, 200);
+  assert.equal(expanded.body.truncated, true);
+}, 60000);

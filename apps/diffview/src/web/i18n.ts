@@ -61,6 +61,9 @@ const en = {
   index: "Staging area",
   toolbar: "Review toolbar",
   scope: "Comparison scope",
+  unsupported_type_change:
+    "File type changed; regular-file/symlink transitions cannot be previewed yet.",
+  invalid_patch: "This file diff could not be parsed.",
   fallback_context_unavailable:
     "Context expansion is unavailable for a GitHub-provided diff.",
   fallbackDiff:
@@ -248,6 +251,9 @@ const zh: typeof en = {
   index: "暂存区",
   toolbar: "变更工具栏",
   scope: "比较范围",
+  unsupported_type_change:
+    "文件类型发生变化，暂不支持预览普通文件与符号链接等类型切换。",
+  invalid_patch: "无法解析此文件的差异。",
   fallback_context_unavailable: "GitHub 提供的差异不支持展开上下文。",
   fallbackDiff: "仅显示 GitHub 提供的差异；无法展开上下文或加载完整文件。",
   comparison: "比较版本",

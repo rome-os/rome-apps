@@ -1,3 +1,5 @@
+import { dictionary } from "../shared/dictionary.js";
+import { syntheticPatch } from "./patchFormat.js";
 import { worktreeSide } from "../shared/comparison.js";
 export { worktreeSide } from "../shared/comparison.js";
 import { parsePatchFiles } from "@pierre/diffs";
@@ -5,6 +7,7 @@ import {
   GitError,
   collapseHint,
   conflictEntry,
+  normalizeEntries,
   comparison,
   git,
   readSafe,
@@ -35,6 +38,7 @@ const ZERO = /^0+$/;
 export interface SnapshotFile extends FileEntry {
   /** Unified patch text for this file at the snapshot's context size (empty for binary). */
   patch: string;
+  truncated?: boolean;
   /**
    * An untracked file whose patch is not held in memory (it is collapsed, or the snapshot's budget
    * for untracked content is spent). It is read from disk when someone actually asks for it.
@@ -99,7 +103,7 @@ export function parseDiffText(text: string): {
     if (file.newObjectId && !ZERO.test(file.newObjectId))
       newIds.set(path, file.newObjectId);
   }
-  return { entries, newIds };
+  return { entries: normalizeEntries(entries), newIds };
 }
 
 /**
@@ -147,16 +151,6 @@ async function blobLines(repo: string, ids: string[]) {
   return out;
 }
 
-/** The patch git would print for a new file, built from its text. */
-function syntheticPatch(path: string, text: string, lines: number) {
-  const parts = text.split("\n");
-  if (parts.at(-1) === "") parts.pop();
-  return lines
-    ? `diff --git a/${path} b/${path}\nnew file mode 100644\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines} @@\n` +
-        parts.map((l) => "+" + l + "\n").join("") +
-        (text && !text.endsWith("\n") ? "\\ No newline at end of file\n" : "")
-    : "";
-}
 /**
  * Memory the snapshot may spend on the text of untracked files. An untracked directory can hold
  * thousands of files; keeping every one's patch is what made a view grow with the size of the tree
@@ -251,14 +245,19 @@ async function assemble(
   m: Mode,
   text: string,
   untrackedPaths: string[],
+  cap?: number,
 ): Promise<SnapshotFile[]> {
   const { entries, newIds } = parseDiffText(text);
-  const files: SnapshotFile[] = entries.map((e) => ({ ...e }));
+  const files: SnapshotFile[] = entries.map((e) =>
+    cap && Buffer.byteLength(e.patch) > cap
+      ? { ...e, patch: "", truncated: true, collapsed: true }
+      : { ...e },
+  );
   const onDisk = worktreeSide(m);
   const wanted: string[] = [];
   await Promise.all(
     files.map(async (f) => {
-      if (f.binary) return;
+      if (f.binary || f.truncated || f.typeChanged) return;
       if (f.status === "D") {
         f.totalLines = 0;
         return;
@@ -288,7 +287,7 @@ async function assemble(
     files.push(file);
   }
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return files;
+  return normalizeEntries(files);
 }
 
 /**
@@ -350,28 +349,66 @@ export async function buildPage(
           return f && wanted.has(f.name);
         })
         .join("");
-    } else
-      text = await git(
-        repo,
-        [
-          "--literal-pathspecs",
-          ...DIFF_BIN,
-          "--unified=" + context,
-          ...cmp.args,
-          "--",
-          ...tracked.flatMap((f) =>
-            f.oldPath ? [f.oldPath, f.path] : [f.path],
-          ),
-        ],
-        PAGE_DIFF_CAP,
-        30000,
-      );
+    } else {
+      try {
+        text = await git(
+          repo,
+          [
+            "--literal-pathspecs",
+            ...DIFF_BIN,
+            "--unified=" + context,
+            ...cmp.args,
+            "--",
+            ...tracked.flatMap((f) =>
+              f.oldPath ? [f.oldPath, f.path] : [f.path],
+            ),
+          ],
+          tracked.length === 1 ? FILE_CAP : PAGE_DIFF_CAP,
+          30000,
+        );
+      } catch (error) {
+        if (!(error instanceof GitError) || error.code !== "output_limit")
+          throw error;
+        if (tracked.length === 1) {
+          const loose = await assemble(
+            repo,
+            m,
+            "",
+            subset.filter((f) => f.untracked).map((f) => f.path),
+          );
+          return [
+            { ...tracked[0], patch: "", truncated: true, collapsed: true },
+            ...loose,
+          ];
+        }
+        const middle = Math.ceil(subset.length / 2);
+        // Sequential bisection bounds both output memory and subprocess concurrency.
+        const left = await buildPage(
+          repo,
+          m,
+          context,
+          info,
+          subset.slice(0, middle),
+          cmp,
+        );
+        const right = await buildPage(
+          repo,
+          m,
+          context,
+          info,
+          subset.slice(middle),
+          cmp,
+        );
+        return [...left, ...right];
+      }
+    }
   }
   return assemble(
     repo,
     m,
     text,
     subset.filter((f) => f.untracked).map((f) => f.path),
+    FILE_CAP,
   );
 }
 
@@ -394,7 +431,7 @@ export function pageOf(
       ? eligible[i].added * 80
       : Buffer.byteLength(eligible[i].patch),
   );
-  const patches: Record<string, PatchData> = {};
+  const patches = dictionary<PatchData>();
   const lazy: SnapshotFile[] = [];
   for (const f of eligible.slice(cursor, end))
     if (f.lazy) lazy.push(f);
@@ -407,6 +444,7 @@ export function toEntry({
   patch: _patch,
   totalLines: _lines,
   lazy: _lazy,
+  truncated: _truncated,
   ...entry
 }: SnapshotFile): FileEntry {
   return entry;
@@ -420,7 +458,7 @@ export function patchData(file: SnapshotFile, anyway: boolean): PatchData {
   const size = Buffer.byteLength(file.patch);
   if (file.untracked && !file.patch && file.collapsed)
     return { patch: "", binary: false, truncated: true, collapsed: true };
-  if (size > cap)
+  if (file.truncated || size > cap)
     return { patch: "", binary: false, truncated: true, collapsed: true };
   return {
     patch: file.patch,
