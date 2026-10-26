@@ -147,10 +147,6 @@ test(
     g("init", "-b", "main");
     g("config", "user.name", "Diff Test");
     g("config", "user.email", "test@example.invalid");
-    await writeFile(
-      join(repo, ".gitattributes"),
-      "loose.txt diffview-category=test\n",
-    );
     await writeFile(join(repo, "initial.txt"), "initial\n");
     g("add", ".");
     g("commit", "-m", "Initial commit");
@@ -171,7 +167,7 @@ test(
     await writeFile(join(repo, "initial.txt"), "staged\n");
     g("add", "initial.txt");
     await writeFile(join(repo, "initial.txt"), "unstaged\n");
-    await writeFile(join(repo, "loose.txt"), "untracked\n");
+    await writeFile(join(repo, "loose.test.ts"), "untracked\n");
     const index = g("ls-files", "--stage"),
       status = g("status", "--porcelain=v2");
     const { createApiHandler } = await import("../dist/api/index.js");
@@ -424,12 +420,12 @@ test(
           .getByRole("menuitemradio", { name: "已暂存", exact: true })
           .click();
         await file("initial.txt").waitFor();
-        assert.equal(await file("loose.txt").count(), 0);
+        assert.equal(await file("loose.test.ts").count(), 0);
         await scope.click();
         await v
           .getByRole("menuitemradio", { name: "未暂存", exact: true })
           .click();
-        await file("loose.txt").waitFor();
+        await file("loose.test.ts").waitFor();
         await scope.click();
         const branchAction = v.getByRole("menuitem", {
           name: "分支",

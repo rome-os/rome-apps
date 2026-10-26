@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   attributeSource,
-  categoryFromAttributes,
+  categoryForPath,
   classifyFiles,
   summarizeFiles,
 } from "../src/lib/attributes";
@@ -34,33 +34,63 @@ async function classified(repo: string, mode: Mode) {
   return classifyFiles(repo, mode, resolved, await files(repo, mode, resolved));
 }
 
-test("custom categories override standard Linguist attributes", () => {
+test("standard attributes and conservative path rules have stable precedence", () => {
   assert.equal(
-    categoryFromAttributes({
-      "diffview-category": "test",
-      "linguist-generated": "set",
-    }),
-    "test",
-  );
-  assert.equal(
-    categoryFromAttributes({ "linguist-generated": "true" }),
-    "generated",
-  );
-  assert.equal(
-    categoryFromAttributes({ "linguist-vendored": "set" }),
+    categoryForPath("pnpm-lock.yaml", { "linguist-vendored": "set" }),
     "vendored",
   );
   assert.equal(
-    categoryFromAttributes({ "linguist-documentation": "set" }),
+    categoryForPath("pnpm-lock.yaml", { "linguist-documentation": "true" }),
     "documentation",
   );
   assert.equal(
-    categoryFromAttributes({
-      "diffview-category": "unknown",
-      "linguist-generated": "unset",
-    }),
-    "primary",
+    categoryForPath("pnpm-lock.yaml", { "linguist-generated": "set" }),
+    "lockfile",
   );
+  assert.equal(
+    categoryForPath("tests/output.snap", { "linguist-generated": "true" }),
+    "generated",
+  );
+  assert.equal(
+    categoryForPath("tests/output.snap", { "linguist-generated": "false" }),
+    "snapshot",
+  );
+  assert.equal(categoryForPath("fixtures/example.test.ts"), "fixture");
+  assert.equal(categoryForPath("src/example.spec.tsx"), "test");
+  assert.equal(categoryForPath("src/example.ts"), "primary");
+});
+
+test("ambiguous names stay primary and legacy custom attributes are ignored", async () => {
+  for (const path of [
+    "src/contest.ts",
+    "src/locksmith.ts",
+    "src/generated.ts",
+    "vendor/client.ts",
+    "docs/readme.md",
+    "README.md",
+    "dist/bundle.js",
+    "data.json",
+  ])
+    assert.equal(categoryForPath(path), "primary", path);
+
+  const { root, repo } = await repository();
+  try {
+    await writeFile(
+      join(repo, ".gitattributes"),
+      "ordinary.ts diffview-category=test\n",
+    );
+    await writeFile(join(repo, "ordinary.ts"), "before\n");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "base"]);
+    await writeFile(join(repo, "ordinary.ts"), "after\n");
+    const list = await classified(repo, { mode: "uncommitted", filter: "all" });
+    assert.equal(
+      list.find((file) => file.path === "ordinary.ts")?.category,
+      "primary",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("every comparison mode selects attributes from its actual right side", () => {
@@ -108,23 +138,24 @@ test("nested attributes and NUL-delimited special paths classify in one batch", 
         "*.gen linguist-generated",
         "*.vend linguist-vendored",
         "docs/** linguist-documentation",
-        "*.lock linguist-generated diffview-category=lockfile",
-        "override.gen diffview-category=test",
+        "pnpm-lock.yaml linguist-generated",
         "",
       ].join("\n"),
     );
     await writeFile(
       join(repo, "nested/.gitattributes"),
-      "*.txt diffview-category=fixture\n",
+      "*.txt linguist-documentation\n",
     );
     for (const path of [
       "ordinary.ts",
       "built.gen",
       "third.vend",
-      "deps.lock",
-      "override.gen",
+      "pnpm-lock.yaml",
       "docs/guide.md",
       "nested/sp ace\tline\nname.txt",
+      "tests/unit.test.ts",
+      "fixtures/input.json",
+      "__snapshots__/view.snap",
     ]) {
       await mkdir(join(repo, path).split("/").slice(0, -1).join("/"), {
         recursive: true,
@@ -137,10 +168,12 @@ test("nested attributes and NUL-delimited special paths classify in one batch", 
       "ordinary.ts",
       "built.gen",
       "third.vend",
-      "deps.lock",
-      "override.gen",
+      "pnpm-lock.yaml",
       "docs/guide.md",
       "nested/sp ace\tline\nname.txt",
+      "tests/unit.test.ts",
+      "fixtures/input.json",
+      "__snapshots__/view.snap",
     ])
       await writeFile(join(repo, path), "after\n");
 
@@ -151,12 +184,14 @@ test("nested attributes and NUL-delimited special paths classify in one batch", 
     assert.deepEqual(
       Object.fromEntries(list.map((file) => [file.path, file.category])),
       {
+        "__snapshots__/view.snap": "snapshot",
         "built.gen": "generated",
-        "deps.lock": "lockfile",
         "docs/guide.md": "documentation",
-        "nested/sp ace\tline\nname.txt": "fixture",
+        "fixtures/input.json": "fixture",
+        "nested/sp ace\tline\nname.txt": "documentation",
         "ordinary.ts": "primary",
-        "override.gen": "test",
+        "pnpm-lock.yaml": "lockfile",
+        "tests/unit.test.ts": "test",
         "third.vend": "vendored",
       },
     );
@@ -170,22 +205,16 @@ test("staged uses index attributes while all and unstaged use the working tree",
   try {
     await writeFile(
       join(repo, ".gitattributes"),
-      "*.ts diffview-category=test\n",
+      "*.ts linguist-documentation\n",
     );
     await writeFile(join(repo, "code.ts"), "before\n");
     await git(repo, ["add", "-A"]);
     await git(repo, ["commit", "-m", "base"]);
     await writeFile(join(repo, "code.ts"), "staged\n");
-    await writeFile(
-      join(repo, ".gitattributes"),
-      "*.ts diffview-category=lockfile\n",
-    );
+    await writeFile(join(repo, ".gitattributes"), "*.ts linguist-generated\n");
     await git(repo, ["add", "-A"]);
     await writeFile(join(repo, "code.ts"), "worktree\n");
-    await writeFile(
-      join(repo, ".gitattributes"),
-      "*.ts diffview-category=fixture\n",
-    );
+    await writeFile(join(repo, ".gitattributes"), "*.ts linguist-vendored\n");
 
     const staged = await classified(repo, {
       mode: "uncommitted",
@@ -198,15 +227,15 @@ test("staged uses index attributes while all and unstaged use the working tree",
     });
     assert.equal(
       staged.find((file) => file.path === "code.ts")?.category,
-      "lockfile",
+      "generated",
     );
     assert.equal(
       all.find((file) => file.path === "code.ts")?.category,
-      "fixture",
+      "vendored",
     );
     assert.equal(
       unstaged.find((file) => file.path === "code.ts")?.category,
-      "fixture",
+      "vendored",
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -219,7 +248,7 @@ test("historical target attributes ignore unrelated current working-tree rules",
     await mkdir(join(repo, "src"));
     await writeFile(
       join(repo, ".gitattributes"),
-      "src/*.ts diffview-category=test\n",
+      "src/*.ts linguist-documentation\n",
     );
     await writeFile(join(repo, "src/code.ts"), "one\n");
     await git(repo, ["add", "-A"]);
@@ -227,7 +256,7 @@ test("historical target attributes ignore unrelated current working-tree rules",
     const first = (await git(repo, ["rev-parse", "HEAD"])).trim();
     await writeFile(
       join(repo, ".gitattributes"),
-      "src/*.ts diffview-category=generated\n",
+      "src/*.ts linguist-generated\n",
     );
     await writeFile(join(repo, "src/code.ts"), "two\n");
     await git(repo, ["add", "-A"]);
@@ -236,7 +265,7 @@ test("historical target attributes ignore unrelated current working-tree rules",
     const realIndex = await git(repo, ["ls-files", "--stage"]);
     await writeFile(
       join(repo, ".gitattributes"),
-      "src/*.ts diffview-category=vendored\n",
+      "src/*.ts linguist-vendored\n",
     );
 
     const mode: Mode = {
@@ -275,26 +304,23 @@ test("historical target attributes ignore unrelated current working-tree rules",
   }
 });
 
-test("deleted paths use target rules and renames use their destination path", async () => {
+test("deleted paths and rename destinations use conservative path rules", async () => {
   const { root, repo } = await repository();
   try {
-    await writeFile(
-      join(repo, ".gitattributes"),
-      "deleted.test diffview-category=test\nrenamed.fixture diffview-category=fixture\n",
-    );
-    await writeFile(join(repo, "deleted.test"), "deleted content\n");
+    await writeFile(join(repo, "deleted.test.ts"), "deleted content\n");
     await writeFile(join(repo, "old.name"), "rename source\n");
     await git(repo, ["add", "-A"]);
     await git(repo, ["commit", "-m", "base"]);
-    await rm(join(repo, "deleted.test"));
-    await rename(join(repo, "old.name"), join(repo, "renamed.fixture"));
+    await rm(join(repo, "deleted.test.ts"));
+    await mkdir(join(repo, "fixtures"));
+    await rename(join(repo, "old.name"), join(repo, "fixtures/renamed.txt"));
     await git(repo, ["add", "-A"]);
     const list = await classified(repo, { mode: "uncommitted", filter: "all" });
     assert.equal(
-      list.find((file) => file.path === "deleted.test")?.category,
+      list.find((file) => file.path === "deleted.test.ts")?.category,
       "test",
     );
-    const renamed = list.find((file) => file.path === "renamed.fixture");
+    const renamed = list.find((file) => file.path === "fixtures/renamed.txt");
     assert.equal(renamed?.oldPath, "old.name");
     assert.equal(renamed?.category, "fixture");
   } finally {

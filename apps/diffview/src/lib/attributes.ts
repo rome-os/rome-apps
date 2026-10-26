@@ -11,7 +11,6 @@ import {
 } from "./git.js";
 
 const ATTRIBUTE_NAMES = [
-  "diffview-category",
   "linguist-generated",
   "linguist-vendored",
   "linguist-documentation",
@@ -25,9 +24,18 @@ const SUPPORTING_CATEGORIES: SupportingCategory[] = [
   "vendored",
   "documentation",
 ];
-const EXPLICIT = new Set<SupportingCategory>(
-  SUPPORTING_CATEGORIES.filter((category) => category !== "documentation"),
-);
+const LOCKFILES = new Set([
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  "Cargo.lock",
+  "Gemfile.lock",
+  "poetry.lock",
+  "uv.lock",
+]);
 const ATTRIBUTE_BATCH = 4096;
 const ATTRIBUTE_INPUT_BYTES = 512 * 1024;
 
@@ -73,13 +81,33 @@ function enabled(value?: string) {
   );
 }
 
-export function categoryFromAttributes(values: AttributeValues): FileCategory {
-  const explicit = values["diffview-category"] as
-    SupportingCategory | undefined;
-  if (explicit && EXPLICIT.has(explicit)) return explicit;
-  if (enabled(values["linguist-generated"])) return "generated";
+export function categoryForPath(
+  path: string,
+  values: AttributeValues = {},
+): FileCategory {
+  const parts = path.split("/");
+  const basename = parts.at(-1) ?? path;
+  const directories = parts.slice(0, -1);
+
+  // Explicit portable repository metadata wins over filename conventions.
   if (enabled(values["linguist-vendored"])) return "vendored";
   if (enabled(values["linguist-documentation"])) return "documentation";
+  // Keep well-known lockfiles visible as lockfiles even when Linguist also marks them generated.
+  if (LOCKFILES.has(basename)) return "lockfile";
+  if (enabled(values["linguist-generated"])) return "generated";
+  if (basename.endsWith(".snap") || directories.includes("__snapshots__"))
+    return "snapshot";
+  if (
+    directories.some((part) =>
+      ["fixture", "fixtures", "__fixtures__"].includes(part),
+    )
+  )
+    return "fixture";
+  if (
+    /\.(?:test|spec)\./.test(basename) ||
+    directories.some((part) => ["test", "tests", "__tests__"].includes(part))
+  )
+    return "test";
   return "primary";
 }
 
@@ -171,7 +199,7 @@ async function attributesForPaths(
     }
   } catch {
     // Attribute metadata is advisory. An unavailable historical tree must never make the diff fail
-    // or accidentally fall back to unrelated working-tree attributes; those files stay primary.
+    // or accidentally fall back to unrelated working-tree attributes. Path conventions still apply.
     result.clear();
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -193,7 +221,7 @@ export async function classifyFiles<T extends FileEntry>(
   );
   return files.map((file) => ({
     ...file,
-    category: categoryFromAttributes(values.get(file.path) ?? {}),
+    category: categoryForPath(file.path, values.get(file.path)),
   }));
 }
 
