@@ -47,6 +47,7 @@ import {
   WrapText,
   Keyboard,
   LoaderCircle,
+  GitPullRequest,
 } from "lucide-react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { CodeViewItem } from "@pierre/diffs";
@@ -1470,7 +1471,8 @@ function Browser() {
                   setComparisonOpen(true);
                 }}
               >
-                {t.pr}
+                <GitPullRequest />
+                {t.comparePr}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div

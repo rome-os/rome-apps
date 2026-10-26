@@ -587,6 +587,17 @@ test(
           await v.getByRole("button", { name: "刷新", exact: true }).click();
           await forced;
         }
+        await v.getByRole("button", { name: "审阅选项", exact: true }).click();
+        await v
+          .getByRole("menuitem", { name: "对比 Pull Request…", exact: true })
+          .waitFor();
+        assert.equal(
+          await v
+            .getByRole("menuitem", { name: "Pull Request", exact: true })
+            .count(),
+          0,
+        );
+        await v.getByRole("menu").press("Escape");
         await bounds();
         if (process.env.DIFFVIEW_MENU_SCREENSHOTS)
           await page.screenshot({
