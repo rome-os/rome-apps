@@ -543,7 +543,7 @@ test("fork PR uses gh's repository, verifies head identity, cleans refs, and dis
     assert.ok(args.includes("maintenance.auto=false"));
     assert.ok(args.includes("--no-auto-maintenance"));
   }
-});
+}, 15000);
 
 test("5001 changed paths still detect edits to dirty and untracked files", async () => {
   const { repo, write, call } = await fixture();
@@ -765,3 +765,83 @@ test("PR fetching reuses a matching SSH remote, not a same-repo-name fork or syn
     "https://github.com/elsewhere/other.git",
   );
 });
+
+test("PR fetch never recurses into initialized submodules or changes their refs/FETCH_HEAD", async () => {
+  const { repo, g, call } = await fixture();
+  const subSource = join(home, `sub-source-${counter}`),
+    subRemote = join(home, `sub-remote-${counter}.git`),
+    parentRemote = join(home, `parent-${counter}.git`);
+  await mkdir(subSource);
+  const run = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], {
+      cwd,
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
+  const sg = (...args: string[]) => run(subSource, ...args);
+  sg("init", "-qb", "main");
+  sg("config", "user.name", "Test");
+  sg("config", "user.email", "test@example.invalid");
+  await writeFile(join(subSource, "inner.txt"), "old\n");
+  sg("add", ".");
+  sg("commit", "-qm", "old");
+  const oldSub = sg("rev-parse", "HEAD");
+  execFileSync("git", ["clone", "--bare", "-q", subSource, subRemote]);
+  g(
+    "-c",
+    "protocol.file.allow=always",
+    "submodule",
+    "add",
+    "-q",
+    subRemote,
+    "s",
+  );
+  g("commit", "-qm", "submodule");
+  execFileSync("git", ["clone", "--bare", "-q", repo, parentRemote]);
+  const sub = join(repo, "s"),
+    subGit = g("-C", "s", "rev-parse", "--absolute-git-dir");
+  g("config", "fetch.recurseSubmodules", "on-demand");
+  run(sub, "config", "fetch.recurseSubmodules", "on-demand");
+  run(sub, "config", "fetch.prune", "true");
+  await rm(join(subGit, "FETCH_HEAD"), { force: true });
+  const before = {
+    refs: run(sub, "show-ref"),
+    head: run(sub, "rev-parse", "HEAD"),
+    index: await readFile(join(subGit, "index")),
+  };
+  // The missing submodule commit and PR commit are created outside this checkout.
+  await writeFile(join(subSource, "inner.txt"), "new\n");
+  sg("add", ".");
+  sg("commit", "-qm", "new");
+  sg("push", "-q", subRemote, "main");
+  const newSub = sg("rev-parse", "HEAD");
+  assert.throws(() => run(sub, "cat-file", "-e", newSub));
+  const author = join(home, `parent-author-${counter}`);
+  execFileSync("git", ["clone", "-q", parentRemote, author]);
+  run(author, "config", "user.name", "Test");
+  run(author, "config", "user.email", "test@example.invalid");
+  run(author, "update-index", "--cacheinfo", `160000,${newSub},s`);
+  run(author, "commit", "-qm", "move submodule");
+  run(author, "push", "-q", parentRemote, "HEAD:refs/pull/1/head");
+  await fakeGh(repo, parentRemote);
+  const list = await call("files", { mode: "pr", pr: "1" });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.fallback, false);
+  assert.deepEqual(
+    list.body.files.map((f: any) => f.path),
+    ["s"],
+  );
+  assert.match(
+    list.body.page.patches.s.patch,
+    new RegExp("Subproject commit " + newSub),
+  );
+  assert.equal(run(sub, "rev-parse", "origin/main"), oldSub);
+  assert.equal(run(sub, "show-ref"), before.refs);
+  assert.equal(run(sub, "rev-parse", "HEAD"), before.head);
+  assert.deepEqual(await readFile(join(subGit, "index")), before.index);
+  await assert.rejects(readFile(join(subGit, "FETCH_HEAD")), {
+    code: "ENOENT",
+  });
+  assert.equal(g("for-each-ref", "--format=%(refname)", "refs/diffview/"), "");
+}, 30000);

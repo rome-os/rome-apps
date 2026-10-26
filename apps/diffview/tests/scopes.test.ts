@@ -14,7 +14,7 @@ import {
   GitError,
 } from "../src/lib/git";
 import { normalizeMode } from "../src/shared/mode";
-import { comparisonIdentity } from "../src/shared/comparison";
+import { comparisonIdentity, worktreeSide } from "../src/shared/comparison";
 import { pickChatState } from "../src/shared/prefs";
 
 async function fixture(
@@ -191,3 +191,13 @@ test("history has bounded pages, exact hashes/titles/dates, and works on empty r
     assert.equal(last.commits.at(-1)?.sha, first);
     await assert.rejects(history(repo, -1), code("invalid_cursor"));
   }));
+
+test("opening a local copy is available only for a working-tree right side", () => {
+  for (const mode of ["branch", "commit", "pr", "unpushed"] as const)
+    assert.equal(worktreeSide({ mode }), false);
+  assert.equal(worktreeSide({ mode: "uncommitted", filter: "staged" }), false);
+  for (const filter of ["all", "unstaged"])
+    assert.equal(worktreeSide({ mode: "uncommitted", filter }), true);
+  assert.equal(worktreeSide({ mode: "ref", target: "head" }), false);
+  assert.equal(worktreeSide({ mode: "ref", target: "worktree" }), true);
+});

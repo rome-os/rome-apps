@@ -1,3 +1,5 @@
+import { worktreeSide } from "../shared/comparison.js";
+export { worktreeSide } from "../shared/comparison.js";
 import { parsePatchFiles } from "@pierre/diffs";
 import {
   GitError,
@@ -229,14 +231,6 @@ export async function loadUntrackedPatch(
   } catch {
     return { patch: "", binary: false, truncated: true, collapsed: true };
   }
-}
-
-/** True when the "after" side of the comparison is the working tree rather than a commit or the index. */
-export function worktreeSide(m: Mode) {
-  return (
-    (m.mode === "uncommitted" && m.filter !== "staged") ||
-    (m.mode === "ref" && m.target === "worktree")
-  );
 }
 
 const DIFF_BIN = [

@@ -18,6 +18,8 @@ const patch = (path, marker = "after") => ({
 });
 async function fixture(scenario) {
   const root = resolve(process.env.DIFFVIEW_TEST_WEB_ROOT || "dist/web");
+  const repoPath =
+    scenario === "version-link" ? "/projects/default/fixture" : "/fixture";
   let trackingState = scenario === "tracking" ? "ready" : "no_upstream";
   let trackingHead = "abc";
   const forFile = (path, marker) => {
@@ -49,14 +51,14 @@ async function fixture(scenario) {
           json({
             repos: [
               {
-                path: "/fixture",
+                path: repoPath,
                 name: "fixture",
                 base: "main",
                 branch: "main",
               },
             ],
-            defaultRepo: "/fixture",
-            homeRepo: "/fixture",
+            defaultRepo: repoPath,
+            homeRepo: repoPath,
           });
         else if (["refs", "revisions"].includes(route))
           json({
@@ -196,7 +198,7 @@ async function fixture(scenario) {
         JSON.stringify(names.slice(1, 201)),
       );
     }, names);
-  const href = `http://127.0.0.1:${server.address().port}/?lang=zh#repo=%2Ffixture&mode=${scenario === "tracking" ? "unpushed" : scenario === "fallback" ? "pr" : "uncommitted"}&pr=${scenario === "fallback" ? "7" : ""}&filter=all&base=main&unified=3`;
+  const href = `http://127.0.0.1:${server.address().port}/?lang=zh#repo=${encodeURIComponent(repoPath)}&mode=${scenario === "tracking" ? "unpushed" : scenario === "fallback" ? "pr" : "uncommitted"}&pr=${scenario === "fallback" ? "7" : ""}&filter=all&base=main&unified=3`;
   return {
     page,
     href,
@@ -379,6 +381,60 @@ test(
           .getAttribute("aria-disabled"),
         "true",
       );
+      assert.deepEqual(f.errors, []);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  "production file menus never link reviewed commit/index versions to the local checkout",
+  { timeout: 45000 },
+  async () => {
+    const f = await fixture("version-link");
+    try {
+      for (const q of [
+        { mode: "branch", open: false },
+        { mode: "commit", commit: "abc", open: false },
+        { mode: "pr", pr: "7", open: false },
+        { mode: "ref", target: "head", open: false },
+        { mode: "uncommitted", filter: "staged", open: false },
+        { mode: "ref", target: "worktree", open: true },
+        { mode: "uncommitted", filter: "all", open: true },
+      ]) {
+        const url = new URL(f.href),
+          hash = new URLSearchParams(url.hash.slice(1));
+        for (const [k, v] of Object.entries(q))
+          if (k !== "open") hash.set(k, v);
+        url.hash = hash.toString();
+        // A fresh document avoids treating a hash-only navigation as an app state event.
+        await f.page.goto("about:blank");
+        await f.page.goto(url.href);
+        await f.page
+          .getByRole("button", { name: `文件操作: ${names[0]}`, exact: true })
+          .click();
+        const link = f.page.getByRole("menuitem", {
+          name: "在新标签页打开",
+          exact: true,
+        });
+        const local = f.page.getByRole("menuitem", {
+          name: "打开文件",
+          exact: true,
+        });
+        if (q.open) {
+          assert.equal(await link.count(), 1);
+          assert.match(
+            await link.getAttribute("href"),
+            /\/projects\/.*file-000\.ts$/,
+          );
+          assert.equal(await local.count(), 1);
+        } else {
+          assert.equal(await link.count(), 0, JSON.stringify(q));
+          assert.equal(await local.count(), 0, JSON.stringify(q));
+        }
+        await f.page.keyboard.press("Escape");
+      }
       assert.deepEqual(f.errors, []);
     } finally {
       await f.close();

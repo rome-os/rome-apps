@@ -1,3 +1,7 @@
+import {
+  invalidateConversationInventory,
+  isConversationStorageKey,
+} from "../shared/conversationStorage";
 import "./styles.css";
 import { loadViewed, saveViewed } from "../shared/viewed";
 import { scrollViewKey } from "../shared/scroll";
@@ -46,7 +50,7 @@ import {
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { CodeViewItem } from "@pierre/diffs";
 import type { FileEntry } from "../lib/git";
-import { comparisonIdentity } from "../shared/comparison";
+import { comparisonIdentity, worktreeSide } from "../shared/comparison";
 import { projectFileUrl } from "../shared/projectLink";
 import { pageDemand, isPageable } from "../shared/paging";
 import { ComparisonMenu } from "./ComparisonMenu";
@@ -231,6 +235,17 @@ function Browser() {
     [selected, setSelected] = useState(""),
     [records, setRecords] = useState<Record<string, Loaded>>({}),
     [viewed, setViewed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (
+        event.storageArea === localStorage &&
+        isConversationStorageKey(event.key)
+      )
+        invalidateConversationInventory(localStorage);
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
   const manualJump = useRef<
     { path: string; serial: number; offset?: number } | undefined
   >(undefined);
@@ -1073,6 +1088,7 @@ function Browser() {
   // Standalone navigation uses the public host event. Embedded views expose an ordinary
   // new-tab link instead: never inspect the parent's React tree or mutate its private store.
   const openFile = (file: string) => {
+    if (!worktreeSide(state)) return;
     const url = projectFileUrl(state.repo, file);
     if (url)
       window.dispatchEvent(
@@ -1735,7 +1751,7 @@ function Browser() {
                         onToggle={() => toggleFile(f)}
                         onCopy={() => void copyPath(f.path)}
                         openUrl={
-                          f.status.startsWith("D")
+                          !worktreeSide(state) || f.status.startsWith("D")
                             ? undefined
                             : projectFileUrl(state.repo, f.path)
                         }

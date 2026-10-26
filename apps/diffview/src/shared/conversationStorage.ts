@@ -19,21 +19,49 @@ function scopeOf(key: string) {
   const prefix = PREFIXES.find((prefix) => key.startsWith(prefix));
   return prefix ? key.slice(prefix.length) : undefined;
 }
+export function isConversationStorageKey(key: string | null) {
+  return key === null || key === INDEX || scopeOf(key) !== undefined;
+}
+interface Inventory {
+  scope: string;
+  values: Map<string, string>;
+  order: string[];
+  index: string | null;
+  length: number;
+}
+const inventories = new WeakMap<StorageKV, Inventory>();
+/** A storage event from another document invalidates the bounded in-memory inventory. */
+export function invalidateConversationInventory(storage: StorageKV) {
+  inventories.delete(storage);
+}
 function inventory(storage: StorageKV, touched: string, replacement?: string) {
-  const values = new Map<string, string>();
-  // Discover legacy keys too, including scopes not represented by an old/corrupt index.
-  for (let i = 0; i < storage.length; i++) {
-    const key = storage.key(i);
-    if (key && scopeOf(key) !== undefined)
-      values.set(key, storage.getItem(key) || "");
+  const touchedScope = scopeOf(touched)!;
+  const index = storage.getItem(INDEX);
+  const cached = inventories.get(storage);
+  const reuse =
+    cached &&
+    cached.scope === touchedScope &&
+    cached.index === index &&
+    cached.length === storage.length;
+  const values = reuse ? cached.values : new Map<string, string>();
+  let previous: string[] = reuse ? cached.order : [];
+  if (!reuse) {
+    // Scope/revision/key-count changes discover legacy and cross-document keys. The hot scroll
+    // path reuses this bounded inventory rather than enumerating the whole shared origin.
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key && scopeOf(key) !== undefined)
+        values.set(key, storage.getItem(key) || "");
+    }
+    try {
+      const raw: unknown = JSON.parse(index || "[]");
+      if (Array.isArray(raw))
+        previous = raw.filter((s): s is string => typeof s === "string");
+    } catch {}
   }
-  if (replacement !== undefined) values.set(touched, replacement);
-  let previous: string[] = [];
-  try {
-    const raw: unknown = JSON.parse(storage.getItem(INDEX) || "[]");
-    if (Array.isArray(raw))
-      previous = raw.filter((s): s is string => typeof s === "string");
-  } catch {}
+  const current = replacement ?? storage.getItem(touched);
+  if (current !== null) values.set(touched, current);
+  else values.delete(touched);
   for (const [key, value] of values) {
     if ((key.length + value.length) * 2 > CONVERSATION_ENTRY_BYTES) {
       storage.removeItem(key);
@@ -41,7 +69,6 @@ function inventory(storage: StorageKV, touched: string, replacement?: string) {
     }
   }
   const scopes = new Set([...values.keys()].map((key) => scopeOf(key)!));
-  const touchedScope = scopeOf(touched)!;
   const order = [
     ...new Set(
       [...scopes].filter((s) => !previous.includes(s)).concat(previous),
@@ -63,17 +90,32 @@ function inventory(storage: StorageKV, touched: string, replacement?: string) {
     if (scope === undefined) break;
     remove(scope);
   }
-  return { order, remove };
+  const state: Inventory = {
+    scope: touchedScope,
+    values,
+    order,
+    index,
+    length: storage.length,
+  };
+  inventories.set(storage, state);
+  return { state, remove };
+}
+function finish(storage: StorageKV, state: Inventory) {
+  const text = JSON.stringify(state.order);
+  try {
+    if (state.index !== text) storage.setItem(INDEX, text);
+    state.index = text;
+  } catch {
+    /* a failed index write cannot prevent reading existing state */
+  }
+  state.length = storage.length;
+  inventories.set(storage, state);
 }
 export function readConversation(storage: StorageKV | undefined, key: string) {
   if (!storage || scopeOf(key) === undefined) return null;
   try {
-    const { order } = inventory(storage, key);
-    try {
-      storage.setItem(INDEX, JSON.stringify(order));
-    } catch {
-      /* reads survive index-write failure */
-    }
+    const { state } = inventory(storage, key);
+    finish(storage, state);
     return storage.getItem(key);
   } catch {
     return null;
@@ -91,20 +133,27 @@ export function writeConversation(
   )
     return;
   try {
-    const { order, remove } = inventory(storage, key, text);
-    if (!order.includes(scopeOf(key)!)) return;
+    let current = inventory(storage, key, text);
+    let rescanned = false;
+    if (!current.state.order.includes(scopeOf(key)!)) return;
     for (;;) {
       try {
         storage.setItem(key, text);
         break;
       } catch {
-        const oldest = order.shift();
+        invalidateConversationInventory(storage);
+        if (!rescanned) {
+          current = inventory(storage, key, text);
+          rescanned = true;
+        }
+        const oldest = current.state.order.shift();
         if (oldest === undefined || oldest === scopeOf(key)) return;
-        remove(oldest);
+        current.remove(oldest);
       }
     }
-    storage.setItem(INDEX, JSON.stringify(order));
+    finish(storage, current.state);
   } catch {
+    invalidateConversationInventory(storage);
     /* browser storage blocked/full; in-memory UI remains usable */
   }
 }

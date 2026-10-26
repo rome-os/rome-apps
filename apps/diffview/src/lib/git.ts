@@ -498,6 +498,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
             [
               "fetch",
               "--no-auto-maintenance",
+              "--recurse-submodules=no",
               "--atomic",
               "--no-tags",
               "--no-write-fetch-head",

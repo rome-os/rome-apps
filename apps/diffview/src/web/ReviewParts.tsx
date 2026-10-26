@@ -275,18 +275,20 @@ export function DiffHeader({
             <Copy size={14} />
             {t.copyPath}
           </DropdownMenuItem>
-          {onOpen && (
+          {onOpen && openUrl && (
             <DropdownMenuItem disabled={!openUrl} onSelect={onOpen}>
               <FileText size={14} />
               {t.openFile}
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem asChild disabled={!openUrl}>
-            <a href={openUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink size={14} />
-              {t.openNewTab}
-            </a>
-          </DropdownMenuItem>
+          {openUrl && (
+            <DropdownMenuItem asChild>
+              <a href={openUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink size={14} />
+                {t.openNewTab}
+              </a>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={onToggle}>
             <ChevronsUpDown size={14} />
             {collapsed ? t.expand : t.collapse}

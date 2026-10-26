@@ -105,3 +105,7 @@ checks. See [second-review follow-up](2026-10-25-review-followup.md).
 ### Conversation/fallback/tracking regression boundaries (2026-10-26)
 
 `conversationStorage.test.ts` checks a shared 32-scope / 512-KiB budget across chat/home/scroll, group LRU migration, per-entry/scroll limits and quota recovery that never reads or deletes unrelated values. `review.test.ts` covers fallback capabilities/space-containing names, unborn branches and exact-repository SSH transport selection. `refresh-paging.browser.mjs` now also exercises tracking becoming unavailable and recovering on another HEAD, plus disabled fallback context/full-file controls (including renderer buttons).
+
+### PR submodules / warm scroll / file fidelity (2026-10-26)
+
+`review.test.ts` has a real parent/submodule-remote regression requiring `--recurse-submodules=no`, including immutable child refs/index/FETCH_HEAD checks. `conversationStorage.test.ts` counts origin-key and index operations over 100 warm scroll saves with 2,000 unrelated keys. `refresh-paging.browser.mjs` verifies local project-file actions appear only when the right side is the working tree. The storage-event invalidation listener is mounted/cleaned with the Browser component.

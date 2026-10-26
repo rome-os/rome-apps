@@ -1,6 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
+  invalidateConversationInventory,
+  isConversationStorageKey,
   CONVERSATION_LIMIT,
   CONVERSATION_BYTES,
   CONVERSATION_ENTRY_BYTES,
@@ -142,4 +144,55 @@ test("blocked index writes do not prevent reads and unsupported prefixes are ref
     writeConversation(s, "diffview:chat:v1:chat:b", "x"),
   );
   assert.equal(readConversation(undefined, "diffview:home:v1:chat:a"), null);
+});
+
+test("a warm scroll scope does not enumerate origin keys or rewrite its unchanged index", () => {
+  const s = memory();
+  for (let i = 0; i < 2000; i++) s.data.set(`other-app:${i}`, "untouched");
+  let scans = 0,
+    indexWrites = 0,
+    scrollWrites = 0;
+  const key = s.key,
+    set = s.setItem;
+  s.key = (i) => {
+    scans++;
+    return key(i);
+  };
+  s.setItem = (k, v) => {
+    if (k === "diffview:conversations-lru:v1") indexWrites++;
+    if (k.startsWith("diffview:scroll:v1:")) scrollWrites++;
+    set(k, v);
+  };
+  saveScroll("chat:hot", "view", { top: 0, offset: 0, file: "f.ts" }, s);
+  assert(scans >= 2000);
+  scans = indexWrites = scrollWrites = 0;
+  for (let i = 1; i <= 100; i++)
+    saveScroll("chat:hot", "view", { top: i, offset: i, file: "f.ts" }, s);
+  assert.equal(scans, 0);
+  assert.equal(indexWrites, 0);
+  assert.equal(scrollWrites, 100);
+  assert.equal(loadScroll("chat:hot", "view", s)?.top, 100);
+  assert.equal(scans, 0);
+  // A scope switch scans once, and cross-document invalidation refreshes the inventory.
+  loadHome("chat:other", s);
+  assert(scans > 0);
+  scans = 0;
+  invalidateConversationInventory(s);
+  loadScroll("chat:hot", "view", s);
+  assert(scans > 0);
+  assert.equal(isConversationStorageKey("other-app:data"), false);
+  assert.equal(isConversationStorageKey("diffview:viewed:abc"), false);
+  assert.equal(isConversationStorageKey("diffview:scroll:v1:chat:hot"), true);
+  assert.equal(isConversationStorageKey(null), true);
+});
+
+test("external key-count/index changes re-scan and retain the conversation budget", () => {
+  const s = memory();
+  saveChatState("chat:hot", { repo: "/hot" }, s);
+  for (let i = 0; i < 150; i++)
+    s.data.set(`diffview:home:v1:chat:external-${i}`, '"/external"');
+  assert.equal(loadChatState("chat:hot", s)?.repo, "/hot");
+  const scopes = JSON.parse(s.data.get("diffview:conversations-lru:v1")!);
+  assert.equal(scopes.length, CONVERSATION_LIMIT);
+  assert(ownedBytes(s) <= CONVERSATION_BYTES);
 });

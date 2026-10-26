@@ -21,3 +21,11 @@ export function comparisonIdentity(m: Mode) {
       };
   }
 }
+
+/** Only these comparisons' right sides are the actual local working copy. */
+export function worktreeSide(m: Mode) {
+  return (
+    (m.mode === "uncommitted" && m.filter !== "staged") ||
+    (m.mode === "ref" && m.target === "worktree")
+  );
+}
