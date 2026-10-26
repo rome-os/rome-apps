@@ -320,8 +320,12 @@ export default function App({
             </div>
           </div>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>{counts.checks} checks</span>
-            <span>{counts.workflows} AI runs</span>
+            <span>
+              {counts.checks} {counts.checks === 1 ? "check" : "checks"}
+            </span>
+            <span>
+              {counts.workflows} AI {counts.workflows === 1 ? "run" : "runs"}
+            </span>
             {counts.running > 0 && <Status status="running" />}
           </div>
         </header>
