@@ -1137,6 +1137,87 @@ test(
         0,
       );
       await failedPrs.close();
+      // Tracking failure must not keep the independent PR picker pending forever.
+      const failedTracking = await browser.newPage({
+        viewport: { width: 447, height: 660 },
+      });
+      let trackingRequests = 0,
+        fallbackPrRequests = 0;
+      await failedTracking.route("**/api/apps/diffview/tracking?*", (route) => {
+        trackingRequests++;
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "internal" }),
+        });
+      });
+      await failedTracking.route("**/api/apps/diffview/refs?*", (route) => {
+        fallbackPrRequests++;
+        return route.fulfill({
+          status: fallbackPrRequests <= 2 ? 500 : 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            fallbackPrRequests <= 2
+              ? { error: "internal" }
+              : {
+                  currentBranch: branch,
+                  branchRepositoryId: "LOCAL",
+                  prs: [
+                    {
+                      number: 18,
+                      title: "Available despite tracking failure",
+                      headRefName: branch,
+                      headRepository: { id: "LOCAL" },
+                    },
+                  ],
+                  prState: "ready",
+                },
+          ),
+        });
+      });
+      await failedTracking.goto(
+        origin +
+          "/?lang=zh#" +
+          new URLSearchParams({ repo, mode: "uncommitted", unified: "3" }),
+      );
+      await failedTracking
+        .getByRole("button", { name: "比较版本", exact: true })
+        .click();
+      await failedTracking
+        .getByRole("menuitem", { name: "拉取请求", exact: true })
+        .click();
+      const retryFallback = failedTracking.getByRole("menuitem", {
+        name: "无法读取仓库。 · 重试",
+        exact: true,
+      });
+      await retryFallback.waitFor({ timeout: 10_000 });
+      assert.ok(
+        trackingRequests >= 2,
+        "tracking has exhausted its automatic retry",
+      );
+      assert.equal(
+        fallbackPrRequests,
+        2,
+        "PR request runs and retries without tracking data",
+      );
+      await retryFallback.click();
+      await failedTracking
+        .getByRole("menuitem", {
+          name: "#18 Available despite tracking failure",
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(await failedTracking.getByRole("status").count(), 0);
+      await failedTracking
+        .getByRole("menuitem", { name: "返回: 拉取请求", exact: true })
+        .click();
+      await failedTracking
+        .getByRole("menuitem", { name: "分支", exact: true })
+        .waitFor();
+      await failedTracking
+        .getByRole("menuitem", { name: "拉取请求", exact: true })
+        .waitFor();
+      await failedTracking.close();
       const emptyCommit = await browser.newPage({
         viewport: { width: 447, height: 660 },
       });

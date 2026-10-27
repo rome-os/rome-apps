@@ -409,12 +409,16 @@ function Browser() {
     refetchInterval: 15000,
   });
   const checkedOutBranch = tracking.data?.branch;
-  // Independent of local picker data; a checkout change starts a fresh PR request immediately.
+  // A checkout change starts a fresh PR request. If tracking fails, the server can still
+  // load the explicit PR picker; passive labels remain gated on the tracking snapshot.
   const refs = useQuery({
     queryKey: ["refs", state.repo, checkedOutBranch],
     queryFn: ({ signal }) =>
       api<PrRefData>("refs", { repo: state.repo }, signal),
-    enabled: ready && !!state.repo && checkedOutBranch !== undefined,
+    enabled:
+      ready &&
+      !!state.repo &&
+      (checkedOutBranch !== undefined || tracking.isError),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     refetchInterval: 60000,

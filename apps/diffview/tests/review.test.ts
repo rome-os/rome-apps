@@ -225,6 +225,7 @@ else process.exit(1);
 
 test("refs associates by canonical checkout identity, shares matching rules and caches history misses", async () => {
   const { repo, g, call } = await fixture();
+  g("tag", "main"); // --short would turn this checkout into heads/main.
   g("remote", "add", "origin", "git@github.com:alice/repo.git");
   g("remote", "add", "upstream", "https://github.com/org/repo.git");
   g("config", "branch.main.remote", "origin");

@@ -1120,7 +1120,10 @@ export async function patch(
   };
 }
 export async function checkoutBranch(repo: string) {
-  return (await tryGit(repo, ["symbolic-ref", "--short", "-q", "HEAD"])).trim();
+  // Git's --short disambiguates a branch/tag collision as heads/<name>.
+  return (await tryGit(repo, ["symbolic-ref", "-q", "HEAD"]))
+    .trim()
+    .replace(/^refs\/heads\//, "");
 }
 
 /** Local picker data never waits for GitHub, and PR polling never repeats these listings. */
@@ -1145,8 +1148,6 @@ export async function revisions(repo: string) {
         const [sha, ...title] = s.split("\t");
         return { sha, title: title.join("\t") };
       }),
-    prs: [] as PullRequestInfo[],
-    prState: "ready",
   };
 }
 

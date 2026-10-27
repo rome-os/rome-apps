@@ -41,6 +41,12 @@ it sampled, so a switch during a slow GitHub request cannot apply another branch
 PR requests no longer enumerate local branches, tags or commits; only the independent revisions request
 performs that work.
 
+Checkout identity comes from the full symbolic HEAD ref with exactly `refs/heads/` removed,
+so a same-named tag cannot change the branch name or disable upstream tracking. If the tracking
+request fails, the independent PR request still runs and retains its own error/retry path;
+passive labels do not infer checkout identity from that fallback response. The revisions DTO
+contains only branches, tags and commits, never placeholder PR state.
+
 ## Interaction constraints
 
 - Following is display-only: it cannot create a Branch/PR effect loop.
@@ -62,6 +68,9 @@ Regression coverage also checks branch switches within the PR-cache TTL, detache
 of local listing commands during PR polling, and live linked-label changes while the repository scan is
 stale and GitHub is delayed. Production browser coverage retains the local-picker failure isolation,
 keyboard-only activation, and narrow/iframe layouts.
+Branch/tag collisions cover ordinary and `heads/`-prefixed branch names, Unpushed files and
+canonical PR association. A production browser regression exhausts tracking and PR retries,
+then recovers the PR picker through its retry action without inventing passive branch labels.
 
 Validation uses Diffview `pnpm typecheck`, `pnpm test`, and
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome pnpm test:browser`.
