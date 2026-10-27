@@ -67,9 +67,11 @@ For local and ref comparisons the checked-out branch drives the context and its 
 (open, merged, or closed) follows passively. For a PR comparison the exact selected PR drives the context and Branch
 follows its head branch. A commit comparison is intentionally neutral because a detached object does not
 identify one review branch. The comparison base remains a separate Branch-pane field and is never shown as
-the review branch. Stale inactive URL fields do not override the active mode. Branches, the bounded open-PR list,
-and one exact current-branch association travel in one repository-level DTO; resolving an explicit PR also returns
-its exact base/head metadata, including when it is outside that list.
+the review branch. Stale inactive URL fields do not override the active mode. Local branches/tags/commits load from
+the Git-only `revisions` DTO and never wait for GitHub. The bounded open-PR list and one exact current-branch
+association load independently at repository scope; resolving an explicit PR also returns its exact base/head
+metadata, including when it is outside that list. Passive association requires both the branch name and the same
+head repository, and chooses the most recently updated match.
 
 - Unpushed = the current branch's merge base with its tracking upstream → HEAD, excluding
   dirty/index/untracked files. Never substitute the default branch and never fetch automatically.
@@ -94,6 +96,8 @@ its exact base/head metadata, including when it is outside that list.
 - The Branch pane's Back row is the stable section title **Branch**. The target section owns the
   **Compare to · branch** identity, keeps it on one truncated line, and exposes the complete branch as its title.
   Target (worktree/HEAD) and comparison method (merge base/two-dot) use full-width horizontal segmented controls.
+  Inside the Radix menu those segments remain native menu radio items—not a nested standalone radiogroup—so the
+  menu's arrow-key focus order reaches and activates every choice.
 - Pull Request is a root comparison choice. Its bounded list is loaded with branch context at repository scope,
   so local and branch modes can show a matching PR without per-row requests. It refreshes at most once per minute
   or on explicit refresh.

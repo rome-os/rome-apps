@@ -8,6 +8,7 @@ const prs = [
     baseRefName: "main",
     headRefName: "refactor/code-review-ui-library",
     updatedAt: "2026-10-27T08:00:00Z",
+    isCrossRepository: false,
   },
   {
     number: 30,
@@ -15,6 +16,7 @@ const prs = [
     baseRefName: "main",
     headRefName: "feat/diffview",
     updatedAt: "2026-10-27T09:00:00Z",
+    isCrossRepository: false,
   },
   {
     number: 31,
@@ -22,6 +24,7 @@ const prs = [
     baseRefName: "main",
     headRefName: "feat/diffview",
     updatedAt: "2026-10-27T10:00:00Z",
+    isCrossRepository: false,
   },
 ];
 
@@ -54,6 +57,7 @@ describe("linked review context", () => {
       baseRefName: "main",
       headRefName: "feat/merged-diffview",
       updatedAt: "2026-10-27T11:00:00Z",
+      isCrossRepository: false,
     };
     expect(
       deriveReviewContext(
@@ -68,6 +72,21 @@ describe("linked review context", () => {
       branch: "feat/merged-diffview",
       pr: associated,
     });
+  });
+
+  it("never passively links a same-named branch from a fork", () => {
+    const fork = {
+      number: 90,
+      headRefName: "feat/diffview",
+      updatedAt: "2026-10-27T12:00:00Z",
+      isCrossRepository: true,
+    };
+    expect(
+      deriveReviewContext({ mode: "uncommitted" }, "feat/diffview", [
+        fork,
+        ...prs,
+      ]).pr,
+    ).toEqual(prs[2]);
   });
 
   it("PR mode makes the selected PR active and follows its head branch", () => {

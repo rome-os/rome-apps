@@ -391,10 +391,18 @@ function Browser() {
             ?.base || "",
       });
   }, [ready, repos.data, state.repo]);
+  // Local refs must remain usable even when GitHub is slow, offline, or unauthenticated.
+  const revisions = useQuery({
+    queryKey: ["revisions", state.repo],
+    queryFn: ({ signal }) =>
+      api<RefData>("revisions", { repo: state.repo }, signal),
+    enabled: ready && !!state.repo,
+    staleTime: 5000,
+    refetchInterval: 60000,
+  });
+  // PR context is repository-level and bounded, but deliberately independent of local refs.
   const refs = useQuery({
     queryKey: ["refs", state.repo],
-    // Branch and PR are linked context even outside PR mode, so load their bounded DTO together.
-    // This is one repository-level request, never a per-file or per-row fan-out.
     queryFn: ({ signal }) => api<RefData>("refs", { repo: state.repo }, signal),
     enabled: ready && !!state.repo,
     staleTime: 60_000,
@@ -1055,6 +1063,7 @@ function Browser() {
   const refresh = () => {
     refreshScope.current = scope;
     void qc.invalidateQueries({ queryKey: ["repos", project] });
+    void qc.invalidateQueries({ queryKey: ["revisions", state.repo] });
     void qc.invalidateQueries({ queryKey: ["refs", state.repo] });
     void qc.invalidateQueries({ queryKey: ["tracking", state.repo] });
     void qc.invalidateQueries({ queryKey: ["history", state.repo] });
@@ -1441,7 +1450,11 @@ function Browser() {
           change={change}
           desc={desc}
           data={data.data}
-          refs={refs.data}
+          refs={revisions.data}
+          pullRequests={refs.data}
+          pullRequestsPending={refs.isPending}
+          pullRequestsError={refs.error?.message}
+          retryPullRequests={() => void refs.refetch()}
           tracking={tracking.data}
           defaultBase={defaultBaseName}
           reviewContext={reviewContext}
@@ -1692,7 +1705,7 @@ function Browser() {
             manualJump.current = undefined;
           }}
         >
-          {(repos.error || refs.error || tracking.error || data.error) && (
+          {(repos.error || revisions.error || tracking.error || data.error) && (
             <div
               role="alert"
               className="m-3 rounded-lg bg-destructive-bg p-3 text-sm text-destructive"
@@ -1700,8 +1713,12 @@ function Browser() {
               {data.data
                 ? t.stale
                 : errorMessage(
-                    (data.error || tracking.error || refs.error || repos.error)
-                      ?.message || "internal",
+                    (
+                      data.error ||
+                      tracking.error ||
+                      revisions.error ||
+                      repos.error
+                    )?.message || "internal",
                     t,
                   )}
               <Button variant="ghost" size="sm" onClick={refresh}>

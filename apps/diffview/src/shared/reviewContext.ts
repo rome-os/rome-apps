@@ -6,6 +6,9 @@ export interface PullRequestInfo {
   baseRefName?: string;
   headRefName?: string;
   updatedAt?: string;
+  /** GitHub reports this for list results; passive local-branch association rejects forks. */
+  isCrossRepository?: boolean;
+  headRepositoryOwner?: { login?: string } | string;
 }
 
 export interface ReviewContext {
@@ -27,7 +30,11 @@ export function branchDisplayName(value?: string) {
 
 function newestMatchingPr(prs: PullRequestInfo[], branch: string) {
   return prs
-    .filter((pr) => branchDisplayName(pr.headRefName) === branch)
+    .filter(
+      (pr) =>
+        pr.isCrossRepository === false &&
+        branchDisplayName(pr.headRefName) === branch,
+    )
     .map((pr, index) => ({ pr, index, time: Date.parse(pr.updatedAt || "") }))
     .sort((a, b) => {
       const byTime =
@@ -70,7 +77,8 @@ export function deriveReviewContext(
     driver,
     branch,
     pr: branch
-      ? branchDisplayName(associatedBranchPr?.headRefName) === branch
+      ? associatedBranchPr?.isCrossRepository === false &&
+        branchDisplayName(associatedBranchPr.headRefName) === branch
         ? associatedBranchPr
         : newestMatchingPr(openPrs, branch)
       : undefined,

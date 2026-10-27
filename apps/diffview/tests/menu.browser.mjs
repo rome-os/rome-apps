@@ -8,6 +8,14 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 
+async function expectFocused(locator, message) {
+  assert.equal(
+    await locator.evaluate((element) => element === document.activeElement),
+    true,
+    message,
+  );
+}
+
 // Match the shared radio-item geometry while Branch and PR use the trailing drill rail.
 async function scopeAlignment(view, branchSelected) {
   const local = view.getByRole("menuitemradio", {
@@ -105,16 +113,14 @@ async function revisionAlignment(view, committed = false) {
       "All section labels align with the drill-down rows",
     );
   }
-  const segmentedGroups = view.locator(
-    '[role="menu"] [data-slot="segmented-control"]',
-  );
+  const segmentedGroups = view.locator('[role="menu"] [data-review-segments]');
   assert.equal(
     await segmentedGroups.count(),
     2,
     "Target and comparison method each use one segmented group",
   );
   for (const group of await segmentedGroups.all()) {
-    const radios = group.getByRole("radio");
+    const radios = group.getByRole("menuitemradio");
     assert.equal(await radios.count(), 2);
     const [first, second] = await Promise.all([
       radios.nth(0).boundingBox(),
@@ -287,6 +293,7 @@ test(
                 baseRefName: "main",
                 headRefName: branch,
                 updatedAt: "2026-10-27T10:00:00Z",
+                isCrossRepository: false,
               },
               prs: [
                 {
@@ -295,6 +302,7 @@ test(
                   baseRefName: "main",
                   headRefName: "refactor/code-review-ui-library",
                   updatedAt: "2026-10-27T09:00:00Z",
+                  isCrossRepository: false,
                 },
               ],
               prState: "ready",
@@ -628,6 +636,41 @@ test(
           "ellipsis",
         );
         await revisionAlignment(v);
+        if (width === 447) {
+          const baseItem = v.getByRole("menuitem", { name: /^基准/ });
+          const historyItem = v.getByRole("menuitem", {
+            name: "已提交",
+            exact: true,
+          });
+          const worktreeItem = v.getByRole("menuitemradio", {
+            name: "工作区",
+            exact: true,
+          });
+          const headItem = v.getByRole("menuitemradio", {
+            name: "HEAD",
+            exact: true,
+          });
+          await branchBack.focus();
+          await branchBack.press("ArrowDown");
+          await expectFocused(baseItem, "Base is keyboard reachable");
+          await baseItem.press("ArrowDown");
+          await expectFocused(historyItem, "History is keyboard reachable");
+          await historyItem.press("ArrowDown");
+          await expectFocused(
+            worktreeItem,
+            "The first target segment is keyboard reachable",
+          );
+          await worktreeItem.press("ArrowDown");
+          await expectFocused(
+            headItem,
+            "The second target segment is keyboard reachable",
+          );
+          await headItem.press("Enter");
+          assert.equal(await headItem.getAttribute("aria-checked"), "true");
+          await headItem.press("ArrowUp");
+          await worktreeItem.press("Enter");
+          assert.equal(await worktreeItem.getAttribute("aria-checked"), "true");
+        }
         assert.equal(await v.getByRole("menu").count(), 1);
         assert.equal(
           await v
@@ -693,7 +736,9 @@ test(
           Math.abs((await v.getByRole("menu").boundingBox()).width - 320) < 1,
           "Branch names keep the wider 20rem layout",
         );
-        await v.getByRole("radio", { name: "HEAD", exact: true }).click();
+        await v
+          .getByRole("menuitemradio", { name: "HEAD", exact: true })
+          .click();
         await v
           .getByRole("menuitemradio", { name: "main", exact: true })
           .click();
@@ -704,8 +749,12 @@ test(
         await v
           .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
           .click();
-        await v.getByRole("radio", { name: "工作区", exact: true }).click();
-        await v.getByRole("radio", { name: "两点比较", exact: true }).click();
+        await v
+          .getByRole("menuitemradio", { name: "工作区", exact: true })
+          .click();
+        await v
+          .getByRole("menuitemradio", { name: "两点比较", exact: true })
+          .click();
         await v.locator("main").press("Escape");
         await file("initial.txt").waitFor();
         assert.match(
@@ -721,7 +770,9 @@ test(
         await local.press("Enter");
         await scope.click();
         await v.getByRole("menuitem", { name: /^分支 · / }).click();
-        await v.getByRole("radio", { name: "工作区", exact: true }).waitFor();
+        await v
+          .getByRole("menuitemradio", { name: "工作区", exact: true })
+          .waitFor();
         await v.getByRole("menu").press("Escape");
         assert.match(await scope.textContent(), /^origin\/main/);
         assert.doesNotMatch(
@@ -914,6 +965,47 @@ test(
         assert.deepEqual(errors, []);
         await page.close();
       }
+      const failedPrs = await browser.newPage({
+        viewport: { width: 447, height: 660 },
+      });
+      await failedPrs.route("**/api/apps/diffview/refs?*", (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "internal" }),
+        }),
+      );
+      await failedPrs.goto(
+        origin +
+          "/?lang=zh#" +
+          new URLSearchParams({ repo, mode: "uncommitted", unified: "3" }),
+      );
+      const failedScope = failedPrs.getByRole("button", {
+        name: "比较版本",
+        exact: true,
+      });
+      await failedScope.waitFor();
+      await failedScope.click();
+      await failedPrs
+        .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
+        .click();
+      await failedPrs.getByRole("menuitem", { name: /^基准/ }).click();
+      await failedPrs
+        .getByRole("menuitemradio", { name: branch, exact: true })
+        .waitFor();
+      await failedPrs.getByRole("menu").press("Escape");
+      await failedScope.click();
+      await failedPrs
+        .getByRole("menuitem", { name: "拉取请求", exact: true })
+        .click();
+      await failedPrs
+        .getByRole("menuitem", { name: "无法读取仓库。 · 重试", exact: true })
+        .waitFor();
+      assert.equal(
+        await failedPrs.getByRole("status", { name: "加载中…" }).count(),
+        0,
+      );
+      await failedPrs.close();
       const emptyCommit = await browser.newPage({
         viewport: { width: 447, height: 660 },
       });

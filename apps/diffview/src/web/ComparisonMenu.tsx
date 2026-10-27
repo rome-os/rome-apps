@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DropdownMenu,
@@ -11,7 +15,6 @@ import {
   DropdownMenuLabel,
 } from "@rome-os/ui/dropdown-menu";
 import { Input } from "@rome-os/ui/input";
-import { SegmentedControl } from "@rome-os/ui/segmented-control";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Description } from "../shared/describe";
 import type { CommitInfo, TrackingInfo } from "../lib/git";
@@ -28,7 +31,13 @@ interface Props {
   change(patch: Partial<State>): void;
   desc: Description;
   data?: FilesData;
+  /** Fast, local-only branch/tag/commit data. */
   refs?: RefData;
+  /** Bounded GitHub PR data, loaded independently so it cannot block local refs. */
+  pullRequests?: RefData;
+  pullRequestsPending?: boolean;
+  pullRequestsError?: string;
+  retryPullRequests(): void;
   tracking?: TrackingInfo;
   defaultBase: string;
   reviewContext: ReviewContext;
@@ -43,6 +52,8 @@ interface Props {
 type Pane = "root" | "branch" | "reference" | "commit" | "pr";
 const WIDTH =
   "w-[min(20rem,var(--radix-dropdown-menu-content-available-width))] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto";
+const MENU_SEGMENT =
+  "min-h-5 justify-center rounded-[var(--control-r-sm)] border border-transparent px-2 py-0 pr-2 text-center text-foreground/60 focus:bg-background focus:text-foreground data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-1 [&_[data-slot=dropdown-menu-radio-item-indicator]]:hidden";
 
 /** Scope selection and contextual parameters stay separate; pickers drill down inside one popup. */
 export function ComparisonMenu({
@@ -51,6 +62,10 @@ export function ComparisonMenu({
   desc,
   data,
   refs,
+  pullRequests,
+  pullRequestsPending = false,
+  pullRequestsError,
+  retryPullRequests,
   tracking,
   defaultBase,
   reviewContext,
@@ -100,6 +115,54 @@ export function ComparisonMenu({
     setDraft("");
     setCursor(0);
     setPane(next);
+  };
+  const keepBranchKeyboardOrder = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (pane !== "branch") return;
+    const current = (event.target as HTMLElement).closest<HTMLElement>(
+      '[role="menuitem"], [role="menuitemradio"]',
+    );
+    if (!current) return;
+    let items: HTMLElement[] = [];
+    let next = -1;
+    if (
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      current.closest("[data-review-segments]")
+    ) {
+      items = Array.from(
+        current
+          .closest("[data-review-segments]")!
+          .querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+      );
+      const index = items.indexOf(current);
+      next =
+        (index + (event.key === "ArrowRight" ? 1 : -1) + items.length) %
+        items.length;
+    } else if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "Home" ||
+      event.key === "End"
+    ) {
+      items = Array.from(
+        event.currentTarget.querySelectorAll<HTMLElement>(
+          '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"])',
+        ),
+      );
+      const index = items.indexOf(current);
+      next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? items.length - 1
+            : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
+              items.length;
+    } else return;
+    if (!items[next]) return;
+    event.preventDefault();
+    event.stopPropagation();
+    items[next].focus();
   };
   useEffect(() => {
     if (!open) return;
@@ -299,38 +362,56 @@ export function ComparisonMenu({
           <span className="min-w-0 truncate">&nbsp;{selectedBranch}</span>
         )}
       </DropdownMenuLabel>
-      <div className="px-1 pb-1">
-        <SegmentedControl
-          aria-label={t.secTarget}
-          size="sm"
-          className="w-full [&_[data-slot=segmented-control-item]]:flex-1"
-          value={state.target === "head" ? "head" : "worktree"}
-          onValueChange={(target) => change({ mode: "ref", target })}
-          options={[
-            {
-              value: "worktree",
-              label: t.worktree,
-              title: t.tgtWorktreeHint,
-            },
-            { value: "head", label: t.head, title: t.tgtHeadHint },
-          ]}
-        />
-      </div>
+      <DropdownMenuRadioGroup
+        aria-label={t.secTarget}
+        data-review-segments="target"
+        className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
+        value={state.target === "head" ? "head" : "worktree"}
+        onValueChange={(target) => change({ mode: "ref", target })}
+      >
+        <DropdownMenuRadioItem
+          value="worktree"
+          title={t.tgtWorktreeHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
+        >
+          {t.worktree}
+        </DropdownMenuRadioItem>
+        <DropdownMenuRadioItem
+          value="head"
+          title={t.tgtHeadHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
+        >
+          {t.head}
+        </DropdownMenuRadioItem>
+      </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t.secMethod}</DropdownMenuLabel>
-      <div className="px-1 pb-1">
-        <SegmentedControl
-          aria-label={t.secMethod}
-          size="sm"
-          className="w-full [&_[data-slot=segmented-control-item]]:flex-1"
-          value={state.dots === "two" ? "two" : "three"}
-          onValueChange={(dots) => change({ mode: "ref", dots })}
-          options={[
-            { value: "three", label: t.three, title: t.methThreeHint },
-            { value: "two", label: t.two, title: t.methTwoHint },
-          ]}
-        />
-      </div>
+      <DropdownMenuRadioGroup
+        aria-label={t.secMethod}
+        data-review-segments="method"
+        className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
+        value={state.dots === "two" ? "two" : "three"}
+        onValueChange={(dots) => change({ mode: "ref", dots })}
+      >
+        <DropdownMenuRadioItem
+          value="three"
+          title={t.methThreeHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
+        >
+          {t.three}
+        </DropdownMenuRadioItem>
+        <DropdownMenuRadioItem
+          value="two"
+          title={t.methTwoHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
+        >
+          {t.two}
+        </DropdownMenuRadioItem>
+      </DropdownMenuRadioGroup>
     </>
   );
   const references = (
@@ -467,7 +548,7 @@ export function ComparisonMenu({
       )}
     </>
   );
-  const prData = refs;
+  const prData = pullRequests;
   const filteredPrs = (prData?.prs || []).filter(
     (pr) => !query || `${pr.number} ${pr.title}`.toLowerCase().includes(query),
   );
@@ -479,10 +560,19 @@ export function ComparisonMenu({
           pick({ mode: "pr", pr: draft.trim() });
       })}
       <div className="max-h-60 overflow-y-auto">
-        {!prData ? (
+        {pullRequestsPending && !prData ? (
           <p role="status" className="p-2 text-aux text-muted-foreground">
             {t.loading}
           </p>
+        ) : pullRequestsError ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              retryPullRequests();
+            }}
+          >
+            {errorMessage(pullRequestsError, t)} · {t.retry}
+          </DropdownMenuItem>
         ) : (
           filteredPrs.map((pr) => (
             <DropdownMenuItem
@@ -496,14 +586,18 @@ export function ComparisonMenu({
             </DropdownMenuItem>
           ))
         )}
-        {prData?.prState && prData.prState !== "ready" && (
-          <p className="p-2 text-aux text-muted-foreground">
-            {errorMessage(prData.prState, t)}
-          </p>
-        )}
-        {prData?.prState === "ready" && filteredPrs.length === 0 && (
-          <p className="p-2 text-aux text-muted-foreground">{t.prNoMatch}</p>
-        )}
+        {!pullRequestsError &&
+          prData?.prState &&
+          prData.prState !== "ready" && (
+            <p className="p-2 text-aux text-muted-foreground">
+              {errorMessage(prData.prState, t)}
+            </p>
+          )}
+        {!pullRequestsError &&
+          prData?.prState === "ready" &&
+          filteredPrs.length === 0 && (
+            <p className="p-2 text-aux text-muted-foreground">{t.prNoMatch}</p>
+          )}
       </div>
     </>
   );
@@ -634,6 +728,7 @@ export function ComparisonMenu({
       <DropdownMenuContent
         align="start"
         collisionPadding={8}
+        onKeyDownCapture={keepBranchKeyboardOrder}
         className={pane === "root" || pane === "branch" ? "w-56" : WIDTH}
       >
         {pane === "pr" ? (

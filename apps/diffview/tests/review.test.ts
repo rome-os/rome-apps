@@ -23,7 +23,7 @@ process.env.HOME = home;
 process.env.ROME_PROFILE = "review";
 const { createApiHandler } = await import("../src/api/index");
 const snapshot = await import("../src/lib/snapshot");
-const { GitError } = await import("../src/lib/git");
+const { GitError, refs: listRefs } = await import("../src/lib/git");
 const handler = createApiHandler({} as never);
 let counter = 0;
 afterEach(() => {
@@ -222,6 +222,41 @@ else process.exit(1);
   await chmod(file, 0o755);
   process.env.PATH = bin + ":" + original.PATH;
 }
+
+test("refs links the newest same-repository PR and rejects same-named forks", async () => {
+  const { repo, g } = await fixture();
+  const bin = join(repo, ".git", "association-bin");
+  await mkdir(bin);
+  const file = join(bin, "gh");
+  await writeFile(
+    file,
+    `#!/usr/bin/env node
+const stateAll=process.argv.includes('--state');
+const head=process.argv[process.argv.indexOf('--head')+1];
+const open=[
+ {number:90,headRefName:'main',updatedAt:'2026-10-27T13:00:00Z',isCrossRepository:true},
+ {number:10,headRefName:'main',updatedAt:'2026-10-27T09:00:00Z',isCrossRepository:false},
+ {number:11,headRefName:'main',updatedAt:'2026-10-27T12:00:00Z',isCrossRepository:false},
+ {number:91,headRefName:'topic',updatedAt:'2026-10-27T13:00:00Z',isCrossRepository:true}
+];
+const history=[
+ {number:20,headRefName:head,updatedAt:'2026-10-27T08:00:00Z',isCrossRepository:false},
+ {number:92,headRefName:head,updatedAt:'2026-10-27T14:00:00Z',isCrossRepository:true},
+ {number:21,headRefName:head,updatedAt:'2026-10-27T11:00:00Z',isCrossRepository:false}
+];
+process.stdout.write(JSON.stringify(stateAll?history:open));
+`,
+  );
+  await chmod(file, 0o755);
+  process.env.PATH = bin + ":" + original.PATH;
+
+  const onMain = await listRefs(repo);
+  assert.equal(onMain.currentBranchPr?.number, 11);
+
+  g("checkout", "-qb", "topic");
+  const onTopic = await listRefs(repo);
+  assert.equal(onTopic.currentBranchPr?.number, 21);
+});
 
 test("PR fetch pins exact API endpoints when the base branch advances, without changing user refs", async () => {
   const { repo, g, write, call } = await fixture();

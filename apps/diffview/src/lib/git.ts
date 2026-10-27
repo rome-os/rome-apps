@@ -9,6 +9,7 @@ import { resolve, relative, isAbsolute, join, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { constants } from "node:fs";
+import type { PullRequestInfo } from "../shared/reviewContext.js";
 export const ROOT = join(
   homedir(),
   ".rome",
@@ -1124,17 +1125,11 @@ export async function refs(repo: string, includePr = true) {
     git(repo, ["tag", "--list"]),
     tryGit(repo, ["symbolic-ref", "--short", "-q", "HEAD"]),
   ]);
-  type RefPullRequest = {
-    number: number;
-    title: string;
-    headRefName: string;
-    baseRefName: string;
-    updatedAt: string;
-  };
-  const fields = "number,title,headRefName,baseRefName,updatedAt,author";
+  const fields =
+    "number,title,headRefName,baseRefName,updatedAt,author,isCrossRepository,headRepositoryOwner";
   const currentBranch = currentBranchText.trim();
-  let prs: RefPullRequest[] = [],
-    currentBranchPr: RefPullRequest | undefined,
+  let prs: PullRequestInfo[] = [],
+    currentBranchPr: PullRequestInfo | undefined,
     prState = "ready";
   try {
     if (includePr)
@@ -1160,7 +1155,7 @@ export async function refs(repo: string, includePr = true) {
             : "unavailable";
   }
   if (includePr && prState === "ready" && currentBranch) {
-    currentBranchPr = prs.find((pr) => pr.headRefName === currentBranch);
+    currentBranchPr = newestSameRepositoryPr(prs, currentBranch);
     if (!currentBranchPr) {
       try {
         // Keep the picker focused on open PRs, but preserve branch linkage after its PR merges
@@ -1174,12 +1169,12 @@ export async function refs(repo: string, includePr = true) {
             "--head",
             currentBranch,
             "--limit",
-            "1",
+            "50",
             "--json",
             fields,
           ]),
-        ) as RefPullRequest[];
-        currentBranchPr = associated[0];
+        ) as PullRequestInfo[];
+        currentBranchPr = newestSameRepositoryPr(associated, currentBranch);
       } catch {
         // The bounded open list remains useful even if the exact historical lookup fails.
       }
@@ -1199,6 +1194,19 @@ export async function refs(repo: string, includePr = true) {
     currentBranchPr,
     prState,
   };
+}
+
+/** A local branch can only follow a PR from this repository, never a same-named fork branch. */
+export function newestSameRepositoryPr(prs: PullRequestInfo[], branch: string) {
+  return prs
+    .filter((pr) => pr.isCrossRepository === false && pr.headRefName === branch)
+    .map((pr, index) => ({ pr, index, time: Date.parse(pr.updatedAt || "") }))
+    .sort((a, b) => {
+      const byUpdated =
+        (Number.isFinite(b.time) ? b.time : -1) -
+        (Number.isFinite(a.time) ? a.time : -1);
+      return byUpdated || a.index - b.index;
+    })[0]?.pr;
 }
 
 /**
