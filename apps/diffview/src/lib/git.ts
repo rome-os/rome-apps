@@ -9,6 +9,10 @@ import { resolve, relative, isAbsolute, join, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { constants } from "node:fs";
+import {
+  newestMatchingPr,
+  type PullRequestInfo,
+} from "../shared/reviewContext.js";
 export const ROOT = join(
   homedir(),
   ".rome",
@@ -352,10 +356,17 @@ export interface ResolvedComparison {
   to?: string;
   /** Empty string is a valid empty remote diff, not a missing fallback. */
   fallback?: string;
+  /** Exact PR identity used for this view, including PRs outside the bounded open-list DTO. */
+  pullRequest?: {
+    number: number;
+    baseRefName: string;
+    headRefName: string;
+  };
 }
 interface PrMetadata {
   baseRefName: string;
   baseRefOid: string;
+  headRefName: string;
   headRefOid: string;
   url: string;
 }
@@ -492,7 +503,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
             location.hostname,
             location.api,
             "--jq",
-            "{url:.html_url,baseRefName:.base.ref,baseRefOid:.base.sha,headRefOid:.head.sha}",
+            "{url:.html_url,baseRefName:.base.ref,baseRefOid:.base.sha,headRefName:.head.ref,headRefOid:.head.sha}",
           ]),
         );
         source = prRepository(meta, n);
@@ -501,6 +512,11 @@ async function prCompare(repo: string, n: string, refresh = false) {
       } catch {
         throw new GitError("pr_unavailable");
       }
+      const pullRequest = {
+        number: Number(n),
+        baseRefName: meta.baseRefName,
+        headRefName: meta.headRefName,
+      };
       try {
         await cached(
           repo + ":pr-ref-cleanup",
@@ -536,7 +552,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
             to = await sha(repo, temp + "/head");
           if (from !== meta.baseRefOid || to !== meta.headRefOid)
             throw new GitError("pr_changed_during_fetch");
-          return { from, to };
+          return { from, to, pullRequest };
         } finally {
           await deleteReviewRefs(repo, await reviewRefs(repo, [temp + "/"]));
         }
@@ -545,6 +561,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
         return {
           from: "",
           to: "",
+          pullRequest,
           fallback: await command(
             repo,
             "gh",
@@ -562,6 +579,8 @@ async function prCompare(repo: string, n: string, refresh = false) {
 /** Tracking is local metadata only. Never fetch, change branches, or guess a base. */
 export interface TrackingInfo {
   state: "ready" | "no_upstream" | "detached" | "unborn" | "upstream_missing";
+  /** Empty for detached HEAD; available even without an upstream or initial commit. */
+  branch: string;
   upstream: string;
   head: string;
   upstreamHead: string;
@@ -571,6 +590,7 @@ export interface TrackingInfo {
 export async function tracking(repo: string): Promise<TrackingInfo> {
   const result: TrackingInfo = {
     state: "unborn",
+    branch: await checkoutBranch(repo),
     upstream: "",
     head: "",
     upstreamHead: "",
@@ -579,12 +599,12 @@ export async function tracking(repo: string): Promise<TrackingInfo> {
   };
   result.head = await tryGit(repo, ["rev-parse", "--verify", "HEAD"]);
   if (!result.head) return result;
-  const branch = await tryGit(repo, ["symbolic-ref", "--quiet", "HEAD"]);
+  const branch = result.branch;
   if (!branch) return { ...result, state: "detached" };
   result.upstream = await tryGit(repo, [
     "for-each-ref",
     "--format=%(upstream:short)",
-    branch,
+    "refs/heads/" + branch,
   ]);
   if (!result.upstream) return { ...result, state: "no_upstream" };
   result.upstreamHead = await sha(repo, result.upstream).catch(() => "");
@@ -1099,7 +1119,15 @@ export async function patch(
     collapsed: entry.collapsed,
   };
 }
-export async function refs(repo: string, includePr = true) {
+export async function checkoutBranch(repo: string) {
+  // Git's --short disambiguates a branch/tag collision as heads/<name>.
+  return (await tryGit(repo, ["symbolic-ref", "-q", "HEAD"]))
+    .trim()
+    .replace(/^refs\/heads\//, "");
+}
+
+/** Local picker data never waits for GitHub, and PR polling never repeats these listings. */
+export async function revisions(repo: string) {
   const [branches, commits, tags] = await Promise.all([
     git(repo, [
       "for-each-ref",
@@ -1110,20 +1138,38 @@ export async function refs(repo: string, includePr = true) {
     tryGit(repo, ["log", "-40", "--format=%H%x09%s"]),
     git(repo, ["tag", "--list"]),
   ]);
-  let prs: unknown[] = [],
+  return {
+    branches: branches.trim().split("\n").filter(Boolean),
+    tags: tags.trim().split("\n").filter(Boolean),
+    commits: commits
+      .split("\n")
+      .filter(Boolean)
+      .map((s) => {
+        const [sha, ...title] = s.split("\t");
+        return { sha, title: title.join("\t") };
+      }),
+  };
+}
+
+export async function refs(repo: string, branch?: string) {
+  const currentBranch = branch ?? (await checkoutBranch(repo));
+  const fields =
+    "number,title,headRefName,baseRefName,updatedAt,state,headRepository";
+  let branchRepositoryId: string | undefined;
+  let prs: PullRequestInfo[] = [],
+    currentBranchPr: PullRequestInfo | undefined,
     prState = "ready";
   try {
-    if (includePr)
-      prs = JSON.parse(
-        await command(repo, "gh", [
-          "pr",
-          "list",
-          "--limit",
-          "50",
-          "--json",
-          "number,title,headRefName,baseRefName,author",
-        ]),
-      );
+    prs = JSON.parse(
+      await command(repo, "gh", [
+        "pr",
+        "list",
+        "--limit",
+        "50",
+        "--json",
+        fields,
+      ]),
+    );
   } catch (e) {
     const err = e as GitError;
     prState =
@@ -1135,17 +1181,91 @@ export async function refs(repo: string, includePr = true) {
             ? "no_remote"
             : "unavailable";
   }
+  if (prState === "ready" && currentBranch) {
+    // gh may select the upstream repository in a fork checkout. Resolve the actual branch's
+    // tracking remote (origin for an untracked branch), not gh's default base repository.
+    const remote =
+      (
+        await tryGit(repo, [
+          "config",
+          "--get",
+          `branch.${currentBranch}.remote`,
+        ])
+      ).trim() || "origin";
+    const remoteUrl =
+      remote === "."
+        ? ""
+        : (await tryGit(repo, ["remote", "get-url", remote])).trim() ||
+          // Git also permits branch.<name>.remote to be a literal URL (gh pr checkout).
+          // Do not send an unknown remote name to gh as if it were a repository slug.
+          (!remote.startsWith("-") && remote.includes(":") ? remote : "");
+    if (remoteUrl) {
+      branchRepositoryId = await cached(
+        repo + ":branch-repository:" + remoteUrl,
+        async () => {
+          const identity = JSON.parse(
+            await command(repo, "gh", [
+              "repo",
+              "view",
+              remoteUrl,
+              "--json",
+              "id",
+            ]),
+          );
+          return typeof identity.id === "string" && identity.id
+            ? identity.id
+            : undefined;
+        },
+        5 * 60000,
+      ).catch(() => undefined);
+    }
+    currentBranchPr = newestMatchingPr(prs, currentBranch, branchRepositoryId);
+    const historyKey =
+      repo +
+      ":branch-pr:" +
+      JSON.stringify([currentBranch, branchRepositoryId]);
+    // A newly observed open PR supersedes both old history and cached misses. Once it
+    // leaves the open list, resolve its current merged/closed state rather than the old result.
+    if (currentBranchPr) metadataCache.invalidate(historyKey);
+    if (!currentBranchPr && branchRepositoryId) {
+      try {
+        // Cache exact historical hits AND misses independently of the 30s open-list cache.
+        // New open PRs still win above; switching branch or remote identity cannot reuse this.
+        currentBranchPr = await cached(
+          historyKey,
+          async () => {
+            const associated = JSON.parse(
+              await command(repo, "gh", [
+                "pr",
+                "list",
+                "--state",
+                "all",
+                "--head",
+                currentBranch,
+                "--limit",
+                "50",
+                "--json",
+                fields,
+              ]),
+            ) as PullRequestInfo[];
+            return newestMatchingPr(
+              associated,
+              currentBranch,
+              branchRepositoryId,
+            );
+          },
+          5 * 60000,
+        );
+      } catch {
+        // The bounded open list remains useful even if the exact historical lookup fails.
+      }
+    }
+  }
   return {
-    branches: branches.trim().split("\n").filter(Boolean),
-    tags: tags.trim().split("\n").filter(Boolean),
-    commits: commits
-      .split("\n")
-      .filter(Boolean)
-      .map((s) => {
-        const [sha, ...title] = s.split("\t");
-        return { sha, title: title.join("\t") };
-      }),
+    currentBranch,
     prs,
+    currentBranchPr,
+    branchRepositoryId,
     prState,
   };
 }

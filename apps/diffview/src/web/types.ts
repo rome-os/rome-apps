@@ -1,6 +1,7 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import type { Mode } from "../lib/git";
 import type { ChangeTotals } from "../lib/attributes";
+import type { PullRequestInfo } from "../shared/reviewContext";
 export interface Repo {
   path: string;
   name: string;
@@ -12,12 +13,15 @@ export interface RefData {
   branches: string[];
   tags: string[];
   commits: { sha: string; title: string }[];
-  prs: {
-    number: number;
-    title: string;
-    headRefName: string;
-    baseRefName: string;
-  }[];
+}
+export interface PrRefData {
+  /** Checkout snapshot used to resolve this association, not the repository scan. */
+  currentBranch: string;
+  prs: PullRequestInfo[];
+  /** Exact current-branch association, including a recently merged or closed PR. */
+  currentBranchPr?: PullRequestInfo;
+  /** Canonical GitHub identity of the checked-out branch’s tracking/origin repository. */
+  branchRepositoryId?: string;
   prState: string;
 }
 export interface FilesData {
@@ -32,6 +36,8 @@ export interface FilesData {
   page?: PageData;
   /** Comparing a base: its resolved name, and whether it is the commit HEAD is on. */
   compare?: { ref: string; same: boolean };
+  /** Exact selected PR metadata returned by the comparison resolver. */
+  pullRequest?: PullRequestInfo;
   fingerprint: string;
   head: string;
   base: string;

@@ -287,7 +287,11 @@ test("local revisions/history/tracking APIs and commit pages are read-only and i
   const index = g("ls-files", "--stage");
   const revisions = await call("revisions", {});
   assert.equal(revisions.status, 200);
-  assert.deepEqual(revisions.body.prs, []);
+  assert.deepEqual(Object.keys(revisions.body).sort(), [
+    "branches",
+    "commits",
+    "tags",
+  ]);
   assert.ok(revisions.body.branches.includes("main"));
   const commits = await call("history", {});
   assert.equal(commits.body.commits[0].sha, root);

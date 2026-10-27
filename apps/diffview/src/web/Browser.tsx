@@ -59,6 +59,7 @@ import type { TrackingInfo } from "../lib/git";
 import { groupRepositories } from "../shared/repositories";
 import { normalizeMode } from "../shared/mode";
 import { describeComparison, describeEmpty } from "../shared/describe";
+import { deriveReviewContext } from "../shared/reviewContext";
 import {
   DEFAULT_CHAT_STATE,
   loadChatState,
@@ -79,6 +80,7 @@ import { useHost, messages, errorMessage } from "./i18n";
 import type {
   Repo,
   RefData,
+  PrRefData,
   FilesData,
   State,
   PatchData,
@@ -390,15 +392,13 @@ function Browser() {
             ?.base || "",
       });
   }, [ready, repos.data, state.repo]);
-  const refs = useQuery({
-    queryKey: ["refs", state.repo, state.mode === "pr"],
+  // Local refs must remain usable even when GitHub is slow, offline, or unauthenticated.
+  const revisions = useQuery({
+    queryKey: ["revisions", state.repo],
     queryFn: ({ signal }) =>
-      api<RefData>(
-        state.mode === "pr" ? "refs" : "revisions",
-        { repo: state.repo },
-        signal,
-      ),
+      api<RefData>("revisions", { repo: state.repo }, signal),
     enabled: ready && !!state.repo,
+    staleTime: 5000,
     refetchInterval: 60000,
   });
   const tracking = useQuery({
@@ -408,6 +408,27 @@ function Browser() {
     enabled: ready && !!state.repo,
     refetchInterval: 15000,
   });
+  const checkedOutBranch = tracking.data?.branch;
+  // A checkout change starts a fresh PR request. If tracking fails, the server can still
+  // load the explicit PR picker; passive labels remain gated on the tracking snapshot.
+  const refs = useQuery({
+    queryKey: ["refs", state.repo, checkedOutBranch],
+    queryFn: ({ signal }) =>
+      api<PrRefData>("refs", { repo: state.repo }, signal),
+    enabled:
+      ready &&
+      !!state.repo &&
+      (checkedOutBranch !== undefined || tracking.isError),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    // Passive linked labels still refresh, without spawning gh every minute in local views.
+    refetchInterval:
+      state.mode === "pr" || comparisonOpen ? 60_000 : 5 * 60_000,
+  });
+  const openComparison = (value: boolean) => {
+    if (value && refs.isStale) void refs.refetch();
+    setComparisonOpen(value);
+  };
   const trackingUnavailable =
     state.mode === "unpushed" &&
     (!!tracking.error || tracking.data?.state !== "ready");
@@ -1055,6 +1076,7 @@ function Browser() {
   const refresh = () => {
     refreshScope.current = scope;
     void qc.invalidateQueries({ queryKey: ["repos", project] });
+    void qc.invalidateQueries({ queryKey: ["revisions", state.repo] });
     void qc.invalidateQueries({ queryKey: ["refs", state.repo] });
     void qc.invalidateQueries({ queryKey: ["tracking", state.repo] });
     void qc.invalidateQueries({ queryKey: ["history", state.repo] });
@@ -1068,12 +1090,25 @@ function Browser() {
     setNonce((n) => n + 1);
   };
   const prState = refs.data?.prState;
-  const defaultBaseName =
-    repos.data?.repos.find((r) => r.path === state.repo)?.base ||
-    data.data?.compare?.ref ||
-    "";
-  const selectedPrInfo = refs.data?.prs?.find(
+  const selectedRepo = repos.data?.repos.find((r) => r.path === state.repo);
+  const defaultBaseName = selectedRepo?.base || data.data?.compare?.ref || "";
+  const listedPrInfo = refs.data?.prs?.find(
     (pr) => String(pr.number) === state.pr,
+  );
+  const selectedPrInfo =
+    data.data?.pullRequest?.number === Number(state.pr)
+      ? { ...listedPrInfo, ...data.data.pullRequest }
+      : listedPrInfo;
+  const reviewContext = deriveReviewContext(
+    normalizeMode(state),
+    checkedOutBranch,
+    refs.data?.prs ?? [],
+    selectedPrInfo,
+    refs.data?.currentBranchPr,
+    // A switch during a slow gh request must never apply another checkout's identity.
+    refs.data?.currentBranch === checkedOutBranch
+      ? refs.data?.branchRepositoryId
+      : undefined,
   );
   const desc = describeComparison(
     normalizeMode(state),
@@ -1253,7 +1288,7 @@ function Browser() {
       label: state.mode === "commit" ? t.chooseCommit : t.emptyChoosePr,
       run: () => {
         setComparisonEntry(state.mode === "commit" ? "commit" : "pr");
-        setComparisonOpen(true);
+        openComparison(true);
       },
     },
   } as const;
@@ -1432,9 +1467,15 @@ function Browser() {
           change={change}
           desc={desc}
           data={data.data}
-          refs={refs.data}
+          refs={revisions.data}
+          pullRequests={refs.data}
+          pullRequestsPending={refs.isPending}
+          pullRequestsError={refs.error?.message}
+          retryPullRequests={() => void refs.refetch()}
           tracking={tracking.data}
           defaultBase={defaultBaseName}
+          reviewContext={reviewContext}
+          comparisonUnavailable={trackingUnavailable}
           t={t}
           zh={host.zh}
           open={comparisonOpen}
@@ -1442,7 +1483,7 @@ function Browser() {
           prEntry={comparisonEntry === "pr"}
           setOpen={(value) => {
             setComparisonEntry("scope");
-            setComparisonOpen(value);
+            openComparison(value);
           }}
         />
         <div className="ml-auto flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-border/60 p-0.5">
@@ -1681,7 +1722,7 @@ function Browser() {
             manualJump.current = undefined;
           }}
         >
-          {(repos.error || refs.error || tracking.error || data.error) && (
+          {(repos.error || revisions.error || tracking.error || data.error) && (
             <div
               role="alert"
               className="m-3 rounded-lg bg-destructive-bg p-3 text-sm text-destructive"
@@ -1689,8 +1730,12 @@ function Browser() {
               {data.data
                 ? t.stale
                 : errorMessage(
-                    (data.error || tracking.error || refs.error || repos.error)
-                      ?.message || "internal",
+                    (
+                      data.error ||
+                      tracking.error ||
+                      revisions.error ||
+                      repos.error
+                    )?.message || "internal",
                     t,
                   )}
               <Button variant="ghost" size="sm" onClick={refresh}>

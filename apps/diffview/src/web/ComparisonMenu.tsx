@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DropdownMenu,
@@ -14,21 +18,30 @@ import { Input } from "@rome-os/ui/input";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Description } from "../shared/describe";
 import type { CommitInfo, TrackingInfo } from "../lib/git";
-import type { FilesData, RefData, State } from "./types";
+import type { FilesData, RefData, PrRefData, State } from "./types";
 import type { Messages } from "./i18n";
 import { errorMessage } from "./i18n";
 import { api } from "./api";
 import { Pill, Stats } from "./ReviewParts";
 import type { ChangeCount } from "../lib/attributes";
+import type { ReviewContext } from "../shared/reviewContext";
 
 interface Props {
   state: State;
   change(patch: Partial<State>): void;
   desc: Description;
   data?: FilesData;
+  /** Fast, local-only branch/tag/commit data. */
   refs?: RefData;
+  /** Bounded GitHub PR data, loaded independently so it cannot block local refs. */
+  pullRequests?: PrRefData;
+  pullRequestsPending?: boolean;
+  pullRequestsError?: string;
+  retryPullRequests(): void;
   tracking?: TrackingInfo;
   defaultBase: string;
+  reviewContext: ReviewContext;
+  comparisonUnavailable?: boolean;
   t: Messages;
   zh: boolean;
   open: boolean;
@@ -39,14 +52,8 @@ interface Props {
 type Pane = "root" | "branch" | "reference" | "commit" | "pr";
 const WIDTH =
   "w-[min(20rem,var(--radix-dropdown-menu-content-available-width))] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto";
-
-/** Keep the exact ref for Git, but present the default remote branch as the branch people named. */
-function branchDisplayName(ref: string) {
-  const normalized = ref
-    .replace(/^refs\/remotes\//, "")
-    .replace(/^refs\/heads\//, "");
-  return normalized.replace(/^origin\//, "");
-}
+const MENU_SEGMENT =
+  "min-h-5 justify-center rounded-[var(--control-r-sm)] border border-transparent px-2 py-0 pr-2 text-center text-foreground/60 focus:bg-background focus:text-foreground data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-1 [&_[data-slot=dropdown-menu-radio-item-indicator]]:hidden";
 
 /** Scope selection and contextual parameters stay separate; pickers drill down inside one popup. */
 export function ComparisonMenu({
@@ -55,8 +62,14 @@ export function ComparisonMenu({
   desc,
   data,
   refs,
+  pullRequests,
+  pullRequestsPending = false,
+  pullRequestsError,
+  retryPullRequests,
   tracking,
   defaultBase,
+  reviewContext,
+  comparisonUnavailable = false,
   t,
   zh,
   open,
@@ -77,11 +90,6 @@ export function ComparisonMenu({
         signal,
       ),
     enabled: open && pane === "commit" && !!state.repo,
-  });
-  const prRefs = useQuery({
-    queryKey: ["refs", state.repo, true],
-    queryFn: ({ signal }) => api<RefData>("refs", { repo: state.repo }, signal),
-    enabled: open && pane === "pr" && state.mode !== "pr" && !!state.repo,
   });
   const reset = () => {
     setDraft("");
@@ -108,6 +116,54 @@ export function ComparisonMenu({
     setCursor(0);
     setPane(next);
   };
+  const keepBranchKeyboardOrder = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (pane !== "branch") return;
+    const current = (event.target as HTMLElement).closest<HTMLElement>(
+      '[role="menuitem"], [role="menuitemradio"]',
+    );
+    if (!current) return;
+    let items: HTMLElement[] = [];
+    let next = -1;
+    if (
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      current.closest("[data-review-segments]")
+    ) {
+      items = Array.from(
+        current
+          .closest("[data-review-segments]")!
+          .querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+      );
+      const index = items.indexOf(current);
+      next =
+        (index + (event.key === "ArrowRight" ? 1 : -1) + items.length) %
+        items.length;
+    } else if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "Home" ||
+      event.key === "End"
+    ) {
+      items = Array.from(
+        event.currentTarget.querySelectorAll<HTMLElement>(
+          '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"])',
+        ),
+      );
+      const index = items.indexOf(current);
+      next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? items.length - 1
+            : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
+              items.length;
+    } else return;
+    if (!items[next]) return;
+    event.preventDefault();
+    event.stopPropagation();
+    items[next].focus();
+  };
   useEffect(() => {
     if (!open) return;
     if (commitEntry) enter("commit");
@@ -116,14 +172,18 @@ export function ComparisonMenu({
   const back = (title: string, parent: Pane = "root") => (
     <>
       <DropdownMenuItem
+        className="min-w-0 whitespace-nowrap"
+        title={title}
         onSelect={(e) => {
           e.preventDefault();
           enter(parent);
         }}
         aria-label={`${t.back}: ${title}`}
       >
-        <ChevronLeft />
-        <span className="font-medium">{title}</span>
+        <ChevronLeft className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap font-medium">
+          {title}
+        </span>
       </DropdownMenuItem>
       <DropdownMenuSeparator />
     </>
@@ -160,9 +220,8 @@ export function ComparisonMenu({
     (state.mode === "unpushed" && tracking?.behind
       ? " · " + t.behindUpstream.replace("{n}", String(tracking.behind))
       : "");
-  const selectedBase =
-    state.mode === "ref" && state.ref ? state.ref : defaultBase || t.head;
-  const selectedBranch = branchDisplayName(selectedBase);
+  const selectedBranch = reviewContext.branch;
+  const linkedPrNumber = reviewContext.pr?.number;
   const root = (
     <>
       <DropdownMenuRadioGroup
@@ -179,6 +238,7 @@ export function ComparisonMenu({
       >
         <DropdownMenuRadioItem
           value="unpushed"
+          className="whitespace-nowrap"
           disabled={!trackingReady}
           title={
             trackingReady
@@ -193,19 +253,35 @@ export function ComparisonMenu({
             {upstreamHint}
           </span>
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem value="all" title={t.hintLocalAll}>
+        <DropdownMenuRadioItem
+          value="all"
+          className="whitespace-nowrap"
+          title={t.hintLocalAll}
+        >
           {t.triggerUncommitted}
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem value="staged" title={t.hintLocalStaged}>
+        <DropdownMenuRadioItem
+          value="staged"
+          className="whitespace-nowrap"
+          title={t.hintLocalStaged}
+        >
           {t.staged}
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem value="unstaged" title={t.hintLocalUnstaged}>
+        <DropdownMenuRadioItem
+          value="unstaged"
+          className="whitespace-nowrap"
+          title={t.hintLocalUnstaged}
+        >
           {t.unstaged}
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem
-        className={revisionScope ? "relative pr-14" : "relative pr-8"}
+        className={
+          revisionScope
+            ? "relative whitespace-nowrap pr-14"
+            : "relative whitespace-nowrap pr-8"
+        }
         onSelect={(e) => {
           e.preventDefault();
           if (!revisionScope)
@@ -218,27 +294,39 @@ export function ComparisonMenu({
           enter("branch");
         }}
       >
-        <span className="flex min-w-0 items-center">
-          <span>{t.branch} </span>
-          <span className="min-w-0 truncate text-muted-foreground">
-            · {selectedBranch}
-          </span>
+        <span className="flex min-w-0 items-center whitespace-nowrap">
+          <span className="shrink-0">{t.branch} </span>
+          {selectedBranch && (
+            <span className="min-w-0 truncate text-muted-foreground">
+              · {reviewContext.driver === "pr" ? `${t.prHead}: ` : ""}
+              {selectedBranch}
+            </span>
+          )}
         </span>
         {revisionScope && <Check className="absolute right-8 size-4" />}
         <ChevronRight className="absolute right-2 size-4 text-muted-foreground" />
       </DropdownMenuItem>
       <DropdownMenuItem
-        className={state.mode === "pr" ? "relative pr-14" : "relative pr-8"}
+        className={
+          state.mode === "pr"
+            ? "relative whitespace-nowrap pr-14"
+            : "relative whitespace-nowrap pr-8"
+        }
         onSelect={(e) => {
           e.preventDefault();
           enter("pr");
         }}
       >
-        <span className="flex min-w-0 items-center">
-          <span>{t.pr} </span>
-          {state.pr && (
+        <span className="flex min-w-0 items-center whitespace-nowrap">
+          <span className="shrink-0">{t.pr} </span>
+          {linkedPrNumber && (
             <span className="min-w-0 truncate text-muted-foreground">
-              · #{state.pr}
+              · #{linkedPrNumber}
+              {reviewContext.pr?.state === "MERGED"
+                ? ` · ${t.prMerged}`
+                : reviewContext.pr?.state === "CLOSED"
+                  ? ` · ${t.prClosed}`
+                  : ""}
             </span>
           )}
         </span>
@@ -271,22 +359,35 @@ export function ComparisonMenu({
   );
   const branchOptions = (
     <>
-      <DropdownMenuLabel>{t.secTarget}</DropdownMenuLabel>
+      <DropdownMenuLabel
+        className="flex min-w-0 items-center whitespace-nowrap"
+        title={selectedBranch}
+      >
+        <span className="shrink-0">{t.secTarget}</span>
+        {selectedBranch && (
+          <span className="min-w-0 truncate">&nbsp;{selectedBranch}</span>
+        )}
+      </DropdownMenuLabel>
       <DropdownMenuRadioGroup
-        value={state.target || "worktree"}
+        aria-label={t.secTarget}
+        data-review-segments="target"
+        className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
+        value={state.target === "head" ? "head" : "worktree"}
         onValueChange={(target) => change({ mode: "ref", target })}
       >
         <DropdownMenuRadioItem
           value="worktree"
-          onSelect={(e) => e.preventDefault()}
           title={t.tgtWorktreeHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
         >
           {t.worktree}
         </DropdownMenuRadioItem>
         <DropdownMenuRadioItem
           value="head"
-          onSelect={(e) => e.preventDefault()}
           title={t.tgtHeadHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
         >
           {t.head}
         </DropdownMenuRadioItem>
@@ -294,20 +395,25 @@ export function ComparisonMenu({
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t.secMethod}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
-        value={state.dots || "three"}
+        aria-label={t.secMethod}
+        data-review-segments="method"
+        className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
+        value={state.dots === "two" ? "two" : "three"}
         onValueChange={(dots) => change({ mode: "ref", dots })}
       >
         <DropdownMenuRadioItem
           value="three"
-          onSelect={(e) => e.preventDefault()}
           title={t.methThreeHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
         >
           {t.three}
         </DropdownMenuRadioItem>
         <DropdownMenuRadioItem
           value="two"
-          onSelect={(e) => e.preventDefault()}
           title={t.methTwoHint}
+          className={MENU_SEGMENT}
+          onSelect={(event) => event.preventDefault()}
         >
           {t.two}
         </DropdownMenuRadioItem>
@@ -448,7 +554,7 @@ export function ComparisonMenu({
       )}
     </>
   );
-  const prData = state.mode === "pr" ? refs : prRefs.data;
+  const prData = pullRequests;
   const filteredPrs = (prData?.prs || []).filter(
     (pr) => !query || `${pr.number} ${pr.title}`.toLowerCase().includes(query),
   );
@@ -460,10 +566,19 @@ export function ComparisonMenu({
           pick({ mode: "pr", pr: draft.trim() });
       })}
       <div className="max-h-60 overflow-y-auto">
-        {prRefs.isPending && state.mode !== "pr" ? (
+        {pullRequestsPending && !prData ? (
           <p role="status" className="p-2 text-aux text-muted-foreground">
             {t.loading}
           </p>
+        ) : pullRequestsError ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              retryPullRequests();
+            }}
+          >
+            {errorMessage(pullRequestsError, t)} · {t.retry}
+          </DropdownMenuItem>
         ) : (
           filteredPrs.map((pr) => (
             <DropdownMenuItem
@@ -477,27 +592,24 @@ export function ComparisonMenu({
             </DropdownMenuItem>
           ))
         )}
-        {prData?.prState && prData.prState !== "ready" && (
-          <p className="p-2 text-aux text-muted-foreground">
-            {errorMessage(prData.prState, t)}
-          </p>
-        )}
-        {!prRefs.isPending &&
+        {!pullRequestsError &&
+          prData?.prState &&
+          prData.prState !== "ready" && (
+            <p className="p-2 text-aux text-muted-foreground">
+              {errorMessage(prData.prState, t)}
+            </p>
+          )}
+        {!pullRequestsError &&
           prData?.prState === "ready" &&
           filteredPrs.length === 0 && (
             <p className="p-2 text-aux text-muted-foreground">{t.prNoMatch}</p>
           )}
-        {prRefs.error && state.mode !== "pr" && (
-          <p className="p-2 text-aux text-muted-foreground">
-            {errorMessage(prRefs.error.message, t)}
-          </p>
-        )}
       </div>
     </>
   );
   const branch = (
     <>
-      {back(`${t.secTarget} ${selectedBranch}`)}
+      {back(t.branch)}
       <DropdownMenuItem
         className="relative pr-8"
         onSelect={(e) => {
@@ -543,24 +655,39 @@ export function ComparisonMenu({
   // A ready result always wins synchronously; if loading stalls, remove the stale counts after 3s.
   const [lastReadyAll, setLastReadyAll] = useState<ChangeCount>();
   useEffect(() => {
+    if (comparisonUnavailable) {
+      setLastReadyAll(undefined);
+      return;
+    }
     if (data) {
       setLastReadyAll(files.length > 0 ? all : undefined);
       return;
     }
     const timer = window.setTimeout(() => setLastReadyAll(undefined), 3000);
     return () => window.clearTimeout(timer);
-  }, [data, files.length, all.files, all.added, all.deleted]);
-  const displayedAll = data
-    ? files.length > 0
-      ? all
-      : undefined
-    : lastReadyAll;
+  }, [
+    comparisonUnavailable,
+    data,
+    files.length,
+    all.files,
+    all.added,
+    all.deleted,
+  ]);
+  const displayedAll = comparisonUnavailable
+    ? undefined
+    : data
+      ? files.length > 0
+        ? all
+        : undefined
+      : lastReadyAll;
   const summary = (label: string, count: ChangeCount) => (
-    <div className="flex items-center justify-between gap-3 px-2 py-1 text-xs">
-      <span className="text-muted-foreground">
+    <div className="flex items-center justify-between gap-3 whitespace-nowrap px-2 py-1 text-xs">
+      <span className="shrink-0 whitespace-nowrap text-muted-foreground">
         {label} · {count.files}
       </span>
-      <Stats added={count.added} deleted={count.deleted} zero />
+      <span className="shrink-0 whitespace-nowrap">
+        <Stats added={count.added} deleted={count.deleted} zero />
+      </span>
     </div>
   );
   const changeSummary = files.length > 0 && (
@@ -607,6 +734,7 @@ export function ComparisonMenu({
       <DropdownMenuContent
         align="start"
         collisionPadding={8}
+        onKeyDownCapture={keepBranchKeyboardOrder}
         className={pane === "root" || pane === "branch" ? "w-56" : WIDTH}
       >
         {pane === "pr" ? (

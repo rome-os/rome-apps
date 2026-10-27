@@ -8,6 +8,14 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 
+async function expectFocused(locator, message) {
+  assert.equal(
+    await locator.evaluate((element) => element === document.activeElement),
+    true,
+    message,
+  );
+}
+
 // Match the shared radio-item geometry while Branch and PR use the trailing drill rail.
 async function scopeAlignment(view, branchSelected) {
   const local = view.getByRole("menuitemradio", {
@@ -98,13 +106,36 @@ async function revisionAlignment(view, committed = false) {
   const row = await base.boundingBox();
   assert.ok(Math.abs(row.x + row.width - arrow.x - arrow.width - 8) < 1);
   for (const item of await view
-    .locator(
-      '[role="menu"] [role="menuitemradio"], [role="menu"] [data-slot="dropdown-menu-label"]',
-    )
+    .locator('[role="menu"] [data-slot="dropdown-menu-label"]')
     .all()) {
     assert.ok(
       Math.abs(left - (await geometry(item))) < 1,
-      "All section labels and choices align",
+      "All section labels align with the drill-down rows",
+    );
+  }
+  const segmentedGroups = view.locator('[role="menu"] [data-review-segments]');
+  assert.equal(
+    await segmentedGroups.count(),
+    2,
+    "Target and comparison method each use one segmented group",
+  );
+  for (const group of await segmentedGroups.all()) {
+    const radios = group.getByRole("menuitemradio");
+    assert.equal(await radios.count(), 2);
+    const [first, second] = await Promise.all([
+      radios.nth(0).boundingBox(),
+      radios.nth(1).boundingBox(),
+    ]);
+    assert.ok(first && second);
+    assert.ok(
+      Math.abs(first.y - second.y) < 1 &&
+        Math.abs(first.height - second.height) < 1 &&
+        Math.abs(first.width - second.width) < 1,
+      "Each segmented choice is an equal-width horizontal pair",
+    );
+    assert.ok(
+      first.x + first.width <= second.x + 1,
+      "Segmented choices must not wrap or overlap",
     );
   }
   if (committed) {
@@ -112,15 +143,6 @@ async function revisionAlignment(view, committed = false) {
     assert.ok(
       check.x > left && check.x + check.width <= historyArrow.x,
       "Committed selection stays on the right without moving its label",
-    );
-  } else {
-    const check = await view
-      .locator('[role="menuitemradio"][aria-checked="true"] svg')
-      .first()
-      .boundingBox();
-    assert.ok(
-      Math.abs(check.x - arrow.x) < 1,
-      "Arrows and radio checks share a trailing column",
     );
   }
 }
@@ -181,9 +203,8 @@ test(
     const { createApiHandler } = await import("../dist/api/index.js");
     const handler = createApiHandler({});
     const root = resolve(
-        fileURLToPath(new URL("../dist/web/", import.meta.url)),
-      ),
-      requests = [];
+      fileURLToPath(new URL("../dist/web/", import.meta.url)),
+    );
     const server = createServer(async (req, res) => {
       try {
         const u = new URL(req.url, "http://localhost");
@@ -195,7 +216,6 @@ test(
           return;
         }
         if (u.pathname.startsWith("/api/apps/diffview/")) {
-          requests.push(u.pathname);
           const r = await handler.handle({
             caller: { kind: "guardian" },
             method: req.method,
@@ -246,18 +266,56 @@ test(
     const origin = `http://127.0.0.1:${server.address().port}`;
     try {
       for (const width of [360, 447, 1100]) {
+        const historicalState = width === 360 ? "CLOSED" : "MERGED";
+        const historicalLabel = width === 360 ? "已关闭" : "已合并";
         const page = await browser.newPage({
             viewport: { width, height: 720 },
           }),
-          errors = [],
-          prRequestsAtStart = requests.filter((request) =>
-            request.endsWith("/refs"),
-          ).length;
+          errors = [];
+        if (width === 1100) await page.clock.install();
+        let refsRequests = 0;
+        page.on("request", (request) => {
+          if (new URL(request.url()).pathname.endsWith("/refs")) refsRequests++;
+        });
         page.on("pageerror", (e) => errors.push(e.message));
         page.on("console", (m) => {
           if (m.type() === "error" && !m.text().includes("409 (Conflict)"))
             errors.push(m.text());
         });
+        await page.route("**/api/apps/diffview/refs?*", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              branches: ["main", branch],
+              commits: [],
+              tags: [],
+              currentBranch: branch,
+              branchRepositoryId: "LOCAL",
+              currentBranchPr: {
+                number: 30,
+                title: "Current branch PR",
+                baseRefName: "main",
+                headRefName: branch,
+                updatedAt: "2026-10-27T10:00:00Z",
+                headRepository: { id: "LOCAL" },
+                state: historicalState,
+              },
+              prs: [
+                {
+                  number: 18,
+                  title: "Other branch PR",
+                  baseRefName: "main",
+                  headRefName: "refactor/code-review-ui-library",
+                  updatedAt: "2026-10-27T09:00:00Z",
+                  headRepository: { id: "LOCAL" },
+                  state: "OPEN",
+                },
+              ],
+              prState: "ready",
+            }),
+          }),
+        );
         await page.goto(
           width === 447
             ? origin + "/host"
@@ -285,6 +343,7 @@ test(
           file = (name) =>
             v.getByRole("button", { name: "折叠文件: " + name, exact: true });
         await v.locator("diffs-container").first().waitFor();
+        let refsRequestsAtScopeChecks = refsRequests;
         const scopeSizing = await scope.evaluate((element) => {
           const style = getComputedStyle(element);
           return {
@@ -452,11 +511,53 @@ test(
           .allTextContents();
         assert.deepEqual(
           entries.map((s) => s.replace(/↑1/, "").trim()),
-          ["未推送", "未提交", "已暂存", "未暂存", "分支 · main", "拉取请求"],
+          [
+            "未推送",
+            "未提交",
+            "已暂存",
+            "未暂存",
+            `分支 · ${branch}`,
+            `拉取请求 · #30 · ${historicalLabel}`,
+          ],
         );
+        const markedRows = [
+          v.getByRole("menuitemradio", { name: /未推送/ }),
+          v.getByRole("menuitemradio", { name: "未提交", exact: true }),
+          v.getByRole("menuitemradio", { name: "已暂存", exact: true }),
+          v.getByRole("menuitemradio", { name: "未暂存", exact: true }),
+          v.getByRole("menuitem", { name: `分支 · ${branch}`, exact: true }),
+          v.getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          }),
+        ];
+        for (const row of markedRows)
+          assert.equal(
+            await row.evaluate(
+              (element) => getComputedStyle(element).whiteSpace,
+            ),
+            "nowrap",
+            `${await row.textContent()} must remain on one line`,
+          );
+        assert.deepEqual(
+          await changeSummary
+            .locator(":scope > div")
+            .evaluateAll((rows) =>
+              rows.map((row) => getComputedStyle(row).whiteSpace),
+            ),
+          ["nowrap", "nowrap", "nowrap"],
+          "All three change-summary rows must remain on one line",
+        );
+        // Returning from the other repository starts one repository-level refs request.
+        // Let that activation settle before asserting that scope-only changes add none.
+        await page.waitForTimeout(100);
+        refsRequestsAtScopeChecks = refsRequests;
         const [prBox, summaryBox] = await Promise.all([
           v
-            .getByRole("menuitem", { name: "拉取请求", exact: true })
+            .getByRole("menuitem", {
+              name: `拉取请求 · #30 · ${historicalLabel}`,
+              exact: true,
+            })
             .boundingBox(),
           changeSummary.boundingBox(),
         ]);
@@ -470,10 +571,10 @@ test(
         assert.equal(
           await v
             .getByRole("menuitem", {
-              name: "分支 · main",
+              name: `分支 · ${branch}`,
               exact: true,
             })
-            .getByText("· main", { exact: true })
+            .getByText(`· ${branch}`, { exact: true })
             .evaluate((element) =>
               element.classList.contains("text-muted-foreground"),
             ),
@@ -497,7 +598,7 @@ test(
         await file("loose.test.ts").waitFor();
         await scope.click();
         const branchAction = v.getByRole("menuitem", {
-          name: "分支 · main",
+          name: `分支 · ${branch}`,
           exact: true,
         });
         assert.equal(
@@ -511,10 +612,72 @@ test(
           0,
         );
         await branchAction.click();
-        await v
-          .getByRole("menuitem", { name: "返回: 对比到 main", exact: true })
-          .waitFor();
+        const branchBack = v.getByRole("menuitem", {
+          name: "返回: 分支",
+          exact: true,
+        });
+        await branchBack.waitFor();
+        assert.equal(await branchBack.getAttribute("title"), "分支");
+        assert.equal(
+          await branchBack.evaluate(
+            (element) => getComputedStyle(element).whiteSpace,
+          ),
+          "nowrap",
+        );
+        const targetLabel = v
+          .locator('[data-slot="dropdown-menu-label"]')
+          .filter({ hasText: branch });
+        await targetLabel.waitFor();
+        assert.equal(await targetLabel.getAttribute("title"), branch);
+        assert.equal(
+          await targetLabel.evaluate(
+            (element) => getComputedStyle(element).whiteSpace,
+          ),
+          "nowrap",
+        );
+        assert.equal(
+          await targetLabel
+            .locator("span")
+            .last()
+            .evaluate((element) => getComputedStyle(element).textOverflow),
+          "ellipsis",
+        );
         await revisionAlignment(v);
+        if (width === 447) {
+          const baseItem = v.getByRole("menuitem", { name: /^基准/ });
+          const historyItem = v.getByRole("menuitem", {
+            name: "已提交",
+            exact: true,
+          });
+          const worktreeItem = v.getByRole("menuitemradio", {
+            name: "工作区",
+            exact: true,
+          });
+          const headItem = v.getByRole("menuitemradio", {
+            name: "HEAD",
+            exact: true,
+          });
+          await branchBack.focus();
+          await branchBack.press("ArrowDown");
+          await expectFocused(baseItem, "Base is keyboard reachable");
+          await baseItem.press("ArrowDown");
+          await expectFocused(historyItem, "History is keyboard reachable");
+          await historyItem.press("ArrowDown");
+          await expectFocused(
+            worktreeItem,
+            "The first target segment is keyboard reachable",
+          );
+          await worktreeItem.press("ArrowDown");
+          await expectFocused(
+            headItem,
+            "The second target segment is keyboard reachable",
+          );
+          await headItem.press("Enter");
+          assert.equal(await headItem.getAttribute("aria-checked"), "true");
+          await headItem.press("ArrowUp");
+          await worktreeItem.press("Enter");
+          assert.equal(await worktreeItem.getAttribute("aria-checked"), "true");
+        }
         assert.equal(await v.getByRole("menu").count(), 1);
         assert.equal(
           await v
@@ -554,7 +717,7 @@ test(
           0,
         );
         await scope.click();
-        await v.getByRole("menuitem", { name: /^分支 · / }).click();
+        await v.getByRole("menuitem", { name: "分支", exact: true }).click();
         await bounds();
         await revisionAlignment(v, true);
         await shot("revision-committed");
@@ -570,7 +733,7 @@ test(
           new RegExp(initial.slice(0, 7)),
         );
         await scope.click();
-        await v.getByRole("menuitem", { name: /^分支 · / }).click();
+        await v.getByRole("menuitem", { name: "分支", exact: true }).click();
         await v.getByRole("menuitem", { name: /^基准/ }).click();
         await v
           .getByRole("textbox", { name: "分支、标签或提交", exact: true })
@@ -590,7 +753,9 @@ test(
         await shot("branch");
         assert.match(await scope.textContent(), /^main/);
         await scope.click();
-        await v.getByRole("menuitem", { name: /^分支 · main/ }).click();
+        await v
+          .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
+          .click();
         await v
           .getByRole("menuitemradio", { name: "工作区", exact: true })
           .click();
@@ -661,22 +826,9 @@ test(
           await forced;
         }
         assert.ok(
-          requests.filter((request) => request.endsWith("/refs")).length ===
-            prRequestsAtStart,
-          "normal scopes must not query GitHub PRs",
-        );
-        await page.route("**/api/apps/diffview/refs?*", (route) =>
-          route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              branches: ["main"],
-              commits: [],
-              tags: [],
-              prs: [],
-              prState: "ready",
-            }),
-          }),
+          refsRequests <=
+            refsRequestsAtScopeChecks + 1 + (width === 1100 ? 1 : 0),
+          "scope changes reuse a repository-level bounded branch/PR DTO instead of fanning out by row",
         );
         let releasePrFiles;
         const prFilesGate =
@@ -703,17 +855,21 @@ test(
               fingerprint: "test-pr",
               head: "head",
               base: "base",
+              pullRequest: {
+                number: 18,
+                baseRefName: "main",
+                headRefName: "refactor/code-review-ui-library",
+              },
             }),
           });
         });
-        const prRequest = page.waitForRequest((request) =>
-          new URL(request.url()).pathname.endsWith("/refs"),
-        );
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求", exact: true })
+          .getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          })
           .click();
-        await prRequest;
         const prInput = v.getByRole("textbox", {
           name: "PR 编号",
           exact: true,
@@ -725,18 +881,24 @@ test(
           .click();
         assert.equal(
           await v
-            .getByRole("menuitem", { name: "拉取请求", exact: true })
+            .getByRole("menuitem", {
+              name: `拉取请求 · #30 · ${historicalLabel}`,
+              exact: true,
+            })
             .count(),
           1,
         );
         await v.getByRole("menu").press("Escape");
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求", exact: true })
+          .getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          })
           .click();
         await v
           .getByRole("textbox", { name: "PR 编号", exact: true })
-          .fill("123");
+          .fill("18");
         const prFilesResponse = page.waitForResponse((response) => {
           const url = new URL(response.url());
           return (
@@ -747,11 +909,11 @@ test(
         await v
           .getByRole("textbox", { name: "PR 编号", exact: true })
           .press("Enter");
-        assert.match(await scope.textContent(), /^#123/);
+        assert.match(await scope.textContent(), /^#18/);
         if (width === 447) {
           assert.match(
             (await scope.textContent()).replace(/\s/g, ""),
-            /^#123\+2−1/,
+            /^#18\+2−1/,
             "The previous indicator stays in place while the new diff loads",
           );
           await v.waitForTimeout(2500);
@@ -773,7 +935,57 @@ test(
         });
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求 · #123", exact: true })
+          .getByRole("menuitem", {
+            name: "分支 · PR 分支: refactor/code-review-ui-library",
+            exact: true,
+          })
+          .waitFor();
+        await v
+          .getByRole("menuitem", { name: "拉取请求 · #18", exact: true })
+          .waitFor();
+        await shot("pr-linked");
+        // The passive PR head is explicitly identified, never offered as a local ref switch.
+        await v
+          .getByRole("menuitem", {
+            name: "分支 · PR 分支: refactor/code-review-ui-library",
+            exact: true,
+          })
+          .click();
+        await v
+          .getByRole("menuitem", { name: "返回: 分支", exact: true })
+          .waitFor();
+        assert.match(
+          await v
+            .locator('[data-slot="dropdown-menu-label"]')
+            .first()
+            .textContent(),
+          new RegExp(branch),
+        );
+        assert.doesNotMatch(
+          await v.getByRole("menu").textContent(),
+          /refactor\/code-review-ui-library/,
+        );
+        assert.equal(
+          new URLSearchParams(
+            (await v.evaluate(() => location.hash)).slice(1),
+          ).get("mode"),
+          "ref",
+        );
+        await v
+          .getByRole("menuitem", { name: "返回: 分支", exact: true })
+          .click();
+        await v
+          .getByRole("menuitemradio", { name: "未提交", exact: true })
+          .click();
+        await scope.click();
+        await v
+          .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
+          .waitFor();
+        await v
+          .getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          })
           .waitFor();
         await v.getByRole("menu").press("Escape");
         await v.getByRole("button", { name: "审阅选项", exact: true }).click();
@@ -785,6 +997,91 @@ test(
           "PR selection no longer lives in the ambiguous overflow menu",
         );
         await v.getByRole("menu").press("Escape");
+        if (width === 1100) {
+          // Keep /repos on its original branch. The independent local tracking poll is the
+          // checkout authority, even while gh is slow and the old PR cache is still fresh.
+          const switched = "switched-checkout";
+          await page.route("**/api/apps/diffview/tracking?*", (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                state: "no_upstream",
+                branch: switched,
+                head: feature,
+                upstream: "",
+                upstreamHead: "",
+                ahead: 0,
+                behind: 0,
+              }),
+            }),
+          );
+          await page.unroute("**/api/apps/diffview/refs?*");
+          let release;
+          const delayed = new Promise((resolve) => {
+            release = resolve;
+          });
+          let staleSnapshot = true;
+          const association = {
+            number: 31,
+            headRefName: switched,
+            state: "OPEN",
+            headRepository: { id: "OTHER_REMOTE" },
+          };
+          await page.route("**/api/apps/diffview/refs?*", async (route) => {
+            await delayed;
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                currentBranch: staleSnapshot ? branch : switched,
+                branchRepositoryId: "OTHER_REMOTE",
+                currentBranchPr: association,
+                prs: [association],
+                prState: "ready",
+              }),
+            });
+          });
+          const beforeSwitch = refsRequests;
+          await page.clock.fastForward(15_100);
+          await scope.click();
+          await v
+            .getByRole("menuitem", { name: `分支 · ${switched}`, exact: true })
+            .waitFor();
+          assert.equal(
+            refsRequests,
+            beforeSwitch + 1,
+            "a checkout change immediately requests its own PR context",
+          );
+          assert.equal(
+            await v
+              .getByRole("menuitem", { name: "拉取请求", exact: true })
+              .count(),
+            1,
+            "the local branch remains usable while GitHub is pending",
+          );
+          const staleResponse = page.waitForResponse((r) =>
+            new URL(r.url()).pathname.endsWith("/refs"),
+          );
+          release();
+          await staleResponse;
+          await page.waitForTimeout(200);
+          assert.equal(
+            await v
+              .getByRole("menuitem", { name: "拉取请求", exact: true })
+              .count(),
+            1,
+            "a late snapshot cannot apply a previous checkout's repository identity",
+          );
+          await v.getByRole("menu").press("Escape");
+          staleSnapshot = false;
+          await v.getByRole("button", { name: "刷新", exact: true }).click();
+          await scope.click();
+          await v
+            .getByRole("menuitem", { name: "拉取请求 · #31", exact: true })
+            .waitFor();
+          await v.getByRole("menu").press("Escape");
+        }
         await page.unroute("**/api/apps/diffview/refs?*");
         await page.unroute("**/api/apps/diffview/files?*");
         await bounds();
@@ -799,6 +1096,224 @@ test(
         assert.deepEqual(errors, []);
         await page.close();
       }
+      // Passive context stays live at a lower cost; active menus and PR reviews stay fast.
+      const polling = await browser.newPage({
+        viewport: { width: 1100, height: 720 },
+      });
+      await polling.clock.install();
+      let polls = 0;
+      await polling.route("**/api/apps/diffview/refs?*", (route) => {
+        polls++;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            currentBranch: branch,
+            branchRepositoryId: "LOCAL",
+            prs: [],
+            prState: "ready",
+          }),
+        });
+      });
+      await polling.goto(
+        origin +
+          "/?lang=zh#" +
+          new URLSearchParams({ repo, mode: "uncommitted", unified: "3" }),
+      );
+      await polling.locator("diffs-container").first().waitFor();
+      await polling.waitForFunction(() =>
+        document.querySelector('[aria-label="比较版本"]'),
+      );
+      await polling.waitForTimeout(200);
+      assert.equal(polls, 1);
+      await polling.clock.fastForward(60_100);
+      await polling.waitForTimeout(200);
+      assert.equal(
+        polls,
+        1,
+        "local browsing must not poll GitHub every minute",
+      );
+      const passivePoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling.clock.fastForward(240_000);
+      await passivePoll;
+      assert.equal(
+        polls,
+        2,
+        "passive context still refreshes every five minutes",
+      );
+      await polling.waitForTimeout(200);
+      await polling.clock.fastForward(61_000);
+      const menuPoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling
+        .getByRole("button", { name: "比较版本", exact: true })
+        .click();
+      await menuPoll;
+      assert.equal(
+        polls,
+        3,
+        "opening a menu refreshes stale PR context immediately",
+      );
+      await polling.waitForTimeout(200);
+      const activePoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling.clock.fastForward(60_100);
+      await activePoll;
+      assert.equal(
+        polls,
+        4,
+        "an open comparison menu retains one-minute polling",
+      );
+      await polling.getByRole("menu").press("Escape");
+      await polling.clock.fastForward(60_100);
+      await polling.waitForTimeout(200);
+      assert.equal(polls, 4, "closing the menu restores passive polling");
+      await polling.evaluate(() => {
+        const q = new URLSearchParams(location.hash.slice(1));
+        q.set("mode", "pr");
+        q.delete("pr");
+        location.hash = q.toString();
+      });
+      await polling
+        .getByRole("button", { name: "选择 PR", exact: true })
+        .waitFor();
+      const prPoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling.clock.fastForward(60_100);
+      await prPoll;
+      assert.equal(
+        polls,
+        5,
+        "PR mode retains one-minute polling even with its menu closed",
+      );
+      await polling.close();
+      const failedPrs = await browser.newPage({
+        viewport: { width: 447, height: 660 },
+      });
+      await failedPrs.route("**/api/apps/diffview/refs?*", (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "internal" }),
+        }),
+      );
+      await failedPrs.goto(
+        origin +
+          "/?lang=zh#" +
+          new URLSearchParams({ repo, mode: "uncommitted", unified: "3" }),
+      );
+      const failedScope = failedPrs.getByRole("button", {
+        name: "比较版本",
+        exact: true,
+      });
+      await failedScope.waitFor();
+      await failedScope.click();
+      await failedPrs
+        .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
+        .click();
+      await failedPrs.getByRole("menuitem", { name: /^基准/ }).click();
+      await failedPrs
+        .getByRole("menuitemradio", { name: branch, exact: true })
+        .waitFor();
+      await failedPrs.getByRole("menu").press("Escape");
+      await failedScope.click();
+      await failedPrs
+        .getByRole("menuitem", { name: "拉取请求", exact: true })
+        .click();
+      await failedPrs
+        .getByRole("menuitem", { name: "无法读取仓库。 · 重试", exact: true })
+        .waitFor();
+      assert.equal(
+        await failedPrs.getByRole("status", { name: "加载中…" }).count(),
+        0,
+      );
+      await failedPrs.close();
+      // Tracking failure must not keep the independent PR picker pending forever.
+      const failedTracking = await browser.newPage({
+        viewport: { width: 447, height: 660 },
+      });
+      let trackingRequests = 0,
+        fallbackPrRequests = 0;
+      await failedTracking.route("**/api/apps/diffview/tracking?*", (route) => {
+        trackingRequests++;
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "internal" }),
+        });
+      });
+      await failedTracking.route("**/api/apps/diffview/refs?*", (route) => {
+        fallbackPrRequests++;
+        return route.fulfill({
+          status: fallbackPrRequests <= 2 ? 500 : 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            fallbackPrRequests <= 2
+              ? { error: "internal" }
+              : {
+                  currentBranch: branch,
+                  branchRepositoryId: "LOCAL",
+                  prs: [
+                    {
+                      number: 18,
+                      title: "Available despite tracking failure",
+                      headRefName: branch,
+                      headRepository: { id: "LOCAL" },
+                    },
+                  ],
+                  prState: "ready",
+                },
+          ),
+        });
+      });
+      await failedTracking.goto(
+        origin +
+          "/?lang=zh#" +
+          new URLSearchParams({ repo, mode: "uncommitted", unified: "3" }),
+      );
+      await failedTracking
+        .getByRole("button", { name: "比较版本", exact: true })
+        .click();
+      await failedTracking
+        .getByRole("menuitem", { name: "拉取请求", exact: true })
+        .click();
+      const retryFallback = failedTracking.getByRole("menuitem", {
+        name: "无法读取仓库。 · 重试",
+        exact: true,
+      });
+      await retryFallback.waitFor({ timeout: 10_000 });
+      assert.ok(
+        trackingRequests >= 2,
+        "tracking has exhausted its automatic retry",
+      );
+      assert.equal(
+        fallbackPrRequests,
+        2,
+        "PR request runs and retries without tracking data",
+      );
+      await retryFallback.click();
+      await failedTracking
+        .getByRole("menuitem", {
+          name: "#18 Available despite tracking failure",
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(await failedTracking.getByRole("status").count(), 0);
+      await failedTracking
+        .getByRole("menuitem", { name: "返回: 拉取请求", exact: true })
+        .click();
+      await failedTracking
+        .getByRole("menuitem", { name: "分支", exact: true })
+        .waitFor();
+      await failedTracking
+        .getByRole("menuitem", { name: "拉取请求", exact: true })
+        .waitFor();
+      await failedTracking.close();
       const emptyCommit = await browser.newPage({
         viewport: { width: 447, height: 660 },
       });

@@ -1,5 +1,7 @@
 # Diff design contract
+
 Mode: Operate. Fixed world: Rome tokens and @rome-os/ui; pinned composition: Codex Changes pane.
+
 - One compact toolbar: repo chip, comparison + all-totals pill, quiet icon cluster and overflow. Repository
   and comparison triggers omit decorative down arrows; comparison details live inside one popup rather than
   consuming another toolbar pill.
@@ -16,7 +18,7 @@ Mode: Operate. Fixed world: Rome tokens and @rome-os/ui; pinned composition: Cod
   data, crops it to the per-file caps, and delivers it in **pages** of the files that carry a text
   diff (`src/shared/paging.ts`). A cursor is an index into that sequence.
 - `GET files` returns the whole file list plus the **first page**; `GET patches?cursor=N&q=…&fp=…`
-  returns the page starting at *any* cursor, over the sequence filtered by `q` (the same substring
+  returns the page starting at _any_ cursor, over the sequence filtered by `q` (the same substring
   filter as the file tree). Jumping or filtering therefore costs one request, not a walk through
   earlier pages.
 - The client keeps **at most one request in flight** and fetches **on demand around the focused
@@ -32,11 +34,11 @@ Mode: Operate. Fixed world: Rome tokens and @rome-os/ui; pinned composition: Cod
 
 ### Why path-limited pages (measured, 20,000 changed files, 45 MB of patch)
 
-| way to get a page | cost |
-|---|---|
-| whole `git diff -p` | 2.7 s |
+| way to get a page                                    | cost                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| whole `git diff -p`                                  | 2.7 s                                                      |
 | `git diff --skip-to=<path>`, read until enough, kill | ~0.75 s per page (git first builds the whole change queue) |
-| `git diff -- <the page's 150 paths>` | ~0.13 s per page (~0.04 s for a directory prefix) |
+| `git diff -- <the page's 150 paths>`                 | ~0.13 s per page (~0.04 s for a directory prefix)          |
 
 `git diff` has no offset/limit and `--pathspec-from-file` is not supported by it; `--skip-to`,
 pathspecs, `--diff-filter` and `--no-renames` are the available knobs. Page and file requests carry
@@ -55,10 +57,25 @@ that top border and the two coincide. Both use one opaque colour (`HEADER_LINE`,
 ## What can be compared, and how the trigger reads
 
 The scope menu starts in this order: **Unpushed**, **Uncommitted**, **Staged**,
-**Unstaged**, separator, **Branch · selected ref**, **Pull Request · #number**. Branch and Pull Request
+**Unstaged**, separator, **Branch · review branch**, **Pull Request · #number**. Branch and Pull Request
 drill down in place inside the same popup; there is no adjacent revision trigger or overflow-menu PR action. There is no "Local changes /
 Include" layer and no "Last turn" placeholder: accurate turn snapshots are a separate
 platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged/Unstaged.
+
+Branch and Pull Request are two views of one review context, not two unrelated persisted choices.
+For local and ref comparisons the checked-out branch drives the context and its most recent associated PR
+(open, merged, or closed) follows passively; merged/closed associations include their state in the row.
+For a PR comparison the exact selected PR drives the context and Branch follows its head branch with an
+explicit **PR head** prefix (selecting Branch still switches to the local worktree). A commit comparison is
+intentionally neutral because a detached object does not identify one review branch. The comparison base remains a separate Branch-pane field and is never shown as
+the review branch. Stale inactive URL fields do not override the active mode. Local branches/tags/commits load from
+the Git-only `revisions` DTO and never wait for GitHub. The bounded open-PR list and one exact current-branch
+association load independently at repository scope; resolving an explicit PR also returns its exact base/head
+metadata, including when it is outside that list. Passive association requires both the branch name and the same
+head repository, and chooses the most recently updated match through one shared matcher. The checkout identity is
+resolved from its tracking remote (origin when untracked) to a canonical GitHub node ID; never use the PR’s
+head-versus-base `isCrossRepository` flag for this. Unknown identities do not link passively. Identity resolution
+and per-branch historical hits/misses are bounded-cache entries with a five-minute TTL; fresh open-list matches win.
 
 - Unpushed = the current branch's merge base with its tracking upstream → HEAD, excluding
   dirty/index/untracked files. Never substitute the default branch and never fetch automatically.
@@ -78,16 +95,24 @@ platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged
   names truncate and full semantics stay in the tooltip.
 - The comparison pill always shows **all-change** additions/deletions. The menu's bottom summary breaks those
   totals into primary, supporting and all changes, so supporting changes remain visible without moving the scope rows.
-- Pull Request is a root comparison choice. Entering its picker is lazy and ordinary local/branch/history browsing
-  never makes GitHub requests.
+- Root scope labels, Branch/Pull Request identities, and every change-summary row are single-line controls. Literal
+  labels never shrink into vertical CJK text; long branch identities truncate, while counts and +/- metrics never wrap.
+- The Branch pane's Back row is the stable section title **Branch**. The target section owns the
+  **Compare to · branch** identity, keeps it on one truncated line, and exposes the complete branch as its title.
+  Target (worktree/HEAD) and comparison method (merge base/two-dot) use full-width horizontal segmented controls.
+  Inside the Radix menu those segments remain native menu radio items—not a nested standalone radiogroup—so the
+  menu's arrow-key focus order reaches and activates every choice.
+- Pull Request is a root comparison choice. Its bounded list is loaded with branch context at repository scope,
+  so local and branch modes can show a matching PR without per-row requests. It refreshes at most once per minute
+  or on explicit refresh.
 - Legacy `mode=branch` links still migrate to a committed-only `ref` comparison. New commit
   and unpushed modes persist independently in conversation state, scroll keys and viewed marks.
 
 ### Second-level lists drill down in place, they do not open beside the menu
 
-The branch, ref, commit and pull-request pickers are levels of the *same* menu: choosing their row swaps
+The branch, ref, commit and pull-request pickers are levels of the _same_ menu: choosing their row swaps
 the menu's content for the list, with a "‹ back" row on top, and the menu grows to
-`min(20rem, available width)`. A Radix sub-menu opens *beside* its parent and needs room there; in
+`min(20rem, available width)`. A Radix sub-menu opens _beside_ its parent and needs room there; in
 the chat's side panel the app is an iframe about 450px wide, where the parent menu alone takes 208px
 and the sub-menu ended up 156px wide squeezed against the edge (measured). `side`/`align` cannot
 be overridden on `DropdownMenuSubContent` (Radix sets them after spreading props), so the pane swap
@@ -100,7 +125,7 @@ is the way to keep the list readable at any width. Verified at 360, 447 and 1100
 - The wording lives in `describeComparison` / `describeEmpty` (`src/shared/describe.ts`), pure
   functions covered by tests for every combination.
 
-Empty states say *why* and offer the one useful step, instead of a generic "no changes":
+Empty states say _why_ and offer the one useful step, instead of a generic "no changes":
 on the base branch itself ("HEAD is already at main") → compare with the working tree; nothing
 staged → show all changes; no PR chosen → choose one; a PR number that matches nothing →
 "not found" rather than "no differences".

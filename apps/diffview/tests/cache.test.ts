@@ -115,3 +115,17 @@ test("TTL zero is single-flight only: no serialization, byte accounting or reten
   );
   assert.equal(await cache.get("fingerprint", async () => "new", 0), "new");
 });
+
+test("invalidation drops only the obsolete retained entry and releases its bytes", async () => {
+  const cache = new BoundedCache(4, 10000);
+  await cache.get("keep", async () => "unrelated");
+  const before = cache.bytes;
+  await cache.get("history", async () => undefined);
+  assert.ok(cache.bytes > before);
+  cache.invalidate("history");
+  cache.invalidate("missing");
+  assert.equal(cache.size, 1);
+  assert.equal(cache.bytes, before);
+  assert.equal(await cache.get("keep", async () => "lost"), "unrelated");
+  assert.equal(await cache.get("history", async () => "merged"), "merged");
+});
