@@ -1,12 +1,30 @@
-formatVersion: 1
+formatVersion: 2
 id: seo
-version: 0.2.1
-description: SEO and GEO skills plus workflow actions for audits, research, content, schema, reporting, and alerts
+name: SEO
+version: 0.3.0
+tagline: Check any page in seconds. Turn SEO findings into an action plan.
+icon: assets/icon.svg
+appRoot: dist
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: SEO
+  navLabel: SEO
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: seo
+description: SEO dashboard with instant page checks, saved AI reports, and SEO/GEO workflows for audits, research, metadata, schema, content, reporting, and alerting plans
 
 agents:
   - agents/seo.yaml
 
 actions:
+  - actions/run-dashboard
   - actions/audit-domain
   - actions/audit-page
   - actions/check-technical

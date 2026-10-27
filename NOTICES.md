@@ -15,7 +15,7 @@ The skills are packaged for Rome and may differ from the current upstream versio
 
 ### SEO & GEO Skills — Apache License 2.0
 
-- **Used by:** `apps/seo/skills`, `apps/seo/commands`, and associated references
+- **Used by:** `apps/seo/src/skills`, `apps/seo/src/commands`, and associated references
 - **Author:** Aaron He Zhu
 - **License:** Apache License 2.0; see `apps/seo/LICENSE.txt`
 - **Source:** https://github.com/aaron-he-zhu/seo-geo-claude-skills

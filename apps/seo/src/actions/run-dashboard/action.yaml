@@ -1,0 +1,8 @@
+name: run_dashboard
+type: custom
+description: Execute a persisted SEO dashboard job; accepts only an existing pending run ID
+entry: ./index.ts
+complexity: moderate
+speed: slow
+reliability: high
+sideEffects: write

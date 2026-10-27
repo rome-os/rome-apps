@@ -16,12 +16,16 @@ export interface SeoWorkflowSpec {
 export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
   audit_domain: {
     title: "Audit Domain",
-    summary: "Run a CITE domain authority audit with competitor and domain-type context.",
+    summary:
+      "Run a CITE domain authority audit with competitor and domain-type context.",
     skills: ["domain-authority-auditor", "backlink-analyzer"],
     fields: [
       { name: "domain", description: "Domain to audit", required: true },
       { name: "type", description: "Optional domain type weighting hint" },
-      { name: "competitors", description: "Optional competitor domains for comparison" },
+      {
+        name: "competitors",
+        description: "Optional competitor domains for comparison",
+      },
     ],
     workflow: [
       "Identify or confirm the domain type and apply the right CITE weighting profile.",
@@ -38,8 +42,15 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
     summary: "Run an on-page SEO audit plus a CORE-EEAT content-quality audit.",
     skills: ["on-page-seo-auditor", "content-quality-auditor"],
     fields: [
-      { name: "source", description: "URL or pasted content to audit", required: true },
-      { name: "keyword", description: "Optional target keyword for relevance scoring" },
+      {
+        name: "source",
+        description: "URL or pasted content to audit",
+        required: true,
+      },
+      {
+        name: "keyword",
+        description: "Optional target keyword for relevance scoring",
+      },
     ],
     workflow: [
       "Evaluate on-page SEO first, including structure, keywords, links, media, and obvious technical issues.",
@@ -55,7 +66,13 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
     title: "Check Technical",
     summary: "Run a focused technical SEO health check for a page or domain.",
     skills: ["technical-seo-checker"],
-    fields: [{ name: "target", description: "URL or domain to inspect", required: true }],
+    fields: [
+      {
+        name: "target",
+        description: "URL or domain to inspect",
+        required: true,
+      },
+    ],
     workflow: [
       "Determine whether the request is page-specific or domain-wide.",
       "Audit crawlability, HTTPS, performance, mobile readiness, URL health, and infrastructure signals.",
@@ -67,11 +84,19 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
   },
   generate_schema: {
     title: "Generate Schema",
-    summary: "Generate JSON-LD structured data for a target page or content description.",
+    summary:
+      "Generate JSON-LD structured data for a target page or content description.",
     skills: ["schema-markup-generator"],
     fields: [
-      { name: "schema_type", description: "Requested Schema.org type", required: true },
-      { name: "source", description: "Optional URL, content, or page description" },
+      {
+        name: "schema_type",
+        description: "Requested Schema.org type",
+        required: true,
+      },
+      {
+        name: "source",
+        description: "Optional URL, content, or page description",
+      },
     ],
     workflow: [
       "Identify the most specific schema type that fits the request and note any useful companion schemas.",
@@ -84,17 +109,22 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
   },
   keyword_research: {
     title: "Keyword Research",
-    summary: "Research keyword opportunities, intent, difficulty, and topic clusters.",
+    summary:
+      "Research keyword opportunities, intent, difficulty, and topic clusters.",
     skills: ["keyword-research", "competitor-analysis", "content-gap-analysis"],
     fields: [
       { name: "seed", description: "Seed keyword or topic", required: true },
       { name: "audience", description: "Optional target audience" },
       {
         name: "goal",
-        description: "Optional business goal such as traffic, leads, sales, or awareness",
+        description:
+          "Optional business goal such as traffic, leads, sales, or awareness",
       },
       { name: "authority", description: "Optional site authority level" },
-      { name: "competitors", description: "Optional competitor domains for gap analysis" },
+      {
+        name: "competitors",
+        description: "Optional competitor domains for gap analysis",
+      },
     ],
     workflow: [
       "Expand the seed topic into realistic keyword clusters and classify search intent.",
@@ -107,7 +137,8 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
   },
   optimize_meta: {
     title: "Optimize Meta",
-    summary: "Improve titles, descriptions, and social tags for CTR and search visibility.",
+    summary:
+      "Improve titles, descriptions, and social tags for CTR and search visibility.",
     skills: ["meta-tags-optimizer", "seo-content-writer"],
     fields: [
       { name: "source", description: "URL or page details", required: true },
@@ -126,12 +157,19 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
   report: {
     title: "Performance Report",
     summary: "Generate a period-based SEO and GEO performance report.",
-    skills: ["performance-reporter", "domain-authority-auditor", "content-quality-auditor"],
+    skills: [
+      "performance-reporter",
+      "domain-authority-auditor",
+      "content-quality-auditor",
+    ],
     fields: [
       { name: "domain", description: "Domain to report on", required: true },
       { name: "period", description: "Reporting period", required: true },
       { name: "comparison", description: "Optional comparison period" },
-      { name: "format", description: "Optional output format such as detailed or executive" },
+      {
+        name: "format",
+        description: "Optional output format such as detailed or executive",
+      },
     ],
     workflow: [
       "Build the report around the requested period and comparison window.",
@@ -147,8 +185,15 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
     summary: "Design alerting rules and playbooks for SEO and GEO monitoring.",
     skills: ["alert-manager", "rank-tracker"],
     fields: [
-      { name: "alert_type", description: "Alert type to configure", required: true },
-      { name: "threshold", description: "Optional numeric or qualitative threshold" },
+      {
+        name: "alert_type",
+        description: "Alert type to configure",
+        required: true,
+      },
+      {
+        name: "threshold",
+        description: "Optional numeric or qualitative threshold",
+      },
       { name: "keywords", description: "Optional keyword scope" },
       { name: "severity", description: "Optional alert severity" },
     ],
@@ -164,11 +209,22 @@ export const SEO_WORKFLOWS: Record<string, SeoWorkflowSpec> = {
   write_content: {
     title: "Write Content",
     summary: "Create SEO content and then run a GEO optimization pass.",
-    skills: ["seo-content-writer", "geo-content-optimizer", "content-quality-auditor"],
+    skills: [
+      "seo-content-writer",
+      "geo-content-optimizer",
+      "content-quality-auditor",
+    ],
     fields: [
       { name: "topic", description: "Content topic", required: true },
-      { name: "keyword", description: "Primary target keyword", required: true },
-      { name: "type", description: "Optional content type such as blog post or landing page" },
+      {
+        name: "keyword",
+        description: "Primary target keyword",
+        required: true,
+      },
+      {
+        name: "type",
+        description: "Optional content type such as blog post or landing page",
+      },
     ],
     workflow: [
       "Draft the content with a clear search intent match and a practical structure.",
@@ -189,7 +245,10 @@ export function getSeoWorkflowSpec(actionName: string): SeoWorkflowSpec {
   return spec;
 }
 
-export function buildSeoWorkflowPrompt(actionName: string, args: Record<string, unknown>): string {
+export function buildSeoWorkflowPrompt(
+  actionName: string,
+  args: Record<string, unknown>,
+): string {
   const spec = getSeoWorkflowSpec(actionName);
   const providedFields = spec.fields
     .map((field) => {

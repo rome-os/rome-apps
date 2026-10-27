@@ -1,18 +1,21 @@
 # SEO
 
-A full SEO and GEO toolkit in one app. Audit pages and domains, research keywords, write optimized content, generate schema markup, track performance, and get alerted when something important moves.
+Check a page in seconds, understand what needs attention, and turn the findings into a practical SEO action plan.
 
-## What you get
+## Instant page checks
 
-- **Audits** — full-domain authority audits and on-page content quality checks, with prioritized action plans
-- **Technical health** — quick checks for the technical issues that quietly tank rankings
-- **Keyword research** — find the right terms for a topic or niche, with intent and competition signals
-- **Content writing** — draft articles and pages optimized for both classic search and AI answer engines
-- **Meta optimization** — better titles, descriptions, and Open Graph tags for a page
-- **Schema markup** — generate JSON-LD structured data so search engines understand your pages
-- **Reports** — pull together performance reports across SEO and GEO metrics
-- **Alerts** — get notified when rankings, traffic, or critical metrics shift
+Enter a public URL to inspect its title, description, headings, canonical URL, indexing directives, language, mobile viewport, social tags, structured data, images, links, and text content. Get a page-health score, prioritized fixes, and search and social snippet previews. Checks also look for robots.txt and an XML sitemap. No AI needed.
 
-## When to use it
+## Nine AI workflows
 
-Reach for the SEO app when you're growing organic traffic — auditing a new site, planning a content calendar, fixing technical issues, or staying on top of how AI answer engines are picking up your brand. It covers the workflow from research to publishing to monitoring, so you don't need a separate tool for each step.
+Launch a domain or page audit, technical check, keyword research, meta optimization, schema generation, content draft, performance report, or alerting plan. Forms guide the input; the SEO agent researches the source and returns a readable report with tables and copyable code. Start a deep AI audit directly from a page check.
+
+## Keep your work
+
+Checks and dashboard workflow reports are saved in history. Reopen results, re-run them after a change, or delete a saved run. Work continues when you leave the tab.
+
+## Know the limits
+
+Instant checks inspect server HTML, not JavaScript-rendered content. Scores are heuristics, not ranking predictions. Crawl-file presence does not establish crawl permission, sitemap membership, or indexability. The app does not measure Core Web Vitals or load remote social images. Public HTTP(S) URLs on standard web ports only; requests have time and size limits and cannot access private networks.
+
+AI workflows use the SEO agent and its 20 skills. Findings may require additional data and should be reviewed before implementation. The alert workflow designs a plan; it does not activate monitoring. The app never edits your website.
