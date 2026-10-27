@@ -1,6 +1,8 @@
 # Diff design contract
 Mode: Operate. Fixed world: Rome tokens and @rome-os/ui; pinned composition: Codex Changes pane.
-- One compact toolbar: repo chip, scope + totals pill, base→target comparison pill, quiet icon cluster and overflow.
+- One compact toolbar: repo chip, comparison + all-totals pill, quiet icon cluster and overflow. Repository
+  and comparison triggers omit decorative down arrows; comparison details live inside one popup rather than
+  consuming another toolbar pill.
 - Diff stream leads; right file tree is narrow, resizable and compresses single-child folders. Mobile uses a right drawer.
 - Sticky 44px file headers, muted directory / emphasized basename, count colors from success/destructive tokens, viewed/copy/menu actions.
 - 26px code rows, 3px categorical change rail, token-derived line and word tints. No added chrome border around diffs.
@@ -52,9 +54,9 @@ that top border and the two coincide. Both use one opaque colour (`HEADER_LINE`,
 
 ## What can be compared, and how the trigger reads
 
-The scope menu is flat, in this order: **Unpushed**, **Uncommitted**, **Staged**,
-**Unstaged**, separator, **Branch**. Branch is an action, with no submenu chevron;
-choosing it closes the scope menu and only reveals the secondary revision selector. There is no "Local changes /
+The scope menu starts in this order: **Unpushed**, **Uncommitted**, **Staged**,
+**Unstaged**, separator, **Branch · selected ref**, **Pull Request · #number**. Branch and Pull Request
+drill down in place inside the same popup; there is no adjacent revision trigger or overflow-menu PR action. There is no "Local changes /
 Include" layer and no "Last turn" placeholder: accurate turn snapshots are a separate
 platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged/Unstaged.
 
@@ -68,19 +70,22 @@ platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged
   use the first parent, not a combined diff. Committed lives inside the secondary selector,
   not the main scope menu. The primary scope remains Branch; the secondary trigger reads
   `Committed abc1234` and remains available to switch commits or return to a branch.
-- The secondary selector owns the in-place base/ref and commit pickers, with arbitrary refs accepted on Enter. Existing
+- The Branch pane owns the in-place base/ref and commit pickers, with arbitrary refs accepted on Enter. Existing
   target (HEAD / working tree) and method (merge base / two-dot) options are preserved.
-- The primary pill always holds scope + totals. It is content-sized, may shrink, and never grows or stretches into spare grid space. Only the Branch scope (including a selected commit) shows a secondary selector pill.
-  At narrow widths this second pill gets its own toolbar row, rather than squeezing away the
-  scope or overflowing. Long names truncate and full semantics stay in the tooltip.
-- Pull Request moved to review options. Legacy PR links and their picker still work, while
-  ordinary local/branch/history browsing never makes GitHub requests.
+- The single comparison pill is content-sized, may shrink, and never grows or stretches into spare grid space.
+  Its label prioritizes a selected PR number, then the selected branch/ref, then local scope labels. A selected
+  commit keeps its short commit description because substituting a branch would misstate that comparison. Long
+  names truncate and full semantics stay in the tooltip.
+- The comparison pill always shows **all-change** additions/deletions. The menu's bottom summary breaks those
+  totals into primary, supporting and all changes, so supporting changes remain visible without moving the scope rows.
+- Pull Request is a root comparison choice. Entering its picker is lazy and ordinary local/branch/history browsing
+  never makes GitHub requests.
 - Legacy `mode=branch` links still migrate to a committed-only `ref` comparison. New commit
   and unpushed modes persist independently in conversation state, scroll keys and viewed marks.
 
 ### Second-level lists drill down in place, they do not open beside the menu
 
-The branch, commit and legacy pull-request pickers are a second level of the *same* menu: choosing their row swaps
+The branch, ref, commit and pull-request pickers are levels of the *same* menu: choosing their row swaps
 the menu's content for the list, with a "‹ back" row on top, and the menu grows to
 `min(20rem, available width)`. A Radix sub-menu opens *beside* its parent and needs room there; in
 the chat's side panel the app is an iframe about 450px wide, where the parent menu alone takes 208px

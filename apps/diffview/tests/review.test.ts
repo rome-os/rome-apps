@@ -212,8 +212,9 @@ if(process.argv[3]==='view'){if(process.argv.at(-1)!=='url')process.exit(2);proc
 else if(isApi){
  const source=fs.readFileSync(p.join(dir,'gh-source'),'utf8');
  const sha=(ref)=>{try{return cp.execFileSync('git',['--git-dir='+source,'rev-parse','--verify',ref],{stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root}).toString().trim()}};
- const override=fs.existsSync(p.join(dir,'gh-head-override'))?fs.readFileSync(p.join(dir,'gh-head-override'),'utf8'):undefined;
- process.stdout.write(JSON.stringify({baseRefName:'main',baseRefOid:sha('refs/heads/main'),headRefOid:override||sha('refs/pull/'+n+'/head'),url:'https://github.com/fixture/upstream/pull/'+n}));
+ const baseOverride=fs.existsSync(p.join(dir,'gh-base-override'))?fs.readFileSync(p.join(dir,'gh-base-override'),'utf8'):undefined;
+ const headOverride=fs.existsSync(p.join(dir,'gh-head-override'))?fs.readFileSync(p.join(dir,'gh-head-override'),'utf8'):undefined;
+ process.stdout.write(JSON.stringify({baseRefName:'main',baseRefOid:baseOverride||sha('refs/heads/main'),headRefOid:headOverride||sha('refs/pull/'+n+'/head'),url:'https://github.com/fixture/upstream/pull/'+n}));
 }else if(process.argv[3]==='diff')process.stdout.write(fs.readFileSync(p.join(dir,'gh-diff'),'utf8'));
 else process.exit(1);
 `,
@@ -222,7 +223,7 @@ else process.exit(1);
   process.env.PATH = bin + ":" + original.PATH;
 }
 
-test("PR fetch refreshes base and head without changing user refs; explicit refresh bypasses PR TTL", async () => {
+test("PR fetch pins exact API endpoints when the base branch advances, without changing user refs", async () => {
   const { repo, g, write, call } = await fixture();
   const oldBase = g("rev-parse", "HEAD");
   const remote = join(home, `remote-${counter}.git`);
@@ -241,10 +242,17 @@ test("PR fetch refreshes base and head without changing user refs; explicit refr
   g("commit", "-qm", "PR v1");
   g("push", "-q", "origin", "HEAD:refs/pull/1/head");
   g("checkout", "-q", "main");
+  // The PR API snapshot can still name `base` after the base branch advances. Diffview
+  // must fetch that exact object rather than current refs/heads/main and falling back.
+  await write("after-pr.txt", "base advanced after PR snapshot\n");
+  g("add", ".");
+  g("commit", "-qm", "base advanced after PR snapshot");
+  g("push", "-q", "origin", "main");
   g("reset", "--hard", oldBase);
   g("update-ref", "refs/remotes/origin/main", oldBase);
   g("update-ref", "refs/diffview/pr/1", oldBase); // legacy app ref must not collide with new namespace
   await fakeGh(repo);
+  await writeFile(join(repo, ".git/gh-base-override"), base);
   const first = await call("files", { mode: "pr", pr: "1" });
   assert.equal(first.status, 200);
   assert.deepEqual(
@@ -313,6 +321,7 @@ test("failed PR lookup retries immediately and fallback diff content versions in
   await writeFile(fail, "fail");
   assert.equal((await call("files", { mode: "pr", pr: "2" })).status, 400);
   await rm(fail);
+  await writeFile(join(repo, ".git/gh-head-override"), "a".repeat(40));
   const text = (version: string) =>
     `diff --git a/a.txt b/a.txt\nnew file mode 100644\n--- /dev/null\n+++ b/a.txt\n@@ -0,0 +1 @@\n+${version}\n`;
   await writeFile(diff, text("v1"));
@@ -679,6 +688,7 @@ test("fallback advertises limits, matches spaced names, and rejects context/full
   const { repo, g, call } = await fixture();
   g("remote", "add", "origin", join(home, "absent-fallback.git"));
   await fakeGh(repo);
+  await writeFile(join(repo, ".git/gh-head-override"), "a".repeat(40));
   const text =
     "diff --git a/space name.ts b/space name.ts\nindex 1111111..2222222 100644\n--- a/space name.ts\t\n+++ b/space name.ts\t\n@@ -10 +10 @@\n-before\n+after\n";
   await writeFile(join(repo, ".git/gh-diff"), text);

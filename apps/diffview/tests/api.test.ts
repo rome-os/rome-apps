@@ -72,6 +72,16 @@ test("a small diff: one list request carries the first page, later pages continu
     const first = await call("files", {});
     assert.equal(first.status, 200);
     assert.equal(first.body.files.length, 300);
+    assert.deepEqual(first.body.totals.primary, {
+      files: 300,
+      added: 12000,
+      deleted: 12000,
+    });
+    assert.deepEqual(first.body.totals.supporting, {
+      files: 0,
+      added: 0,
+      deleted: 0,
+    });
     const paths = Object.keys(first.body.page.patches);
     assert.ok(
       paths.length > 0 && paths.length < 300,

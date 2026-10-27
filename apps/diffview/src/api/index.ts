@@ -41,6 +41,11 @@ import {
   type SnapshotFile,
 } from "../lib/snapshot.js";
 import { PAGE_MAX_BYTES, pageEnd } from "../shared/paging.js";
+import {
+  classifyFiles,
+  summarizeFiles,
+  type ChangeTotals,
+} from "../lib/attributes.js";
 /**
  * Everything known about one comparison at one fingerprint. `snap` holds all patches when the
  * whole diff fits in memory; otherwise only the file list is kept and pages are cut from git.
@@ -50,6 +55,7 @@ interface View {
   comparison: ResolvedComparison;
   head: string;
   list: FileEntry[];
+  totals: ChangeTotals;
   snap?: Snapshot;
   /** Comparing against a base: its resolved name, and whether it is the commit HEAD is on. */
   compare?: { ref: string; same: boolean };
@@ -101,17 +107,30 @@ async function buildView(
   const common = { info, head, compare, comparison: resolved };
   // `git status` already counted the changed paths; a large count means page from the start
   // instead of first computing (and discarding) the whole diff.
-  if (m.mode === "uncommitted" && info.changed > maxWholeDiffFiles())
-    return { ...common, list: await files(repo, m, resolved, info.conflicts) };
+  if (m.mode === "uncommitted" && info.changed > maxWholeDiffFiles()) {
+    const list = await classifyFiles(
+      repo,
+      m,
+      resolved,
+      await files(repo, m, resolved, info.conflicts),
+    );
+    return { ...common, list, totals: summarizeFiles(list) };
+  }
   try {
     const snap = await buildSnapshot(repo, m, ctx, info, resolved);
-    return { ...common, snap, list: snap.files.map(toEntry) };
+    snap.files = await classifyFiles(repo, m, resolved, snap.files);
+    const list = snap.files.map(toEntry);
+    return { ...common, snap, list, totals: summarizeFiles(list) };
   } catch (e) {
-    if (e instanceof GitError && e.code === "output_limit")
-      return {
-        ...common,
-        list: await files(repo, m, resolved, info.conflicts),
-      };
+    if (e instanceof GitError && e.code === "output_limit") {
+      const list = await classifyFiles(
+        repo,
+        m,
+        resolved,
+        await files(repo, m, resolved, info.conflicts),
+      );
+      return { ...common, list, totals: summarizeFiles(list) };
+    }
     throw e;
   }
 }
@@ -361,6 +380,7 @@ function createInnerHandler(): RomeAppApiHandler {
           return Response.json({
             ms: Math.round(performance.now() - started),
             files: v.list,
+            totals: v.totals,
             fallback: v.comparison.fallback !== undefined,
             // The first page travels with the list, so the first paint needs no further request.
             page: await pageFor(repo, m, ctx, v, 0),

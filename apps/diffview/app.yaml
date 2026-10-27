@@ -1,7 +1,7 @@
 formatVersion: 2
 id: diffview
 name: Diff
-version: 0.3.13
+version: 0.4.5
 description: Read-only Git diff browser for local repositories, working changes, branches, pull requests, and arbitrary refs.
 # Shown on the app's social share card and as the preview text beside it.
 # One sentence, at most 80 characters (40 for CJK): lead with what the user

@@ -1,5 +1,6 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import type { Mode } from "../lib/git";
+import type { ChangeTotals } from "../lib/attributes";
 export interface Repo {
   path: string;
   name: string;
@@ -25,6 +26,8 @@ export interface FilesData {
   /** How long the server took, so polling can back off on large repositories. */
   ms?: number;
   files: import("../lib/git").FileEntry[];
+  /** Backend-computed review totals; absent only in old cached/test payloads. */
+  totals?: ChangeTotals;
   /** First page of patches, shipped with the list so the first paint needs no further request. */
   page?: PageData;
   /** Comparing a base: its resolved name, and whether it is the commit HEAD is on. */
