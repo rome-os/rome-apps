@@ -98,13 +98,38 @@ async function revisionAlignment(view, committed = false) {
   const row = await base.boundingBox();
   assert.ok(Math.abs(row.x + row.width - arrow.x - arrow.width - 8) < 1);
   for (const item of await view
-    .locator(
-      '[role="menu"] [role="menuitemradio"], [role="menu"] [data-slot="dropdown-menu-label"]',
-    )
+    .locator('[role="menu"] [data-slot="dropdown-menu-label"]')
     .all()) {
     assert.ok(
       Math.abs(left - (await geometry(item))) < 1,
-      "All section labels and choices align",
+      "All section labels align with the drill-down rows",
+    );
+  }
+  const segmentedGroups = view.locator(
+    '[role="menu"] [data-slot="segmented-control"]',
+  );
+  assert.equal(
+    await segmentedGroups.count(),
+    2,
+    "Target and comparison method each use one segmented group",
+  );
+  for (const group of await segmentedGroups.all()) {
+    const radios = group.getByRole("radio");
+    assert.equal(await radios.count(), 2);
+    const [first, second] = await Promise.all([
+      radios.nth(0).boundingBox(),
+      radios.nth(1).boundingBox(),
+    ]);
+    assert.ok(first && second);
+    assert.ok(
+      Math.abs(first.y - second.y) < 1 &&
+        Math.abs(first.height - second.height) < 1 &&
+        Math.abs(first.width - second.width) < 1,
+      "Each segmented choice is an equal-width horizontal pair",
+    );
+    assert.ok(
+      first.x + first.width <= second.x + 1,
+      "Segmented choices must not wrap or overlap",
     );
   }
   if (committed) {
@@ -112,15 +137,6 @@ async function revisionAlignment(view, committed = false) {
     assert.ok(
       check.x > left && check.x + check.width <= historyArrow.x,
       "Committed selection stays on the right without moving its label",
-    );
-  } else {
-    const check = await view
-      .locator('[role="menuitemradio"][aria-checked="true"] svg')
-      .first()
-      .boundingBox();
-    assert.ok(
-      Math.abs(check.x - arrow.x) < 1,
-      "Arrows and radio checks share a trailing column",
     );
   }
 }
@@ -181,9 +197,8 @@ test(
     const { createApiHandler } = await import("../dist/api/index.js");
     const handler = createApiHandler({});
     const root = resolve(
-        fileURLToPath(new URL("../dist/web/", import.meta.url)),
-      ),
-      requests = [];
+      fileURLToPath(new URL("../dist/web/", import.meta.url)),
+    );
     const server = createServer(async (req, res) => {
       try {
         const u = new URL(req.url, "http://localhost");
@@ -195,7 +210,6 @@ test(
           return;
         }
         if (u.pathname.startsWith("/api/apps/diffview/")) {
-          requests.push(u.pathname);
           const r = await handler.handle({
             caller: { kind: "guardian" },
             method: req.method,
@@ -249,15 +263,44 @@ test(
         const page = await browser.newPage({
             viewport: { width, height: 720 },
           }),
-          errors = [],
-          prRequestsAtStart = requests.filter((request) =>
-            request.endsWith("/refs"),
-          ).length;
+          errors = [];
+        let refsRequests = 0;
+        page.on("request", (request) => {
+          if (new URL(request.url()).pathname.endsWith("/refs")) refsRequests++;
+        });
         page.on("pageerror", (e) => errors.push(e.message));
         page.on("console", (m) => {
           if (m.type() === "error" && !m.text().includes("409 (Conflict)"))
             errors.push(m.text());
         });
+        await page.route("**/api/apps/diffview/refs?*", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              branches: ["main", branch],
+              commits: [],
+              tags: [],
+              currentBranchPr: {
+                number: 30,
+                title: "Current branch PR",
+                baseRefName: "main",
+                headRefName: branch,
+                updatedAt: "2026-10-27T10:00:00Z",
+              },
+              prs: [
+                {
+                  number: 18,
+                  title: "Other branch PR",
+                  baseRefName: "main",
+                  headRefName: "refactor/code-review-ui-library",
+                  updatedAt: "2026-10-27T09:00:00Z",
+                },
+              ],
+              prState: "ready",
+            }),
+          }),
+        );
         await page.goto(
           width === 447
             ? origin + "/host"
@@ -285,6 +328,7 @@ test(
           file = (name) =>
             v.getByRole("button", { name: "折叠文件: " + name, exact: true });
         await v.locator("diffs-container").first().waitFor();
+        let refsRequestsAtScopeChecks = refsRequests;
         const scopeSizing = await scope.evaluate((element) => {
           const style = getComputedStyle(element);
           return {
@@ -452,11 +496,53 @@ test(
           .allTextContents();
         assert.deepEqual(
           entries.map((s) => s.replace(/↑1/, "").trim()),
-          ["未推送", "未提交", "已暂存", "未暂存", "分支 · main", "拉取请求"],
+          [
+            "未推送",
+            "未提交",
+            "已暂存",
+            "未暂存",
+            `分支 · ${branch}`,
+            "拉取请求 · #30",
+          ],
         );
+        const markedRows = [
+          v.getByRole("menuitemradio", { name: /未推送/ }),
+          v.getByRole("menuitemradio", { name: "未提交", exact: true }),
+          v.getByRole("menuitemradio", { name: "已暂存", exact: true }),
+          v.getByRole("menuitemradio", { name: "未暂存", exact: true }),
+          v.getByRole("menuitem", { name: `分支 · ${branch}`, exact: true }),
+          v.getByRole("menuitem", {
+            name: "拉取请求 · #30",
+            exact: true,
+          }),
+        ];
+        for (const row of markedRows)
+          assert.equal(
+            await row.evaluate(
+              (element) => getComputedStyle(element).whiteSpace,
+            ),
+            "nowrap",
+            `${await row.textContent()} must remain on one line`,
+          );
+        assert.deepEqual(
+          await changeSummary
+            .locator(":scope > div")
+            .evaluateAll((rows) =>
+              rows.map((row) => getComputedStyle(row).whiteSpace),
+            ),
+          ["nowrap", "nowrap", "nowrap"],
+          "All three change-summary rows must remain on one line",
+        );
+        // Returning from the other repository starts one repository-level refs request.
+        // Let that activation settle before asserting that scope-only changes add none.
+        await page.waitForTimeout(100);
+        refsRequestsAtScopeChecks = refsRequests;
         const [prBox, summaryBox] = await Promise.all([
           v
-            .getByRole("menuitem", { name: "拉取请求", exact: true })
+            .getByRole("menuitem", {
+              name: "拉取请求 · #30",
+              exact: true,
+            })
             .boundingBox(),
           changeSummary.boundingBox(),
         ]);
@@ -470,10 +556,10 @@ test(
         assert.equal(
           await v
             .getByRole("menuitem", {
-              name: "分支 · main",
+              name: `分支 · ${branch}`,
               exact: true,
             })
-            .getByText("· main", { exact: true })
+            .getByText(`· ${branch}`, { exact: true })
             .evaluate((element) =>
               element.classList.contains("text-muted-foreground"),
             ),
@@ -497,7 +583,7 @@ test(
         await file("loose.test.ts").waitFor();
         await scope.click();
         const branchAction = v.getByRole("menuitem", {
-          name: "分支 · main",
+          name: `分支 · ${branch}`,
           exact: true,
         });
         assert.equal(
@@ -511,9 +597,36 @@ test(
           0,
         );
         await branchAction.click();
-        await v
-          .getByRole("menuitem", { name: "返回: 对比到 main", exact: true })
-          .waitFor();
+        const branchBack = v.getByRole("menuitem", {
+          name: "返回: 分支",
+          exact: true,
+        });
+        await branchBack.waitFor();
+        assert.equal(await branchBack.getAttribute("title"), "分支");
+        assert.equal(
+          await branchBack.evaluate(
+            (element) => getComputedStyle(element).whiteSpace,
+          ),
+          "nowrap",
+        );
+        const targetLabel = v
+          .locator('[data-slot="dropdown-menu-label"]')
+          .filter({ hasText: branch });
+        await targetLabel.waitFor();
+        assert.equal(await targetLabel.getAttribute("title"), branch);
+        assert.equal(
+          await targetLabel.evaluate(
+            (element) => getComputedStyle(element).whiteSpace,
+          ),
+          "nowrap",
+        );
+        assert.equal(
+          await targetLabel
+            .locator("span")
+            .last()
+            .evaluate((element) => getComputedStyle(element).textOverflow),
+          "ellipsis",
+        );
         await revisionAlignment(v);
         assert.equal(await v.getByRole("menu").count(), 1);
         assert.equal(
@@ -554,7 +667,7 @@ test(
           0,
         );
         await scope.click();
-        await v.getByRole("menuitem", { name: /^分支 · / }).click();
+        await v.getByRole("menuitem", { name: "分支", exact: true }).click();
         await bounds();
         await revisionAlignment(v, true);
         await shot("revision-committed");
@@ -570,7 +683,7 @@ test(
           new RegExp(initial.slice(0, 7)),
         );
         await scope.click();
-        await v.getByRole("menuitem", { name: /^分支 · / }).click();
+        await v.getByRole("menuitem", { name: "分支", exact: true }).click();
         await v.getByRole("menuitem", { name: /^基准/ }).click();
         await v
           .getByRole("textbox", { name: "分支、标签或提交", exact: true })
@@ -580,9 +693,7 @@ test(
           Math.abs((await v.getByRole("menu").boundingBox()).width - 320) < 1,
           "Branch names keep the wider 20rem layout",
         );
-        await v
-          .getByRole("menuitemradio", { name: "HEAD", exact: true })
-          .click();
+        await v.getByRole("radio", { name: "HEAD", exact: true }).click();
         await v
           .getByRole("menuitemradio", { name: "main", exact: true })
           .click();
@@ -590,13 +701,11 @@ test(
         await shot("branch");
         assert.match(await scope.textContent(), /^main/);
         await scope.click();
-        await v.getByRole("menuitem", { name: /^分支 · main/ }).click();
         await v
-          .getByRole("menuitemradio", { name: "工作区", exact: true })
+          .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
           .click();
-        await v
-          .getByRole("menuitemradio", { name: "两点比较", exact: true })
-          .click();
+        await v.getByRole("radio", { name: "工作区", exact: true }).click();
+        await v.getByRole("radio", { name: "两点比较", exact: true }).click();
         await v.locator("main").press("Escape");
         await file("initial.txt").waitFor();
         assert.match(
@@ -612,9 +721,7 @@ test(
         await local.press("Enter");
         await scope.click();
         await v.getByRole("menuitem", { name: /^分支 · / }).click();
-        await v
-          .getByRole("menuitemradio", { name: "工作区", exact: true })
-          .waitFor();
+        await v.getByRole("radio", { name: "工作区", exact: true }).waitFor();
         await v.getByRole("menu").press("Escape");
         assert.match(await scope.textContent(), /^origin\/main/);
         assert.doesNotMatch(
@@ -661,22 +768,9 @@ test(
           await forced;
         }
         assert.ok(
-          requests.filter((request) => request.endsWith("/refs")).length ===
-            prRequestsAtStart,
-          "normal scopes must not query GitHub PRs",
-        );
-        await page.route("**/api/apps/diffview/refs?*", (route) =>
-          route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              branches: ["main"],
-              commits: [],
-              tags: [],
-              prs: [],
-              prState: "ready",
-            }),
-          }),
+          refsRequests <=
+            refsRequestsAtScopeChecks + 1 + (width === 1100 ? 1 : 0),
+          "scope changes reuse a repository-level bounded branch/PR DTO instead of fanning out by row",
         );
         let releasePrFiles;
         const prFilesGate =
@@ -703,17 +797,18 @@ test(
               fingerprint: "test-pr",
               head: "head",
               base: "base",
+              pullRequest: {
+                number: 18,
+                baseRefName: "main",
+                headRefName: "refactor/code-review-ui-library",
+              },
             }),
           });
         });
-        const prRequest = page.waitForRequest((request) =>
-          new URL(request.url()).pathname.endsWith("/refs"),
-        );
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求", exact: true })
+          .getByRole("menuitem", { name: "拉取请求 · #30", exact: true })
           .click();
-        await prRequest;
         const prInput = v.getByRole("textbox", {
           name: "PR 编号",
           exact: true,
@@ -725,18 +820,21 @@ test(
           .click();
         assert.equal(
           await v
-            .getByRole("menuitem", { name: "拉取请求", exact: true })
+            .getByRole("menuitem", {
+              name: "拉取请求 · #30",
+              exact: true,
+            })
             .count(),
           1,
         );
         await v.getByRole("menu").press("Escape");
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求", exact: true })
+          .getByRole("menuitem", { name: "拉取请求 · #30", exact: true })
           .click();
         await v
           .getByRole("textbox", { name: "PR 编号", exact: true })
-          .fill("123");
+          .fill("18");
         const prFilesResponse = page.waitForResponse((response) => {
           const url = new URL(response.url());
           return (
@@ -747,11 +845,11 @@ test(
         await v
           .getByRole("textbox", { name: "PR 编号", exact: true })
           .press("Enter");
-        assert.match(await scope.textContent(), /^#123/);
+        assert.match(await scope.textContent(), /^#18/);
         if (width === 447) {
           assert.match(
             (await scope.textContent()).replace(/\s/g, ""),
-            /^#123\+2−1/,
+            /^#18\+2−1/,
             "The previous indicator stays in place while the new diff loads",
           );
           await v.waitForTimeout(2500);
@@ -773,7 +871,24 @@ test(
         });
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求 · #123", exact: true })
+          .getByRole("menuitem", {
+            name: "分支 · refactor/code-review-ui-library",
+            exact: true,
+          })
+          .waitFor();
+        await v
+          .getByRole("menuitem", { name: "拉取请求 · #18", exact: true })
+          .waitFor();
+        await shot("pr-linked");
+        await v
+          .getByRole("menuitemradio", { name: "未提交", exact: true })
+          .click();
+        await scope.click();
+        await v
+          .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
+          .waitFor();
+        await v
+          .getByRole("menuitem", { name: "拉取请求 · #30", exact: true })
           .waitFor();
         await v.getByRole("menu").press("Escape");
         await v.getByRole("button", { name: "审阅选项", exact: true }).click();

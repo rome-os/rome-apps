@@ -352,10 +352,17 @@ export interface ResolvedComparison {
   to?: string;
   /** Empty string is a valid empty remote diff, not a missing fallback. */
   fallback?: string;
+  /** Exact PR identity used for this view, including PRs outside the bounded open-list DTO. */
+  pullRequest?: {
+    number: number;
+    baseRefName: string;
+    headRefName: string;
+  };
 }
 interface PrMetadata {
   baseRefName: string;
   baseRefOid: string;
+  headRefName: string;
   headRefOid: string;
   url: string;
 }
@@ -492,7 +499,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
             location.hostname,
             location.api,
             "--jq",
-            "{url:.html_url,baseRefName:.base.ref,baseRefOid:.base.sha,headRefOid:.head.sha}",
+            "{url:.html_url,baseRefName:.base.ref,baseRefOid:.base.sha,headRefName:.head.ref,headRefOid:.head.sha}",
           ]),
         );
         source = prRepository(meta, n);
@@ -501,6 +508,11 @@ async function prCompare(repo: string, n: string, refresh = false) {
       } catch {
         throw new GitError("pr_unavailable");
       }
+      const pullRequest = {
+        number: Number(n),
+        baseRefName: meta.baseRefName,
+        headRefName: meta.headRefName,
+      };
       try {
         await cached(
           repo + ":pr-ref-cleanup",
@@ -536,7 +548,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
             to = await sha(repo, temp + "/head");
           if (from !== meta.baseRefOid || to !== meta.headRefOid)
             throw new GitError("pr_changed_during_fetch");
-          return { from, to };
+          return { from, to, pullRequest };
         } finally {
           await deleteReviewRefs(repo, await reviewRefs(repo, [temp + "/"]));
         }
@@ -545,6 +557,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
         return {
           from: "",
           to: "",
+          pullRequest,
           fallback: await command(
             repo,
             "gh",
@@ -1100,7 +1113,7 @@ export async function patch(
   };
 }
 export async function refs(repo: string, includePr = true) {
-  const [branches, commits, tags] = await Promise.all([
+  const [branches, commits, tags, currentBranchText] = await Promise.all([
     git(repo, [
       "for-each-ref",
       "--format=%(refname:short)",
@@ -1109,8 +1122,19 @@ export async function refs(repo: string, includePr = true) {
     ]),
     tryGit(repo, ["log", "-40", "--format=%H%x09%s"]),
     git(repo, ["tag", "--list"]),
+    tryGit(repo, ["symbolic-ref", "--short", "-q", "HEAD"]),
   ]);
-  let prs: unknown[] = [],
+  type RefPullRequest = {
+    number: number;
+    title: string;
+    headRefName: string;
+    baseRefName: string;
+    updatedAt: string;
+  };
+  const fields = "number,title,headRefName,baseRefName,updatedAt,author";
+  const currentBranch = currentBranchText.trim();
+  let prs: RefPullRequest[] = [],
+    currentBranchPr: RefPullRequest | undefined,
     prState = "ready";
   try {
     if (includePr)
@@ -1121,7 +1145,7 @@ export async function refs(repo: string, includePr = true) {
           "--limit",
           "50",
           "--json",
-          "number,title,headRefName,baseRefName,author",
+          fields,
         ]),
       );
   } catch (e) {
@@ -1135,6 +1159,32 @@ export async function refs(repo: string, includePr = true) {
             ? "no_remote"
             : "unavailable";
   }
+  if (includePr && prState === "ready" && currentBranch) {
+    currentBranchPr = prs.find((pr) => pr.headRefName === currentBranch);
+    if (!currentBranchPr) {
+      try {
+        // Keep the picker focused on open PRs, but preserve branch linkage after its PR merges
+        // or closes. This is one exact repository-level lookup, never a per-row request.
+        const associated = JSON.parse(
+          await command(repo, "gh", [
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--head",
+            currentBranch,
+            "--limit",
+            "1",
+            "--json",
+            fields,
+          ]),
+        ) as RefPullRequest[];
+        currentBranchPr = associated[0];
+      } catch {
+        // The bounded open list remains useful even if the exact historical lookup fails.
+      }
+    }
+  }
   return {
     branches: branches.trim().split("\n").filter(Boolean),
     tags: tags.trim().split("\n").filter(Boolean),
@@ -1146,6 +1196,7 @@ export async function refs(repo: string, includePr = true) {
         return { sha, title: title.join("\t") };
       }),
     prs,
+    currentBranchPr,
     prState,
   };
 }

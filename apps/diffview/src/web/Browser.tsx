@@ -59,6 +59,7 @@ import type { TrackingInfo } from "../lib/git";
 import { groupRepositories } from "../shared/repositories";
 import { normalizeMode } from "../shared/mode";
 import { describeComparison, describeEmpty } from "../shared/describe";
+import { deriveReviewContext } from "../shared/reviewContext";
 import {
   DEFAULT_CHAT_STATE,
   loadChatState,
@@ -391,14 +392,13 @@ function Browser() {
       });
   }, [ready, repos.data, state.repo]);
   const refs = useQuery({
-    queryKey: ["refs", state.repo, state.mode === "pr"],
-    queryFn: ({ signal }) =>
-      api<RefData>(
-        state.mode === "pr" ? "refs" : "revisions",
-        { repo: state.repo },
-        signal,
-      ),
+    queryKey: ["refs", state.repo],
+    // Branch and PR are linked context even outside PR mode, so load their bounded DTO together.
+    // This is one repository-level request, never a per-file or per-row fan-out.
+    queryFn: ({ signal }) => api<RefData>("refs", { repo: state.repo }, signal),
     enabled: ready && !!state.repo,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
     refetchInterval: 60000,
   });
   const tracking = useQuery({
@@ -1068,12 +1068,21 @@ function Browser() {
     setNonce((n) => n + 1);
   };
   const prState = refs.data?.prState;
-  const defaultBaseName =
-    repos.data?.repos.find((r) => r.path === state.repo)?.base ||
-    data.data?.compare?.ref ||
-    "";
-  const selectedPrInfo = refs.data?.prs?.find(
+  const selectedRepo = repos.data?.repos.find((r) => r.path === state.repo);
+  const defaultBaseName = selectedRepo?.base || data.data?.compare?.ref || "";
+  const listedPrInfo = refs.data?.prs?.find(
     (pr) => String(pr.number) === state.pr,
+  );
+  const selectedPrInfo =
+    data.data?.pullRequest?.number === Number(state.pr)
+      ? { ...listedPrInfo, ...data.data.pullRequest }
+      : listedPrInfo;
+  const reviewContext = deriveReviewContext(
+    normalizeMode(state),
+    selectedRepo?.branch,
+    refs.data?.prs ?? [],
+    selectedPrInfo,
+    refs.data?.currentBranchPr,
   );
   const desc = describeComparison(
     normalizeMode(state),
@@ -1435,6 +1444,8 @@ function Browser() {
           refs={refs.data}
           tracking={tracking.data}
           defaultBase={defaultBaseName}
+          reviewContext={reviewContext}
+          comparisonUnavailable={trackingUnavailable}
           t={t}
           zh={host.zh}
           open={comparisonOpen}

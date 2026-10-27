@@ -214,7 +214,7 @@ else if(isApi){
  const sha=(ref)=>{try{return cp.execFileSync('git',['--git-dir='+source,'rev-parse','--verify',ref],{stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root}).toString().trim()}};
  const baseOverride=fs.existsSync(p.join(dir,'gh-base-override'))?fs.readFileSync(p.join(dir,'gh-base-override'),'utf8'):undefined;
  const headOverride=fs.existsSync(p.join(dir,'gh-head-override'))?fs.readFileSync(p.join(dir,'gh-head-override'),'utf8'):undefined;
- process.stdout.write(JSON.stringify({baseRefName:'main',baseRefOid:baseOverride||sha('refs/heads/main'),headRefOid:headOverride||sha('refs/pull/'+n+'/head'),url:'https://github.com/fixture/upstream/pull/'+n}));
+ process.stdout.write(JSON.stringify({baseRefName:'main',baseRefOid:baseOverride||sha('refs/heads/main'),headRefName:'feature/pr-'+n,headRefOid:headOverride||sha('refs/pull/'+n+'/head'),url:'https://github.com/fixture/upstream/pull/'+n}));
 }else if(process.argv[3]==='diff')process.stdout.write(fs.readFileSync(p.join(dir,'gh-diff'),'utf8'));
 else process.exit(1);
 `,
@@ -255,6 +255,11 @@ test("PR fetch pins exact API endpoints when the base branch advances, without c
   await writeFile(join(repo, ".git/gh-base-override"), base);
   const first = await call("files", { mode: "pr", pr: "1" });
   assert.equal(first.status, 200);
+  assert.deepEqual(first.body.pullRequest, {
+    number: 1,
+    baseRefName: "main",
+    headRefName: "feature/pr-1",
+  });
   assert.deepEqual(
     first.body.files.map((f: any) => f.path),
     ["feature.txt"],
@@ -701,6 +706,11 @@ test("fallback advertises limits, matches spaced names, and rejects context/full
     const list = await call("files", q);
     assert.equal(list.status, 200);
     assert.equal(list.body.fallback, true);
+    assert.deepEqual(list.body.pullRequest, {
+      number: 6,
+      baseRefName: "main",
+      headRefName: "feature/pr-6",
+    });
     assert.deepEqual(
       list.body.files.map((f: any) => f.path),
       ["space name.ts"],

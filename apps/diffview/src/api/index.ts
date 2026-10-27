@@ -385,6 +385,7 @@ function createInnerHandler(): RomeAppApiHandler {
             // The first page travels with the list, so the first paint needs no further request.
             page: await pageFor(repo, m, ctx, v, 0),
             compare: v.compare,
+            pullRequest: v.comparison.pullRequest,
             fingerprint: fp,
             head: v.head,
             base: m.base,

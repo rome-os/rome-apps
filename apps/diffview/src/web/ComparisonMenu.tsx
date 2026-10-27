@@ -11,6 +11,7 @@ import {
   DropdownMenuLabel,
 } from "@rome-os/ui/dropdown-menu";
 import { Input } from "@rome-os/ui/input";
+import { SegmentedControl } from "@rome-os/ui/segmented-control";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Description } from "../shared/describe";
 import type { CommitInfo, TrackingInfo } from "../lib/git";
@@ -20,6 +21,7 @@ import { errorMessage } from "./i18n";
 import { api } from "./api";
 import { Pill, Stats } from "./ReviewParts";
 import type { ChangeCount } from "../lib/attributes";
+import type { ReviewContext } from "../shared/reviewContext";
 
 interface Props {
   state: State;
@@ -29,6 +31,8 @@ interface Props {
   refs?: RefData;
   tracking?: TrackingInfo;
   defaultBase: string;
+  reviewContext: ReviewContext;
+  comparisonUnavailable?: boolean;
   t: Messages;
   zh: boolean;
   open: boolean;
@@ -40,14 +44,6 @@ type Pane = "root" | "branch" | "reference" | "commit" | "pr";
 const WIDTH =
   "w-[min(20rem,var(--radix-dropdown-menu-content-available-width))] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto";
 
-/** Keep the exact ref for Git, but present the default remote branch as the branch people named. */
-function branchDisplayName(ref: string) {
-  const normalized = ref
-    .replace(/^refs\/remotes\//, "")
-    .replace(/^refs\/heads\//, "");
-  return normalized.replace(/^origin\//, "");
-}
-
 /** Scope selection and contextual parameters stay separate; pickers drill down inside one popup. */
 export function ComparisonMenu({
   state,
@@ -57,6 +53,8 @@ export function ComparisonMenu({
   refs,
   tracking,
   defaultBase,
+  reviewContext,
+  comparisonUnavailable = false,
   t,
   zh,
   open,
@@ -77,11 +75,6 @@ export function ComparisonMenu({
         signal,
       ),
     enabled: open && pane === "commit" && !!state.repo,
-  });
-  const prRefs = useQuery({
-    queryKey: ["refs", state.repo, true],
-    queryFn: ({ signal }) => api<RefData>("refs", { repo: state.repo }, signal),
-    enabled: open && pane === "pr" && state.mode !== "pr" && !!state.repo,
   });
   const reset = () => {
     setDraft("");
@@ -116,14 +109,18 @@ export function ComparisonMenu({
   const back = (title: string, parent: Pane = "root") => (
     <>
       <DropdownMenuItem
+        className="min-w-0 whitespace-nowrap"
+        title={title}
         onSelect={(e) => {
           e.preventDefault();
           enter(parent);
         }}
         aria-label={`${t.back}: ${title}`}
       >
-        <ChevronLeft />
-        <span className="font-medium">{title}</span>
+        <ChevronLeft className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap font-medium">
+          {title}
+        </span>
       </DropdownMenuItem>
       <DropdownMenuSeparator />
     </>
@@ -160,9 +157,8 @@ export function ComparisonMenu({
     (state.mode === "unpushed" && tracking?.behind
       ? " · " + t.behindUpstream.replace("{n}", String(tracking.behind))
       : "");
-  const selectedBase =
-    state.mode === "ref" && state.ref ? state.ref : defaultBase || t.head;
-  const selectedBranch = branchDisplayName(selectedBase);
+  const selectedBranch = reviewContext.branch;
+  const linkedPrNumber = reviewContext.pr?.number;
   const root = (
     <>
       <DropdownMenuRadioGroup
@@ -179,6 +175,7 @@ export function ComparisonMenu({
       >
         <DropdownMenuRadioItem
           value="unpushed"
+          className="whitespace-nowrap"
           disabled={!trackingReady}
           title={
             trackingReady
@@ -193,19 +190,35 @@ export function ComparisonMenu({
             {upstreamHint}
           </span>
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem value="all" title={t.hintLocalAll}>
+        <DropdownMenuRadioItem
+          value="all"
+          className="whitespace-nowrap"
+          title={t.hintLocalAll}
+        >
           {t.triggerUncommitted}
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem value="staged" title={t.hintLocalStaged}>
+        <DropdownMenuRadioItem
+          value="staged"
+          className="whitespace-nowrap"
+          title={t.hintLocalStaged}
+        >
           {t.staged}
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem value="unstaged" title={t.hintLocalUnstaged}>
+        <DropdownMenuRadioItem
+          value="unstaged"
+          className="whitespace-nowrap"
+          title={t.hintLocalUnstaged}
+        >
           {t.unstaged}
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem
-        className={revisionScope ? "relative pr-14" : "relative pr-8"}
+        className={
+          revisionScope
+            ? "relative whitespace-nowrap pr-14"
+            : "relative whitespace-nowrap pr-8"
+        }
         onSelect={(e) => {
           e.preventDefault();
           if (!revisionScope)
@@ -218,27 +231,33 @@ export function ComparisonMenu({
           enter("branch");
         }}
       >
-        <span className="flex min-w-0 items-center">
-          <span>{t.branch} </span>
-          <span className="min-w-0 truncate text-muted-foreground">
-            · {selectedBranch}
-          </span>
+        <span className="flex min-w-0 items-center whitespace-nowrap">
+          <span className="shrink-0">{t.branch} </span>
+          {selectedBranch && (
+            <span className="min-w-0 truncate text-muted-foreground">
+              · {selectedBranch}
+            </span>
+          )}
         </span>
         {revisionScope && <Check className="absolute right-8 size-4" />}
         <ChevronRight className="absolute right-2 size-4 text-muted-foreground" />
       </DropdownMenuItem>
       <DropdownMenuItem
-        className={state.mode === "pr" ? "relative pr-14" : "relative pr-8"}
+        className={
+          state.mode === "pr"
+            ? "relative whitespace-nowrap pr-14"
+            : "relative whitespace-nowrap pr-8"
+        }
         onSelect={(e) => {
           e.preventDefault();
           enter("pr");
         }}
       >
-        <span className="flex min-w-0 items-center">
-          <span>{t.pr} </span>
-          {state.pr && (
+        <span className="flex min-w-0 items-center whitespace-nowrap">
+          <span className="shrink-0">{t.pr} </span>
+          {linkedPrNumber && (
             <span className="min-w-0 truncate text-muted-foreground">
-              · #{state.pr}
+              · #{linkedPrNumber}
             </span>
           )}
         </span>
@@ -271,47 +290,47 @@ export function ComparisonMenu({
   );
   const branchOptions = (
     <>
-      <DropdownMenuLabel>{t.secTarget}</DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        value={state.target || "worktree"}
-        onValueChange={(target) => change({ mode: "ref", target })}
+      <DropdownMenuLabel
+        className="flex min-w-0 items-center whitespace-nowrap"
+        title={selectedBranch}
       >
-        <DropdownMenuRadioItem
-          value="worktree"
-          onSelect={(e) => e.preventDefault()}
-          title={t.tgtWorktreeHint}
-        >
-          {t.worktree}
-        </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem
-          value="head"
-          onSelect={(e) => e.preventDefault()}
-          title={t.tgtHeadHint}
-        >
-          {t.head}
-        </DropdownMenuRadioItem>
-      </DropdownMenuRadioGroup>
+        <span className="shrink-0">{t.secTarget}</span>
+        {selectedBranch && (
+          <span className="min-w-0 truncate">&nbsp;{selectedBranch}</span>
+        )}
+      </DropdownMenuLabel>
+      <div className="px-1 pb-1">
+        <SegmentedControl
+          aria-label={t.secTarget}
+          size="sm"
+          className="w-full [&_[data-slot=segmented-control-item]]:flex-1"
+          value={state.target === "head" ? "head" : "worktree"}
+          onValueChange={(target) => change({ mode: "ref", target })}
+          options={[
+            {
+              value: "worktree",
+              label: t.worktree,
+              title: t.tgtWorktreeHint,
+            },
+            { value: "head", label: t.head, title: t.tgtHeadHint },
+          ]}
+        />
+      </div>
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t.secMethod}</DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        value={state.dots || "three"}
-        onValueChange={(dots) => change({ mode: "ref", dots })}
-      >
-        <DropdownMenuRadioItem
-          value="three"
-          onSelect={(e) => e.preventDefault()}
-          title={t.methThreeHint}
-        >
-          {t.three}
-        </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem
-          value="two"
-          onSelect={(e) => e.preventDefault()}
-          title={t.methTwoHint}
-        >
-          {t.two}
-        </DropdownMenuRadioItem>
-      </DropdownMenuRadioGroup>
+      <div className="px-1 pb-1">
+        <SegmentedControl
+          aria-label={t.secMethod}
+          size="sm"
+          className="w-full [&_[data-slot=segmented-control-item]]:flex-1"
+          value={state.dots === "two" ? "two" : "three"}
+          onValueChange={(dots) => change({ mode: "ref", dots })}
+          options={[
+            { value: "three", label: t.three, title: t.methThreeHint },
+            { value: "two", label: t.two, title: t.methTwoHint },
+          ]}
+        />
+      </div>
     </>
   );
   const references = (
@@ -448,7 +467,7 @@ export function ComparisonMenu({
       )}
     </>
   );
-  const prData = state.mode === "pr" ? refs : prRefs.data;
+  const prData = refs;
   const filteredPrs = (prData?.prs || []).filter(
     (pr) => !query || `${pr.number} ${pr.title}`.toLowerCase().includes(query),
   );
@@ -460,7 +479,7 @@ export function ComparisonMenu({
           pick({ mode: "pr", pr: draft.trim() });
       })}
       <div className="max-h-60 overflow-y-auto">
-        {prRefs.isPending && state.mode !== "pr" ? (
+        {!prData ? (
           <p role="status" className="p-2 text-aux text-muted-foreground">
             {t.loading}
           </p>
@@ -482,22 +501,15 @@ export function ComparisonMenu({
             {errorMessage(prData.prState, t)}
           </p>
         )}
-        {!prRefs.isPending &&
-          prData?.prState === "ready" &&
-          filteredPrs.length === 0 && (
-            <p className="p-2 text-aux text-muted-foreground">{t.prNoMatch}</p>
-          )}
-        {prRefs.error && state.mode !== "pr" && (
-          <p className="p-2 text-aux text-muted-foreground">
-            {errorMessage(prRefs.error.message, t)}
-          </p>
+        {prData?.prState === "ready" && filteredPrs.length === 0 && (
+          <p className="p-2 text-aux text-muted-foreground">{t.prNoMatch}</p>
         )}
       </div>
     </>
   );
   const branch = (
     <>
-      {back(`${t.secTarget} ${selectedBranch}`)}
+      {back(t.branch)}
       <DropdownMenuItem
         className="relative pr-8"
         onSelect={(e) => {
@@ -543,24 +555,39 @@ export function ComparisonMenu({
   // A ready result always wins synchronously; if loading stalls, remove the stale counts after 3s.
   const [lastReadyAll, setLastReadyAll] = useState<ChangeCount>();
   useEffect(() => {
+    if (comparisonUnavailable) {
+      setLastReadyAll(undefined);
+      return;
+    }
     if (data) {
       setLastReadyAll(files.length > 0 ? all : undefined);
       return;
     }
     const timer = window.setTimeout(() => setLastReadyAll(undefined), 3000);
     return () => window.clearTimeout(timer);
-  }, [data, files.length, all.files, all.added, all.deleted]);
-  const displayedAll = data
-    ? files.length > 0
-      ? all
-      : undefined
-    : lastReadyAll;
+  }, [
+    comparisonUnavailable,
+    data,
+    files.length,
+    all.files,
+    all.added,
+    all.deleted,
+  ]);
+  const displayedAll = comparisonUnavailable
+    ? undefined
+    : data
+      ? files.length > 0
+        ? all
+        : undefined
+      : lastReadyAll;
   const summary = (label: string, count: ChangeCount) => (
-    <div className="flex items-center justify-between gap-3 px-2 py-1 text-xs">
-      <span className="text-muted-foreground">
+    <div className="flex items-center justify-between gap-3 whitespace-nowrap px-2 py-1 text-xs">
+      <span className="shrink-0 whitespace-nowrap text-muted-foreground">
         {label} · {count.files}
       </span>
-      <Stats added={count.added} deleted={count.deleted} zero />
+      <span className="shrink-0 whitespace-nowrap">
+        <Stats added={count.added} deleted={count.deleted} zero />
+      </span>
     </div>
   );
   const changeSummary = files.length > 0 && (
