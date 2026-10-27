@@ -93,10 +93,26 @@ export function Stats({
       }}
     >
       {(added > 0 || zero) && (
-        <span style={{ color: "var(--success)" }}>+{added}</span>
+        <span
+          style={{
+            color: "var(--success)",
+            minWidth: "2ch",
+            textAlign: "right",
+          }}
+        >
+          +{added}
+        </span>
       )}
       {(deleted > 0 || zero) && (
-        <span style={{ color: "var(--destructive)" }}>−{deleted}</span>
+        <span
+          style={{
+            color: "var(--destructive)",
+            minWidth: "2ch",
+            textAlign: "right",
+          }}
+        >
+          −{deleted}
+        </span>
       )}
     </span>
   );

@@ -34,7 +34,6 @@ import { Popover, PopoverTrigger, PopoverContent } from "@rome-os/ui/popover";
 import {
   RefreshCw,
   PanelRight,
-  ChevronDown,
   Search,
   MoreHorizontal,
   Columns2,
@@ -47,7 +46,6 @@ import {
   WrapText,
   Keyboard,
   LoaderCircle,
-  GitPullRequest,
 } from "lucide-react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { CodeViewItem } from "@pierre/diffs";
@@ -1254,7 +1252,7 @@ function Browser() {
     "open-menu": {
       label: state.mode === "commit" ? t.chooseCommit : t.emptyChoosePr,
       run: () => {
-        setComparisonEntry(state.mode === "commit" ? "commit" : "scope");
+        setComparisonEntry(state.mode === "commit" ? "commit" : "pr");
         setComparisonOpen(true);
       },
     },
@@ -1379,10 +1377,6 @@ function Browser() {
                   className="shrink-0 text-muted-foreground"
                 />
                 <span className="truncate">{repoName}</span>
-                <ChevronDown
-                  size={12}
-                  className="shrink-0 text-muted-foreground"
-                />
               </Pill>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -1443,7 +1437,6 @@ function Browser() {
           defaultBase={defaultBaseName}
           t={t}
           zh={host.zh}
-          compact={compact}
           open={comparisonOpen}
           commitEntry={comparisonEntry === "commit"}
           prEntry={comparisonEntry === "pr"}
@@ -1466,17 +1459,6 @@ function Browser() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem
-                onSelect={() => {
-                  change({ mode: "pr", pr: "" });
-                  setComparisonEntry("pr");
-                  setComparisonOpen(true);
-                }}
-              >
-                <GitPullRequest />
-                {t.comparePr}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <div
                 className="flex min-h-[var(--control-min-h)] items-center gap-2 px-2 py-1 text-ui"
                 onKeyDown={(e) => e.stopPropagation()}

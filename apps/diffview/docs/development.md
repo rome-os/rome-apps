@@ -76,10 +76,12 @@ See [scroll memory](2026-10-25-scroll-memory.md) for scope and storage behavior.
 
 `pnpm --filter @rome/app-diffview test:menu` builds and loads the production UI
 **and API** against disposable Git fixtures. It tests 360/447/1100px layouts
-(including a real iframe), flat ordering, staged/unstaged/unpushed semantics,
-commit pagination/root selection/reload, branch-only endpoint controls, keyboard
+(including a real iframe), scope ordering, staged/unstaged/unpushed semantics,
+in-place branch/PR navigation, commit pagination/root selection/reload, keyboard
 selection, missing upstream and unchanged Git index. It uses the same browser
-executable override as `test:worker`; ordinary scopes never query GitHub.
+executable override as `test:worker`; ordinary scopes never query GitHub. It also
+checks all-change toolbar totals, bottom-anchored detailed totals, trigger labels,
+and the absence of the old revision pill and overflow PR action.
 See [scope menu](2026-10-25-scope-menu.md) for comparison definitions.
 
 ## Review correctness regressions

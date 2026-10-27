@@ -29,7 +29,7 @@ like `contest` and `locksmith` are not guessed.
 
 The files DTO includes a category on every entry plus backend-computed
 `primary`, `supporting`, `all`, and per-category totals. The comparison pill
-shows primary additions/deletions; its menu shows primary, supporting, and all
+shows all additions/deletions; its menu shows primary, supporting, and all
 totals so excluded lines remain visible and auditable.
 
 ## Target selection and batching

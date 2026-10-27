@@ -522,8 +522,12 @@ async function prCompare(repo: string, n: string, refresh = false) {
               "--refmap=",
               "--",
               source,
-              "+refs/heads/" + meta.baseRefName + ":" + temp + "/base",
-              "+refs/pull/" + n + "/head:" + temp + "/head",
+              // Fetch the exact API snapshot, not the moving branch names. GitHub's PR
+              // base SHA can intentionally trail the current base branch after that branch
+              // advances; fetching refs/heads/<base> would then reject a perfectly valid PR
+              // and unnecessarily fall back to a patch-only `gh pr diff` response.
+              "+" + meta.baseRefOid + ":" + temp + "/base",
+              "+" + meta.headRefOid + ":" + temp + "/head",
             ],
             undefined,
             25000,
@@ -537,7 +541,7 @@ async function prCompare(repo: string, n: string, refresh = false) {
           await deleteReviewRefs(repo, await reviewRefs(repo, [temp + "/"]));
         }
       } catch {
-        // An authoritative server diff is safer than mixing a fork's refs or racing endpoints.
+        // An authoritative server diff is safer when exact endpoint objects are unavailable.
         return {
           from: "",
           to: "",
