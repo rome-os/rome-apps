@@ -383,6 +383,38 @@ exec ${JSON.stringify(realGit)} "$@"
     3,
   );
 
+  // Observing an open PR invalidates a cached miss before it becomes historical.
+  const opened = {
+    number: 34,
+    headRefName: "no-pr",
+    headRepository: { id: "ALICE" },
+    state: "OPEN",
+  };
+  await writeFile(join(bin, "open.json"), JSON.stringify([opened]));
+  assert.equal((await listRefs(repo)).currentBranchPr?.number, 34);
+  await writeFile(join(bin, "open.json"), "[]");
+  await writeFile(
+    join(bin, "history.json"),
+    JSON.stringify([{ ...opened, state: "MERGED" }]),
+  );
+  const merged = (await listRefs(repo)).currentBranchPr;
+  assert.equal(merged?.number, 34);
+  assert.equal(merged?.state, "MERGED");
+  // The same invalidation applies to an older cached historical hit, not just a miss.
+  await writeFile(
+    join(bin, "open.json"),
+    JSON.stringify([{ ...opened, number: 35 }]),
+  );
+  assert.equal((await listRefs(repo)).currentBranchPr?.number, 35);
+  await writeFile(join(bin, "open.json"), "[]");
+  await writeFile(
+    join(bin, "history.json"),
+    JSON.stringify([{ ...opened, number: 35, state: "CLOSED" }]),
+  );
+  const closed = (await listRefs(repo)).currentBranchPr;
+  assert.equal(closed?.number, 35);
+  assert.equal(closed?.state, "CLOSED");
+
   // Changing a branch's configured remote must not reuse another repository's association.
   await writeFile(
     join(bin, "history.json"),
@@ -394,6 +426,34 @@ exec ${JSON.stringify(realGit)} "$@"
   assert.equal((await listRefs(repo)).currentBranchPr?.number, 33);
   g("remote", "set-url", "upstream", "https://github.com/unknown/repo.git");
   assert.equal((await listRefs(repo)).currentBranchPr, undefined);
+  await writeFile(
+    join(bin, "open.json"),
+    JSON.stringify([
+      { number: 11, headRefName: "main", headRepository: { id: "ALICE" } },
+      { number: 90, headRefName: "main", headRepository: { id: "ORG" } },
+    ]),
+  );
+  // gh pr checkout can store the fork URL directly instead of naming a remote.
+  for (const remote of [
+    "https://github.com/alice/repo.git",
+    "git@github.com:alice/repo.git",
+  ]) {
+    g("config", "branch.main.remote", remote);
+    const direct = await listRefs(repo, "main");
+    assert.equal(direct.branchRepositoryId, "ALICE");
+    assert.equal(direct.currentBranchPr?.number, 11);
+  }
+  // Push configuration is not checkout identity; never link org's same-named PR instead.
+  g("config", "branch.main.pushRemote", "upstream");
+  g("config", "remote.pushDefault", "upstream");
+  assert.equal((await listRefs(repo, "main")).branchRepositoryId, "ALICE");
+  g("config", "branch.main.remote", ".");
+  assert.equal((await listRefs(repo, "main")).branchRepositoryId, undefined);
+  for (const missing of ["nonexistent-remote", "nonexistent/remote"]) {
+    g("config", "branch.main.remote", missing);
+    assert.equal((await listRefs(repo, "main")).branchRepositoryId, undefined);
+  }
+  g("config", "branch.main.remote", "origin");
   const gitCalls = (await readFile(gitLog, "utf8"))
     .trim()
     .split("\n")

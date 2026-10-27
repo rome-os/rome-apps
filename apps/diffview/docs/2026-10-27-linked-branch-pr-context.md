@@ -39,7 +39,13 @@ not the separately cached repository scan. A branch change keys a new PR request
 branch's server cache; detached HEAD has its own empty-branch key. Each PR DTO identifies the checkout
 it sampled, so a switch during a slow GitHub request cannot apply another branch's repository identity.
 PR requests no longer enumerate local branches, tags or commits; only the independent revisions request
-performs that work.
+performs that work. Passive PR context polls every five minutes in local views, and every minute
+in PR mode or while the comparison menu is open. Opening the menu refreshes stale PR context
+immediately; checkout changes still request the new context without waiting for either interval.
+
+Tracking remotes may be named remotes or literal URLs, including fork URLs stored by `gh pr checkout`.
+Push-remote preferences do not replace the tracking identity. An observed matching open PR invalidates
+the older historical cache entry (including a miss), so its subsequent merge/closure is resolved afresh.
 
 Checkout identity comes from the full symbolic HEAD ref with exactly `refs/heads/` removed,
 so a same-named tag cannot change the branch name or disable upstream tracking. If the tracking
@@ -71,6 +77,10 @@ keyboard-only activation, and narrow/iframe layouts.
 Branch/tag collisions cover ordinary and `heads/`-prefixed branch names, Unpushed files and
 canonical PR association. A production browser regression exhausts tracking and PR retries,
 then recovers the PR picker through its retry action without inventing passive branch labels.
+
+Regressions also cover URL-valued tracking remotes, fail-closed local/unknown remotes,
+miss → open → merged and old-history → open → closed transitions within the historical TTL,
+and production-browser polling frequency for passive, menu-open and PR-mode views.
 
 Validation uses Diffview `pnpm typecheck`, `pnpm test`, and
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome pnpm test:browser`.

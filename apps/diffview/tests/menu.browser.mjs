@@ -1096,6 +1096,102 @@ test(
         assert.deepEqual(errors, []);
         await page.close();
       }
+      // Passive context stays live at a lower cost; active menus and PR reviews stay fast.
+      const polling = await browser.newPage({
+        viewport: { width: 1100, height: 720 },
+      });
+      await polling.clock.install();
+      let polls = 0;
+      await polling.route("**/api/apps/diffview/refs?*", (route) => {
+        polls++;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            currentBranch: branch,
+            branchRepositoryId: "LOCAL",
+            prs: [],
+            prState: "ready",
+          }),
+        });
+      });
+      await polling.goto(
+        origin +
+          "/?lang=zh#" +
+          new URLSearchParams({ repo, mode: "uncommitted", unified: "3" }),
+      );
+      await polling.locator("diffs-container").first().waitFor();
+      await polling.waitForFunction(() =>
+        document.querySelector('[aria-label="比较版本"]'),
+      );
+      await polling.waitForTimeout(200);
+      assert.equal(polls, 1);
+      await polling.clock.fastForward(60_100);
+      await polling.waitForTimeout(200);
+      assert.equal(
+        polls,
+        1,
+        "local browsing must not poll GitHub every minute",
+      );
+      const passivePoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling.clock.fastForward(240_000);
+      await passivePoll;
+      assert.equal(
+        polls,
+        2,
+        "passive context still refreshes every five minutes",
+      );
+      await polling.waitForTimeout(200);
+      await polling.clock.fastForward(61_000);
+      const menuPoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling
+        .getByRole("button", { name: "比较版本", exact: true })
+        .click();
+      await menuPoll;
+      assert.equal(
+        polls,
+        3,
+        "opening a menu refreshes stale PR context immediately",
+      );
+      await polling.waitForTimeout(200);
+      const activePoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling.clock.fastForward(60_100);
+      await activePoll;
+      assert.equal(
+        polls,
+        4,
+        "an open comparison menu retains one-minute polling",
+      );
+      await polling.getByRole("menu").press("Escape");
+      await polling.clock.fastForward(60_100);
+      await polling.waitForTimeout(200);
+      assert.equal(polls, 4, "closing the menu restores passive polling");
+      await polling.evaluate(() => {
+        const q = new URLSearchParams(location.hash.slice(1));
+        q.set("mode", "pr");
+        q.delete("pr");
+        location.hash = q.toString();
+      });
+      await polling
+        .getByRole("button", { name: "选择 PR", exact: true })
+        .waitFor();
+      const prPoll = polling.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith("/refs"),
+      );
+      await polling.clock.fastForward(60_100);
+      await prPoll;
+      assert.equal(
+        polls,
+        5,
+        "PR mode retains one-minute polling even with its menu closed",
+      );
+      await polling.close();
       const failedPrs = await browser.newPage({
         viewport: { width: 447, height: 660 },
       });

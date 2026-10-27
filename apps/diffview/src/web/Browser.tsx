@@ -421,8 +421,14 @@ function Browser() {
       (checkedOutBranch !== undefined || tracking.isError),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: 60000,
+    // Passive linked labels still refresh, without spawning gh every minute in local views.
+    refetchInterval:
+      state.mode === "pr" || comparisonOpen ? 60_000 : 5 * 60_000,
   });
+  const openComparison = (value: boolean) => {
+    if (value && refs.isStale) void refs.refetch();
+    setComparisonOpen(value);
+  };
   const trackingUnavailable =
     state.mode === "unpushed" &&
     (!!tracking.error || tracking.data?.state !== "ready");
@@ -1282,7 +1288,7 @@ function Browser() {
       label: state.mode === "commit" ? t.chooseCommit : t.emptyChoosePr,
       run: () => {
         setComparisonEntry(state.mode === "commit" ? "commit" : "pr");
-        setComparisonOpen(true);
+        openComparison(true);
       },
     },
   } as const;
@@ -1477,7 +1483,7 @@ function Browser() {
           prEntry={comparisonEntry === "pr"}
           setOpen={(value) => {
             setComparisonEntry("scope");
-            setComparisonOpen(value);
+            openComparison(value);
           }}
         />
         <div className="ml-auto flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-border/60 p-0.5">

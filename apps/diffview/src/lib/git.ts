@@ -1195,7 +1195,10 @@ export async function refs(repo: string, branch?: string) {
     const remoteUrl =
       remote === "."
         ? ""
-        : (await tryGit(repo, ["remote", "get-url", remote])).trim();
+        : (await tryGit(repo, ["remote", "get-url", remote])).trim() ||
+          // Git also permits branch.<name>.remote to be a literal URL (gh pr checkout).
+          // Do not send an unknown remote name to gh as if it were a repository slug.
+          (!remote.startsWith("-") && remote.includes(":") ? remote : "");
     if (remoteUrl) {
       branchRepositoryId = await cached(
         repo + ":branch-repository:" + remoteUrl,
@@ -1217,14 +1220,19 @@ export async function refs(repo: string, branch?: string) {
       ).catch(() => undefined);
     }
     currentBranchPr = newestMatchingPr(prs, currentBranch, branchRepositoryId);
+    const historyKey =
+      repo +
+      ":branch-pr:" +
+      JSON.stringify([currentBranch, branchRepositoryId]);
+    // A newly observed open PR supersedes both old history and cached misses. Once it
+    // leaves the open list, resolve its current merged/closed state rather than the old result.
+    if (currentBranchPr) metadataCache.invalidate(historyKey);
     if (!currentBranchPr && branchRepositoryId) {
       try {
         // Cache exact historical hits AND misses independently of the 30s open-list cache.
         // New open PRs still win above; switching branch or remote identity cannot reuse this.
         currentBranchPr = await cached(
-          repo +
-            ":branch-pr:" +
-            JSON.stringify([currentBranch, branchRepositoryId]),
+          historyKey,
           async () => {
             const associated = JSON.parse(
               await command(repo, "gh", [

@@ -24,6 +24,10 @@ export class BoundedCache {
     if (entry) this.retainedBytes -= entry.bytes;
     this.entries.delete(key);
   }
+  /** Drop a retained result when newer source data proves it obsolete. */
+  invalidate(key: string) {
+    this.remove(key);
+  }
   get<T>(
     key: string,
     fn: () => Promise<T>,
