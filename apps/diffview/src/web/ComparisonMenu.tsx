@@ -18,7 +18,7 @@ import { Input } from "@rome-os/ui/input";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Description } from "../shared/describe";
 import type { CommitInfo, TrackingInfo } from "../lib/git";
-import type { FilesData, RefData, State } from "./types";
+import type { FilesData, RefData, PrRefData, State } from "./types";
 import type { Messages } from "./i18n";
 import { errorMessage } from "./i18n";
 import { api } from "./api";
@@ -34,7 +34,7 @@ interface Props {
   /** Fast, local-only branch/tag/commit data. */
   refs?: RefData;
   /** Bounded GitHub PR data, loaded independently so it cannot block local refs. */
-  pullRequests?: RefData;
+  pullRequests?: PrRefData;
   pullRequestsPending?: boolean;
   pullRequestsError?: string;
   retryPullRequests(): void;

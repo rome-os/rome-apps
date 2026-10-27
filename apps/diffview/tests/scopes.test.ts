@@ -81,6 +81,7 @@ test("unpushed excludes staged, unstaged and untracked changes, never fetches, a
     const index = await git(repo, ["ls-files", "--stage"]);
     const info = await tracking(repo);
     assert.equal(info.state, "ready");
+    assert.equal(info.branch, "main");
     assert.equal(info.upstream, "origin/main");
     assert.equal(info.ahead, 1);
     assert.equal(info.behind, 0);
@@ -98,8 +99,10 @@ test("unpushed excludes staged, unstaged and untracked changes, never fetches, a
 test("tracking distinguishes unborn, no upstream, gone upstream and detached HEAD, without default-base fallback", async () =>
   fixture(async (repo, commit) => {
     assert.equal((await tracking(repo)).state, "unborn");
+    assert.equal((await tracking(repo)).branch, "main");
     await commit("initial.txt", "initial\n");
     assert.equal((await tracking(repo)).state, "no_upstream");
+    assert.equal((await tracking(repo)).branch, "main");
     await assert.rejects(
       comparison(repo, { mode: "unpushed" }),
       code("no_upstream"),
@@ -109,6 +112,7 @@ test("tracking distinguishes unborn, no upstream, gone upstream and detached HEA
     assert.equal((await tracking(repo)).state, "upstream_missing");
     await git(repo, ["checkout", "--detach"]);
     assert.equal((await tracking(repo)).state, "detached");
+    assert.equal((await tracking(repo)).branch, "");
     await assert.rejects(
       comparison(repo, { mode: "unpushed" }),
       code("detached"),

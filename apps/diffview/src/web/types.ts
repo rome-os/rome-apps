@@ -13,6 +13,10 @@ export interface RefData {
   branches: string[];
   tags: string[];
   commits: { sha: string; title: string }[];
+}
+export interface PrRefData {
+  /** Checkout snapshot used to resolve this association, not the repository scan. */
+  currentBranch: string;
   prs: PullRequestInfo[];
   /** Exact current-branch association, including a recently merged or closed PR. */
   currentBranchPr?: PullRequestInfo;

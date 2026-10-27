@@ -23,7 +23,7 @@ process.env.HOME = home;
 process.env.ROME_PROFILE = "review";
 const { createApiHandler } = await import("../src/api/index");
 const snapshot = await import("../src/lib/snapshot");
-const { GitError, refs: listRefs } = await import("../src/lib/git");
+const { GitError, refs: listRefs, revisions } = await import("../src/lib/git");
 const handler = createApiHandler({} as never);
 let counter = 0;
 afterEach(() => {
@@ -305,6 +305,16 @@ if(args[0]==='repo') {
 `,
   );
   await chmod(file, 0o755);
+  const realGit = execFileSync("which", ["git"]).toString().trim();
+  const gitLog = join(bin, "git-calls.log");
+  await writeFile(
+    join(bin, "git"),
+    `#!/bin/sh
+printf '%s\\n' "$@" >> ${JSON.stringify(gitLog)}
+exec ${JSON.stringify(realGit)} "$@"
+`,
+  );
+  await chmod(join(bin, "git"), 0o755);
   process.env.PATH = bin + ":" + original.PATH;
   const calls = async () =>
     (await readFile(log, "utf8"))
@@ -319,6 +329,7 @@ if(args[0]==='repo') {
   // a relationship to the checkout: accept Alice's fork PR and reject org's same-name PR.
   const onMain = await call("refs");
   assert.equal(onMain.status, 200);
+  assert.equal(onMain.body.currentBranch, "main");
   assert.equal(onMain.body.branchRepositoryId, "ALICE");
   assert.equal(onMain.body.currentBranchPr?.number, 11);
   assert.equal(
@@ -327,7 +338,11 @@ if(args[0]==='repo') {
   );
 
   g("checkout", "-qb", "topic");
-  const onTopic = await listRefs(repo);
+  // No TTL advance: switching checkout must not reuse main's still-fresh route cache.
+  const onTopicResponse = await call("refs");
+  assert.equal(onTopicResponse.status, 200);
+  const onTopic = onTopicResponse.body;
+  assert.equal(onTopic.currentBranch, "topic");
   assert.equal(onTopic.currentBranchPr?.number, 21);
   assert.equal(onTopic.currentBranchPr?.state, "MERGED");
   now += 31000; // Beyond the outer refs TTL, but not the per-branch historical TTL.
@@ -378,14 +393,38 @@ if(args[0]==='repo') {
   assert.equal((await listRefs(repo)).currentBranchPr?.number, 33);
   g("remote", "set-url", "upstream", "https://github.com/unknown/repo.git");
   assert.equal((await listRefs(repo)).currentBranchPr, undefined);
+  const gitCalls = (await readFile(gitLog, "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  assert.ok(
+    gitCalls.includes("symbolic-ref"),
+    "Git command recording is active",
+  );
+  assert.equal(
+    gitCalls.some((cmd) => ["for-each-ref", "log", "tag"].includes(cmd)),
+    false,
+    "PR association requests never enumerate local branches, commits or tags",
+  );
+  assert.equal("branches" in onMain.body, false);
+  assert.equal("commits" in onMain.body, false);
+  assert.equal("tags" in onMain.body, false);
+  g("checkout", "--detach");
+  assert.equal((await call("refs")).body.currentBranch, "");
+  assert.equal((await call("refs")).body.currentBranchPr, undefined);
+  assert.equal((await call("tracking")).body.branch, "");
+  g("checkout", "main");
+  assert.equal((await call("refs")).body.currentBranch, "main");
   const beforeLocal = (await calls()).length;
-  await listRefs(repo, false);
+  const local = await revisions(repo);
+  assert.ok(local.branches.includes("topic"));
+  assert.ok(local.commits.length > 0);
   assert.equal(
     (await calls()).length,
     beforeLocal,
     "local revisions never call gh",
   );
-});
+}, 15000);
 
 test("PR fetch pins exact API endpoints when the base branch advances, without changing user refs", async () => {
   const { repo, g, write, call } = await fixture();

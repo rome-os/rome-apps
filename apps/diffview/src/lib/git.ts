@@ -579,6 +579,8 @@ async function prCompare(repo: string, n: string, refresh = false) {
 /** Tracking is local metadata only. Never fetch, change branches, or guess a base. */
 export interface TrackingInfo {
   state: "ready" | "no_upstream" | "detached" | "unborn" | "upstream_missing";
+  /** Empty for detached HEAD; available even without an upstream or initial commit. */
+  branch: string;
   upstream: string;
   head: string;
   upstreamHead: string;
@@ -588,6 +590,7 @@ export interface TrackingInfo {
 export async function tracking(repo: string): Promise<TrackingInfo> {
   const result: TrackingInfo = {
     state: "unborn",
+    branch: await checkoutBranch(repo),
     upstream: "",
     head: "",
     upstreamHead: "",
@@ -596,12 +599,12 @@ export async function tracking(repo: string): Promise<TrackingInfo> {
   };
   result.head = await tryGit(repo, ["rev-parse", "--verify", "HEAD"]);
   if (!result.head) return result;
-  const branch = await tryGit(repo, ["symbolic-ref", "--quiet", "HEAD"]);
+  const branch = result.branch;
   if (!branch) return { ...result, state: "detached" };
   result.upstream = await tryGit(repo, [
     "for-each-ref",
     "--format=%(upstream:short)",
-    branch,
+    "refs/heads/" + branch,
   ]);
   if (!result.upstream) return { ...result, state: "no_upstream" };
   result.upstreamHead = await sha(repo, result.upstream).catch(() => "");
@@ -1116,8 +1119,13 @@ export async function patch(
     collapsed: entry.collapsed,
   };
 }
-export async function refs(repo: string, includePr = true) {
-  const [branches, commits, tags, currentBranchText] = await Promise.all([
+export async function checkoutBranch(repo: string) {
+  return (await tryGit(repo, ["symbolic-ref", "--short", "-q", "HEAD"])).trim();
+}
+
+/** Local picker data never waits for GitHub, and PR polling never repeats these listings. */
+export async function revisions(repo: string) {
+  const [branches, commits, tags] = await Promise.all([
     git(repo, [
       "for-each-ref",
       "--format=%(refname:short)",
@@ -1126,27 +1134,41 @@ export async function refs(repo: string, includePr = true) {
     ]),
     tryGit(repo, ["log", "-40", "--format=%H%x09%s"]),
     git(repo, ["tag", "--list"]),
-    tryGit(repo, ["symbolic-ref", "--short", "-q", "HEAD"]),
   ]);
+  return {
+    branches: branches.trim().split("\n").filter(Boolean),
+    tags: tags.trim().split("\n").filter(Boolean),
+    commits: commits
+      .split("\n")
+      .filter(Boolean)
+      .map((s) => {
+        const [sha, ...title] = s.split("\t");
+        return { sha, title: title.join("\t") };
+      }),
+    prs: [] as PullRequestInfo[],
+    prState: "ready",
+  };
+}
+
+export async function refs(repo: string, branch?: string) {
+  const currentBranch = branch ?? (await checkoutBranch(repo));
   const fields =
     "number,title,headRefName,baseRefName,updatedAt,state,headRepository";
-  const currentBranch = currentBranchText.trim();
   let branchRepositoryId: string | undefined;
   let prs: PullRequestInfo[] = [],
     currentBranchPr: PullRequestInfo | undefined,
     prState = "ready";
   try {
-    if (includePr)
-      prs = JSON.parse(
-        await command(repo, "gh", [
-          "pr",
-          "list",
-          "--limit",
-          "50",
-          "--json",
-          fields,
-        ]),
-      );
+    prs = JSON.parse(
+      await command(repo, "gh", [
+        "pr",
+        "list",
+        "--limit",
+        "50",
+        "--json",
+        fields,
+      ]),
+    );
   } catch (e) {
     const err = e as GitError;
     prState =
@@ -1158,7 +1180,7 @@ export async function refs(repo: string, includePr = true) {
             ? "no_remote"
             : "unavailable";
   }
-  if (includePr && prState === "ready" && currentBranch) {
+  if (prState === "ready" && currentBranch) {
     // gh may select the upstream repository in a fork checkout. Resolve the actual branch's
     // tracking remote (origin for an untracked branch), not gh's default base repository.
     const remote =
@@ -1231,15 +1253,7 @@ export async function refs(repo: string, includePr = true) {
     }
   }
   return {
-    branches: branches.trim().split("\n").filter(Boolean),
-    tags: tags.trim().split("\n").filter(Boolean),
-    commits: commits
-      .split("\n")
-      .filter(Boolean)
-      .map((s) => {
-        const [sha, ...title] = s.split("\t");
-        return { sha, title: title.join("\t") };
-      }),
+    currentBranch,
     prs,
     currentBranchPr,
     branchRepositoryId,

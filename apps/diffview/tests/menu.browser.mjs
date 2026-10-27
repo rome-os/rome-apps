@@ -272,6 +272,7 @@ test(
             viewport: { width, height: 720 },
           }),
           errors = [];
+        if (width === 1100) await page.clock.install();
         let refsRequests = 0;
         page.on("request", (request) => {
           if (new URL(request.url()).pathname.endsWith("/refs")) refsRequests++;
@@ -289,6 +290,7 @@ test(
               branches: ["main", branch],
               commits: [],
               tags: [],
+              currentBranch: branch,
               branchRepositoryId: "LOCAL",
               currentBranchPr: {
                 number: 30,
@@ -995,6 +997,91 @@ test(
           "PR selection no longer lives in the ambiguous overflow menu",
         );
         await v.getByRole("menu").press("Escape");
+        if (width === 1100) {
+          // Keep /repos on its original branch. The independent local tracking poll is the
+          // checkout authority, even while gh is slow and the old PR cache is still fresh.
+          const switched = "switched-checkout";
+          await page.route("**/api/apps/diffview/tracking?*", (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                state: "no_upstream",
+                branch: switched,
+                head: feature,
+                upstream: "",
+                upstreamHead: "",
+                ahead: 0,
+                behind: 0,
+              }),
+            }),
+          );
+          await page.unroute("**/api/apps/diffview/refs?*");
+          let release;
+          const delayed = new Promise((resolve) => {
+            release = resolve;
+          });
+          let staleSnapshot = true;
+          const association = {
+            number: 31,
+            headRefName: switched,
+            state: "OPEN",
+            headRepository: { id: "OTHER_REMOTE" },
+          };
+          await page.route("**/api/apps/diffview/refs?*", async (route) => {
+            await delayed;
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                currentBranch: staleSnapshot ? branch : switched,
+                branchRepositoryId: "OTHER_REMOTE",
+                currentBranchPr: association,
+                prs: [association],
+                prState: "ready",
+              }),
+            });
+          });
+          const beforeSwitch = refsRequests;
+          await page.clock.fastForward(15_100);
+          await scope.click();
+          await v
+            .getByRole("menuitem", { name: `分支 · ${switched}`, exact: true })
+            .waitFor();
+          assert.equal(
+            refsRequests,
+            beforeSwitch + 1,
+            "a checkout change immediately requests its own PR context",
+          );
+          assert.equal(
+            await v
+              .getByRole("menuitem", { name: "拉取请求", exact: true })
+              .count(),
+            1,
+            "the local branch remains usable while GitHub is pending",
+          );
+          const staleResponse = page.waitForResponse((r) =>
+            new URL(r.url()).pathname.endsWith("/refs"),
+          );
+          release();
+          await staleResponse;
+          await page.waitForTimeout(200);
+          assert.equal(
+            await v
+              .getByRole("menuitem", { name: "拉取请求", exact: true })
+              .count(),
+            1,
+            "a late snapshot cannot apply a previous checkout's repository identity",
+          );
+          await v.getByRole("menu").press("Escape");
+          staleSnapshot = false;
+          await v.getByRole("button", { name: "刷新", exact: true }).click();
+          await scope.click();
+          await v
+            .getByRole("menuitem", { name: "拉取请求 · #31", exact: true })
+            .waitFor();
+          await v.getByRole("menu").press("Escape");
+        }
         await page.unroute("**/api/apps/diffview/refs?*");
         await page.unroute("**/api/apps/diffview/files?*");
         await bounds();

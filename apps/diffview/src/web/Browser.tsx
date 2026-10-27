@@ -80,6 +80,7 @@ import { useHost, messages, errorMessage } from "./i18n";
 import type {
   Repo,
   RefData,
+  PrRefData,
   FilesData,
   State,
   PatchData,
@@ -400,21 +401,23 @@ function Browser() {
     staleTime: 5000,
     refetchInterval: 60000,
   });
-  // PR context is repository-level and bounded, but deliberately independent of local refs.
-  const refs = useQuery({
-    queryKey: ["refs", state.repo],
-    queryFn: ({ signal }) => api<RefData>("refs", { repo: state.repo }, signal),
-    enabled: ready && !!state.repo,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    refetchInterval: 60000,
-  });
   const tracking = useQuery({
     queryKey: ["tracking", state.repo],
     queryFn: ({ signal }) =>
       api<TrackingInfo>("tracking", { repo: state.repo }, signal),
     enabled: ready && !!state.repo,
     refetchInterval: 15000,
+  });
+  const checkedOutBranch = tracking.data?.branch;
+  // Independent of local picker data; a checkout change starts a fresh PR request immediately.
+  const refs = useQuery({
+    queryKey: ["refs", state.repo, checkedOutBranch],
+    queryFn: ({ signal }) =>
+      api<PrRefData>("refs", { repo: state.repo }, signal),
+    enabled: ready && !!state.repo && checkedOutBranch !== undefined,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: 60000,
   });
   const trackingUnavailable =
     state.mode === "unpushed" &&
@@ -1088,11 +1091,14 @@ function Browser() {
       : listedPrInfo;
   const reviewContext = deriveReviewContext(
     normalizeMode(state),
-    selectedRepo?.branch,
+    checkedOutBranch,
     refs.data?.prs ?? [],
     selectedPrInfo,
     refs.data?.currentBranchPr,
-    refs.data?.branchRepositoryId,
+    // A switch during a slow gh request must never apply another checkout's identity.
+    refs.data?.currentBranch === checkedOutBranch
+      ? refs.data?.branchRepositoryId
+      : undefined,
   );
   const desc = describeComparison(
     normalizeMode(state),

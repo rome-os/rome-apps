@@ -21,6 +21,8 @@ import {
   type Trace,
   patch,
   refs,
+  revisions,
+  checkoutBranch,
   tracking,
   history,
   scanRepos,
@@ -263,12 +265,19 @@ function createInnerHandler(): RomeAppApiHandler {
           );
         if (route === "revisions")
           return Response.json(
-            await cached(repo + ":revisions", () => refs(repo, false), 5000),
+            await cached(repo + ":revisions", () => revisions(repo), 5000),
           );
-        if (route === "refs")
+        if (route === "refs") {
+          // A checkout change must bypass the previous branch's still-fresh association.
+          const branch = await checkoutBranch(repo);
           return Response.json(
-            await cached(repo + ":refs", () => refs(repo), 30000),
+            await cached(
+              repo + ":refs:" + JSON.stringify(branch),
+              () => refs(repo, branch),
+              30000,
+            ),
           );
+        }
         if (route === "events") {
           const started = performance.now();
           const { hash } = await fingerprintInfo(repo);

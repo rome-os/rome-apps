@@ -34,6 +34,13 @@ An explicit PR comparison also carries the exact resolved PR number, base branch
 This keeps PR-to-branch following correct even when the selected PR is absent from the bounded list or Git falls
 back to GitHub's patch.
 
+Checkout labels now use the Git-only tracking snapshot (including unborn and no-upstream branches),
+not the separately cached repository scan. A branch change keys a new PR request and bypasses the old
+branch's server cache; detached HEAD has its own empty-branch key. Each PR DTO identifies the checkout
+it sampled, so a switch during a slow GitHub request cannot apply another branch's repository identity.
+PR requests no longer enumerate local branches, tags or commits; only the independent revisions request
+performs that work.
+
 ## Interaction constraints
 
 - Following is display-only: it cannot create a Branch/PR effect loop.
@@ -51,30 +58,10 @@ outside the bounded list, detached HEAD, and branch names containing `origin/`. 
 checks local → ref → commit → PR #18 → local transitions at 360px, 447px iframe, and 1100px, including an exact
 merged/closed branch association outside the bounded open list and exact PR-head linkage.
 
-## Review follow-up (PR #31, head 88b776e)
+Regression coverage also checks branch switches within the PR-cache TTL, detached HEAD, the absence
+of local listing commands during PR polling, and live linked-label changes while the repository scan is
+stale and GitHub is delayed. Production browser coverage retains the local-picker failure isolation,
+keyboard-only activation, and narrow/iframe layouts.
 
-Accepted five new findings after deduplicating the six existing author replies:
-
-- One shared `newestMatchingPr` now owns branch normalization, repository identity and newest ordering.
-- Passive association compares canonical repository node IDs, not head-versus-base `isCrossRepository`.
-  `gh repo view <tracking-remote-url> --json id` resolves the checkout independently of gh’s default base;
-  untracked branches use origin, local-only or unknown remotes do not guess. Explicit fork PRs remain usable.
-- PR-mode Branch labels explicitly identify the passive PR head. Selecting Branch still enters local ref mode.
-- Historical associations retain merged/closed labels instead of masquerading as open PRs. Their exact
-  per-branch lookup caches hits and misses for five minutes, separately from the 30-second open list;
-  open matches always take precedence and branch/identity changes get separate cache keys.
-- Unused `headRepositoryOwner` (and the now-unneeded cross-repository flag/author fields) are no longer fetched.
-
-Regression coverage: `/refs` handler fork-checkout fixture, unknown identities, tracking-remote
-changes, shared normalization/tie-breaking, historical TTL hits/misses and open precedence; production menu
-checks explicitly identify the PR head, verify the subsequent local-branch transition, and cover closed/merged
-labels at 360px, 447px iframe and 1100px. Existing local-only/error and keyboard coverage is retained.
-
-Validation for this follow-up:
-
-- Diffview `pnpm typecheck` passed.
-- Diffview `pnpm test`: 19 files / 148 tests passed.
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome pnpm test:browser`:
-  production build and all 13 browser checks passed, including the updated menu regression.
-- Source install and installed-runtime verification are required before pushing/replying as fixed;
-  their results are recorded in the corresponding PR threads after installation.
+Validation uses Diffview `pnpm typecheck`, `pnpm test`, and
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome pnpm test:browser`.
