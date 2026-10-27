@@ -266,6 +266,8 @@ test(
     const origin = `http://127.0.0.1:${server.address().port}`;
     try {
       for (const width of [360, 447, 1100]) {
+        const historicalState = width === 360 ? "CLOSED" : "MERGED";
+        const historicalLabel = width === 360 ? "已关闭" : "已合并";
         const page = await browser.newPage({
             viewport: { width, height: 720 },
           }),
@@ -287,13 +289,15 @@ test(
               branches: ["main", branch],
               commits: [],
               tags: [],
+              branchRepositoryId: "LOCAL",
               currentBranchPr: {
                 number: 30,
                 title: "Current branch PR",
                 baseRefName: "main",
                 headRefName: branch,
                 updatedAt: "2026-10-27T10:00:00Z",
-                isCrossRepository: false,
+                headRepository: { id: "LOCAL" },
+                state: historicalState,
               },
               prs: [
                 {
@@ -302,7 +306,8 @@ test(
                   baseRefName: "main",
                   headRefName: "refactor/code-review-ui-library",
                   updatedAt: "2026-10-27T09:00:00Z",
-                  isCrossRepository: false,
+                  headRepository: { id: "LOCAL" },
+                  state: "OPEN",
                 },
               ],
               prState: "ready",
@@ -510,7 +515,7 @@ test(
             "已暂存",
             "未暂存",
             `分支 · ${branch}`,
-            "拉取请求 · #30",
+            `拉取请求 · #30 · ${historicalLabel}`,
           ],
         );
         const markedRows = [
@@ -520,7 +525,7 @@ test(
           v.getByRole("menuitemradio", { name: "未暂存", exact: true }),
           v.getByRole("menuitem", { name: `分支 · ${branch}`, exact: true }),
           v.getByRole("menuitem", {
-            name: "拉取请求 · #30",
+            name: `拉取请求 · #30 · ${historicalLabel}`,
             exact: true,
           }),
         ];
@@ -548,7 +553,7 @@ test(
         const [prBox, summaryBox] = await Promise.all([
           v
             .getByRole("menuitem", {
-              name: "拉取请求 · #30",
+              name: `拉取请求 · #30 · ${historicalLabel}`,
               exact: true,
             })
             .boundingBox(),
@@ -858,7 +863,10 @@ test(
         });
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求 · #30", exact: true })
+          .getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          })
           .click();
         const prInput = v.getByRole("textbox", {
           name: "PR 编号",
@@ -872,7 +880,7 @@ test(
         assert.equal(
           await v
             .getByRole("menuitem", {
-              name: "拉取请求 · #30",
+              name: `拉取请求 · #30 · ${historicalLabel}`,
               exact: true,
             })
             .count(),
@@ -881,7 +889,10 @@ test(
         await v.getByRole("menu").press("Escape");
         await scope.click();
         await v
-          .getByRole("menuitem", { name: "拉取请求 · #30", exact: true })
+          .getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          })
           .click();
         await v
           .getByRole("textbox", { name: "PR 编号", exact: true })
@@ -923,7 +934,7 @@ test(
         await scope.click();
         await v
           .getByRole("menuitem", {
-            name: "分支 · refactor/code-review-ui-library",
+            name: "分支 · PR 分支: refactor/code-review-ui-library",
             exact: true,
           })
           .waitFor();
@@ -931,6 +942,36 @@ test(
           .getByRole("menuitem", { name: "拉取请求 · #18", exact: true })
           .waitFor();
         await shot("pr-linked");
+        // The passive PR head is explicitly identified, never offered as a local ref switch.
+        await v
+          .getByRole("menuitem", {
+            name: "分支 · PR 分支: refactor/code-review-ui-library",
+            exact: true,
+          })
+          .click();
+        await v
+          .getByRole("menuitem", { name: "返回: 分支", exact: true })
+          .waitFor();
+        assert.match(
+          await v
+            .locator('[data-slot="dropdown-menu-label"]')
+            .first()
+            .textContent(),
+          new RegExp(branch),
+        );
+        assert.doesNotMatch(
+          await v.getByRole("menu").textContent(),
+          /refactor\/code-review-ui-library/,
+        );
+        assert.equal(
+          new URLSearchParams(
+            (await v.evaluate(() => location.hash)).slice(1),
+          ).get("mode"),
+          "ref",
+        );
+        await v
+          .getByRole("menuitem", { name: "返回: 分支", exact: true })
+          .click();
         await v
           .getByRole("menuitemradio", { name: "未提交", exact: true })
           .click();
@@ -939,7 +980,10 @@ test(
           .getByRole("menuitem", { name: `分支 · ${branch}`, exact: true })
           .waitFor();
         await v
-          .getByRole("menuitem", { name: "拉取请求 · #30", exact: true })
+          .getByRole("menuitem", {
+            name: `拉取请求 · #30 · ${historicalLabel}`,
+            exact: true,
+          })
           .waitFor();
         await v.getByRole("menu").press("Escape");
         await v.getByRole("button", { name: "审阅选项", exact: true }).click();

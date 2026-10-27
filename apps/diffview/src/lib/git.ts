@@ -9,7 +9,10 @@ import { resolve, relative, isAbsolute, join, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { constants } from "node:fs";
-import type { PullRequestInfo } from "../shared/reviewContext.js";
+import {
+  newestMatchingPr,
+  type PullRequestInfo,
+} from "../shared/reviewContext.js";
 export const ROOT = join(
   homedir(),
   ".rome",
@@ -1126,8 +1129,9 @@ export async function refs(repo: string, includePr = true) {
     tryGit(repo, ["symbolic-ref", "--short", "-q", "HEAD"]),
   ]);
   const fields =
-    "number,title,headRefName,baseRefName,updatedAt,author,isCrossRepository,headRepositoryOwner";
+    "number,title,headRefName,baseRefName,updatedAt,state,headRepository";
   const currentBranch = currentBranchText.trim();
+  let branchRepositoryId: string | undefined;
   let prs: PullRequestInfo[] = [],
     currentBranchPr: PullRequestInfo | undefined,
     prState = "ready";
@@ -1155,26 +1159,72 @@ export async function refs(repo: string, includePr = true) {
             : "unavailable";
   }
   if (includePr && prState === "ready" && currentBranch) {
-    currentBranchPr = newestSameRepositoryPr(prs, currentBranch);
-    if (!currentBranchPr) {
+    // gh may select the upstream repository in a fork checkout. Resolve the actual branch's
+    // tracking remote (origin for an untracked branch), not gh's default base repository.
+    const remote =
+      (
+        await tryGit(repo, [
+          "config",
+          "--get",
+          `branch.${currentBranch}.remote`,
+        ])
+      ).trim() || "origin";
+    const remoteUrl =
+      remote === "."
+        ? ""
+        : (await tryGit(repo, ["remote", "get-url", remote])).trim();
+    if (remoteUrl) {
+      branchRepositoryId = await cached(
+        repo + ":branch-repository:" + remoteUrl,
+        async () => {
+          const identity = JSON.parse(
+            await command(repo, "gh", [
+              "repo",
+              "view",
+              remoteUrl,
+              "--json",
+              "id",
+            ]),
+          );
+          return typeof identity.id === "string" && identity.id
+            ? identity.id
+            : undefined;
+        },
+        5 * 60000,
+      ).catch(() => undefined);
+    }
+    currentBranchPr = newestMatchingPr(prs, currentBranch, branchRepositoryId);
+    if (!currentBranchPr && branchRepositoryId) {
       try {
-        // Keep the picker focused on open PRs, but preserve branch linkage after its PR merges
-        // or closes. This is one exact repository-level lookup, never a per-row request.
-        const associated = JSON.parse(
-          await command(repo, "gh", [
-            "pr",
-            "list",
-            "--state",
-            "all",
-            "--head",
-            currentBranch,
-            "--limit",
-            "50",
-            "--json",
-            fields,
-          ]),
-        ) as PullRequestInfo[];
-        currentBranchPr = newestSameRepositoryPr(associated, currentBranch);
+        // Cache exact historical hits AND misses independently of the 30s open-list cache.
+        // New open PRs still win above; switching branch or remote identity cannot reuse this.
+        currentBranchPr = await cached(
+          repo +
+            ":branch-pr:" +
+            JSON.stringify([currentBranch, branchRepositoryId]),
+          async () => {
+            const associated = JSON.parse(
+              await command(repo, "gh", [
+                "pr",
+                "list",
+                "--state",
+                "all",
+                "--head",
+                currentBranch,
+                "--limit",
+                "50",
+                "--json",
+                fields,
+              ]),
+            ) as PullRequestInfo[];
+            return newestMatchingPr(
+              associated,
+              currentBranch,
+              branchRepositoryId,
+            );
+          },
+          5 * 60000,
+        );
       } catch {
         // The bounded open list remains useful even if the exact historical lookup fails.
       }
@@ -1192,21 +1242,9 @@ export async function refs(repo: string, includePr = true) {
       }),
     prs,
     currentBranchPr,
+    branchRepositoryId,
     prState,
   };
-}
-
-/** A local branch can only follow a PR from this repository, never a same-named fork branch. */
-export function newestSameRepositoryPr(prs: PullRequestInfo[], branch: string) {
-  return prs
-    .filter((pr) => pr.isCrossRepository === false && pr.headRefName === branch)
-    .map((pr, index) => ({ pr, index, time: Date.parse(pr.updatedAt || "") }))
-    .sort((a, b) => {
-      const byUpdated =
-        (Number.isFinite(b.time) ? b.time : -1) -
-        (Number.isFinite(a.time) ? a.time : -1);
-      return byUpdated || a.index - b.index;
-    })[0]?.pr;
 }
 
 /**

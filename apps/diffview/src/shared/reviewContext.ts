@@ -6,15 +6,15 @@ export interface PullRequestInfo {
   baseRefName?: string;
   headRefName?: string;
   updatedAt?: string;
-  /** GitHub reports this for list results; passive local-branch association rejects forks. */
-  isCrossRepository?: boolean;
-  headRepositoryOwner?: { login?: string } | string;
+  state?: "OPEN" | "MERGED" | "CLOSED";
+  /** Canonical GitHub node identity; isCrossRepository compares head to base, not the checkout. */
+  headRepository?: { id?: string } | null;
 }
 
 export interface ReviewContext {
   /** The branch whose work is being reviewed, never the comparison's base ref. */
   branch?: string;
-  /** Explicit in PR mode; otherwise the open PR associated with `branch`. */
+  /** Explicit in PR mode; otherwise the PR associated with `branch`. */
   pr?: PullRequestInfo;
   driver: "local" | "branch" | "pr" | "none";
 }
@@ -28,12 +28,19 @@ export function branchDisplayName(value?: string) {
   return branch;
 }
 
-function newestMatchingPr(prs: PullRequestInfo[], branch: string) {
+/** Shared passive-association rule. Unknown/deleted repository identities fail closed. */
+export function newestMatchingPr(
+  prs: PullRequestInfo[],
+  branch: string,
+  branchRepositoryId?: string,
+) {
+  const normalizedBranch = branchDisplayName(branch);
+  if (!branchRepositoryId || !normalizedBranch) return undefined;
   return prs
     .filter(
       (pr) =>
-        pr.isCrossRepository === false &&
-        branchDisplayName(pr.headRefName) === branch,
+        pr.headRepository?.id === branchRepositoryId &&
+        branchDisplayName(pr.headRefName) === normalizedBranch,
     )
     .map((pr, index) => ({ pr, index, time: Date.parse(pr.updatedAt || "") }))
     .sort((a, b) => {
@@ -55,6 +62,7 @@ export function deriveReviewContext(
   openPrs: PullRequestInfo[],
   resolvedPr?: PullRequestInfo,
   associatedBranchPr?: PullRequestInfo,
+  branchRepositoryId?: string,
 ): ReviewContext {
   if (mode.mode === "commit") return { driver: "none" };
 
@@ -77,10 +85,11 @@ export function deriveReviewContext(
     driver,
     branch,
     pr: branch
-      ? associatedBranchPr?.isCrossRepository === false &&
-        branchDisplayName(associatedBranchPr.headRefName) === branch
-        ? associatedBranchPr
-        : newestMatchingPr(openPrs, branch)
+      ? (newestMatchingPr(
+          associatedBranchPr ? [associatedBranchPr] : [],
+          branch,
+          branchRepositoryId,
+        ) ?? newestMatchingPr(openPrs, branch, branchRepositoryId))
       : undefined,
   };
 }

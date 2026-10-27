@@ -10,14 +10,14 @@ the other is a passive label. Following never changes comparison mode or writes 
 | Uncommitted: all, staged, or unstaged | Current worktree | Checked-out branch                            | Most recent associated PR, including merged/closed |
 | Unpushed                              | Current worktree | Checked-out branch                            | Most recent associated PR, including merged/closed |
 | Branch/ref to worktree or HEAD        | Branch           | Checked-out target branch, never the base ref | Most recent associated PR, including merged/closed |
-| Pull Request                          | Selected PR      | Exact PR head branch                          | Selected PR number                                 |
+| Pull Request                          | Selected PR      | Explicit `PR head:` label and exact branch     | Selected PR number                                 |
 | Commit                                | Neither          | Generic Branch row                            | Generic Pull Request row                           |
 
 Examples:
 
 - `origin/main ... worktree` on `feat/diffview` shows `Branch · feat/diffview`; `origin/main`
   remains the base inside the Branch pane.
-- Selecting PR #18 with head `refactor/code-review-ui-library` shows that head in Branch and `#18`
+- Selecting PR #18 with head `refactor/code-review-ui-library` shows `PR head: <head>` in Branch and `#18`
   in Pull Request.
 - A stale `pr=18` hash parameter while `mode=ref` is ignored; the checked-out branch remains authoritative.
 
@@ -26,9 +26,10 @@ Examples:
 `GET revisions` is Git-only and supplies local branches, tags and commits without waiting for GitHub. The independent
 `GET refs` request carries at most 50 open PR summaries and one exact current-branch association. The latter uses a
 bounded `--head <branch> --state all --limit 50` lookup only when the open list has no valid same-repository match,
-so a merged PR can still follow its branch without making the picker an unbounded history. Both paths reject
-same-named fork heads and choose the most recently updated matching PR. The client loads one repository-level PR
-DTO rather than requesting data per menu row; a slow or failed GitHub request never blocks the local ref picker.
+so a merged PR can still follow its branch without making the picker an unbounded history. Both paths compare
+the head repository’s canonical GitHub node ID to the checkout branch’s tracking remote (or origin for an
+untracked branch), fail closed for unknown identity, and choose the most recently updated matching PR.
+The client loads one repository-level PR DTO rather than requesting data per menu row; a slow or failed GitHub request never blocks the local ref picker.
 An explicit PR comparison also carries the exact resolved PR number, base branch and head branch in the files DTO.
 This keeps PR-to-branch following correct even when the selected PR is absent from the bounded list or Git falls
 back to GitHub's patch.
@@ -49,3 +50,31 @@ Unit tests exercise every row of the state table, stale URL state, newest matchi
 outside the bounded list, detached HEAD, and branch names containing `origin/`. The production browser regression
 checks local → ref → commit → PR #18 → local transitions at 360px, 447px iframe, and 1100px, including an exact
 merged/closed branch association outside the bounded open list and exact PR-head linkage.
+
+## Review follow-up (PR #31, head 88b776e)
+
+Accepted five new findings after deduplicating the six existing author replies:
+
+- One shared `newestMatchingPr` now owns branch normalization, repository identity and newest ordering.
+- Passive association compares canonical repository node IDs, not head-versus-base `isCrossRepository`.
+  `gh repo view <tracking-remote-url> --json id` resolves the checkout independently of gh’s default base;
+  untracked branches use origin, local-only or unknown remotes do not guess. Explicit fork PRs remain usable.
+- PR-mode Branch labels explicitly identify the passive PR head. Selecting Branch still enters local ref mode.
+- Historical associations retain merged/closed labels instead of masquerading as open PRs. Their exact
+  per-branch lookup caches hits and misses for five minutes, separately from the 30-second open list;
+  open matches always take precedence and branch/identity changes get separate cache keys.
+- Unused `headRepositoryOwner` (and the now-unneeded cross-repository flag/author fields) are no longer fetched.
+
+Regression coverage: `/refs` handler fork-checkout fixture, unknown identities, tracking-remote
+changes, shared normalization/tie-breaking, historical TTL hits/misses and open precedence; production menu
+checks explicitly identify the PR head, verify the subsequent local-branch transition, and cover closed/merged
+labels at 360px, 447px iframe and 1100px. Existing local-only/error and keyboard coverage is retained.
+
+Validation for this follow-up:
+
+- Diffview `pnpm typecheck` passed.
+- Diffview `pnpm test`: 19 files / 148 tests passed.
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome pnpm test:browser`:
+  production build and all 13 browser checks passed, including the updated menu regression.
+- Source install and installed-runtime verification are required before pushing/replying as fixed;
+  their results are recorded in the corresponding PR threads after installation.

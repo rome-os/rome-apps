@@ -16,6 +16,8 @@ export interface RefData {
   prs: PullRequestInfo[];
   /** Exact current-branch association, including a recently merged or closed PR. */
   currentBranchPr?: PullRequestInfo;
+  /** Canonical GitHub identity of the checked-out branch’s tracking/origin repository. */
+  branchRepositoryId?: string;
   prState: string;
 }
 export interface FilesData {

@@ -223,39 +223,168 @@ else process.exit(1);
   process.env.PATH = bin + ":" + original.PATH;
 }
 
-test("refs links the newest same-repository PR and rejects same-named forks", async () => {
-  const { repo, g } = await fixture();
+test("refs associates by canonical checkout identity, shares matching rules and caches history misses", async () => {
+  const { repo, g, call } = await fixture();
+  g("remote", "add", "origin", "git@github.com:alice/repo.git");
+  g("remote", "add", "upstream", "https://github.com/org/repo.git");
+  g("config", "branch.main.remote", "origin");
   const bin = join(repo, ".git", "association-bin");
   await mkdir(bin);
+  const log = join(bin, "calls.jsonl");
+  await writeFile(
+    join(bin, "open.json"),
+    JSON.stringify([
+      {
+        number: 90,
+        headRefName: "main",
+        updatedAt: "2026-10-27T13:00:00Z",
+        isCrossRepository: false,
+        headRepository: { id: "ORG" },
+      },
+      {
+        number: 10,
+        headRefName: "main",
+        updatedAt: "2026-10-27T09:00:00Z",
+        isCrossRepository: true,
+        headRepository: { id: "ALICE" },
+      },
+      {
+        number: 11,
+        headRefName: "main",
+        updatedAt: "2026-10-27T12:00:00Z",
+        isCrossRepository: true,
+        headRepository: { id: "ALICE" },
+      },
+      {
+        number: 99,
+        headRefName: "main",
+        updatedAt: "2026-10-27T14:00:00Z",
+        isCrossRepository: false,
+      },
+    ]),
+  );
+  await writeFile(
+    join(bin, "history.json"),
+    JSON.stringify([
+      {
+        number: 20,
+        headRefName: "refs/heads/topic",
+        updatedAt: "2026-10-27T08:00:00Z",
+        state: "CLOSED",
+        headRepository: { id: "ALICE" },
+      },
+      {
+        number: 92,
+        headRefName: "topic",
+        updatedAt: "2026-10-27T14:00:00Z",
+        headRepository: { id: "ORG" },
+      },
+      {
+        number: 21,
+        headRefName: "topic",
+        updatedAt: "2026-10-27T11:00:00Z",
+        state: "MERGED",
+        headRepository: { id: "ALICE" },
+      },
+    ]),
+  );
   const file = join(bin, "gh");
   await writeFile(
     file,
     `#!/usr/bin/env node
-const stateAll=process.argv.includes('--state');
-const head=process.argv[process.argv.indexOf('--head')+1];
-const open=[
- {number:90,headRefName:'main',updatedAt:'2026-10-27T13:00:00Z',isCrossRepository:true},
- {number:10,headRefName:'main',updatedAt:'2026-10-27T09:00:00Z',isCrossRepository:false},
- {number:11,headRefName:'main',updatedAt:'2026-10-27T12:00:00Z',isCrossRepository:false},
- {number:91,headRefName:'topic',updatedAt:'2026-10-27T13:00:00Z',isCrossRepository:true}
-];
-const history=[
- {number:20,headRefName:head,updatedAt:'2026-10-27T08:00:00Z',isCrossRepository:false},
- {number:92,headRefName:head,updatedAt:'2026-10-27T14:00:00Z',isCrossRepository:true},
- {number:21,headRefName:head,updatedAt:'2026-10-27T11:00:00Z',isCrossRepository:false}
-];
-process.stdout.write(JSON.stringify(stateAll?history:open));
+const fs=require('node:fs'),p=require('node:path'),dir=__dirname,args=process.argv.slice(2);
+fs.appendFileSync(p.join(dir,'calls.jsonl'),JSON.stringify(args)+'\\n');
+if(args[0]==='repo') {
+ if(args[2].includes('unknown')) process.exit(1);
+ process.stdout.write(JSON.stringify({id:args[2].includes('alice')?'ALICE':'ORG'}));
+} else {
+ const fields=args[args.indexOf('--json')+1].split(',');
+ if(!fields.includes('headRepository') || !fields.includes('state') || fields.includes('headRepositoryOwner')) process.exit(2);
+ process.stdout.write(fs.readFileSync(p.join(dir,args.includes('--state')?'history.json':'open.json'),'utf8'));
+}
 `,
   );
   await chmod(file, 0o755);
   process.env.PATH = bin + ":" + original.PATH;
+  const calls = async () =>
+    (await readFile(log, "utf8"))
+      .trim()
+      .split("\n")
+      .map((s) => JSON.parse(s) as string[]);
+  const clock = vi.spyOn(Date, "now");
+  let now = Date.now();
+  clock.mockImplementation(() => now);
 
-  const onMain = await listRefs(repo);
-  assert.equal(onMain.currentBranchPr?.number, 11);
+  // gh defaults to org/repo; the tracking remote is alice/repo. Cross-repository is not
+  // a relationship to the checkout: accept Alice's fork PR and reject org's same-name PR.
+  const onMain = await call("refs");
+  assert.equal(onMain.status, 200);
+  assert.equal(onMain.body.branchRepositoryId, "ALICE");
+  assert.equal(onMain.body.currentBranchPr?.number, 11);
+  assert.equal(
+    (await calls()).filter((args) => args.includes("--state")).length,
+    0,
+  );
 
   g("checkout", "-qb", "topic");
   const onTopic = await listRefs(repo);
   assert.equal(onTopic.currentBranchPr?.number, 21);
+  assert.equal(onTopic.currentBranchPr?.state, "MERGED");
+  now += 31000; // Beyond the outer refs TTL, but not the per-branch historical TTL.
+  assert.equal((await listRefs(repo)).currentBranchPr?.number, 21);
+  assert.equal(
+    (await calls()).filter((args) => args.includes("--state")).length,
+    1,
+  );
+  // Open results always take precedence, even while a historical result is cached.
+  await writeFile(
+    join(bin, "open.json"),
+    JSON.stringify([
+      {
+        number: 22,
+        headRefName: "topic",
+        headRepository: { id: "ALICE" },
+        state: "OPEN",
+      },
+    ]),
+  );
+  assert.equal((await listRefs(repo)).currentBranchPr?.number, 22);
+
+  await writeFile(join(bin, "open.json"), "[]");
+  await writeFile(join(bin, "history.json"), "[]");
+  g("checkout", "-qb", "no-pr");
+  assert.equal((await listRefs(repo)).currentBranchPr, undefined);
+  now += 31000;
+  assert.equal((await listRefs(repo)).currentBranchPr, undefined);
+  assert.equal(
+    (await calls()).filter((args) => args.includes("--state")).length,
+    2,
+  );
+  now += 5 * 60000;
+  await listRefs(repo);
+  assert.equal(
+    (await calls()).filter((args) => args.includes("--state")).length,
+    3,
+  );
+
+  // Changing a branch's configured remote must not reuse another repository's association.
+  await writeFile(
+    join(bin, "history.json"),
+    JSON.stringify([
+      { number: 33, headRefName: "no-pr", headRepository: { id: "ORG" } },
+    ]),
+  );
+  g("config", "branch.no-pr.remote", "upstream");
+  assert.equal((await listRefs(repo)).currentBranchPr?.number, 33);
+  g("remote", "set-url", "upstream", "https://github.com/unknown/repo.git");
+  assert.equal((await listRefs(repo)).currentBranchPr, undefined);
+  const beforeLocal = (await calls()).length;
+  await listRefs(repo, false);
+  assert.equal(
+    (await calls()).length,
+    beforeLocal,
+    "local revisions never call gh",
+  );
 });
 
 test("PR fetch pins exact API endpoints when the base branch advances, without changing user refs", async () => {

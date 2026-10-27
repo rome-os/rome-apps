@@ -1092,6 +1092,7 @@ function Browser() {
     refs.data?.prs ?? [],
     selectedPrInfo,
     refs.data?.currentBranchPr,
+    refs.data?.branchRepositoryId,
   );
   const desc = describeComparison(
     normalizeMode(state),

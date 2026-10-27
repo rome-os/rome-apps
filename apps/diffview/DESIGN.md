@@ -64,14 +64,18 @@ platform capability. Uncommitted is the aggregate, not a disjoint peer of Staged
 
 Branch and Pull Request are two views of one review context, not two unrelated persisted choices.
 For local and ref comparisons the checked-out branch drives the context and its most recent associated PR
-(open, merged, or closed) follows passively. For a PR comparison the exact selected PR drives the context and Branch
-follows its head branch. A commit comparison is intentionally neutral because a detached object does not
-identify one review branch. The comparison base remains a separate Branch-pane field and is never shown as
+(open, merged, or closed) follows passively; merged/closed associations include their state in the row.
+For a PR comparison the exact selected PR drives the context and Branch follows its head branch with an
+explicit **PR head** prefix (selecting Branch still switches to the local worktree). A commit comparison is
+intentionally neutral because a detached object does not identify one review branch. The comparison base remains a separate Branch-pane field and is never shown as
 the review branch. Stale inactive URL fields do not override the active mode. Local branches/tags/commits load from
 the Git-only `revisions` DTO and never wait for GitHub. The bounded open-PR list and one exact current-branch
 association load independently at repository scope; resolving an explicit PR also returns its exact base/head
 metadata, including when it is outside that list. Passive association requires both the branch name and the same
-head repository, and chooses the most recently updated match.
+head repository, and chooses the most recently updated match through one shared matcher. The checkout identity is
+resolved from its tracking remote (origin when untracked) to a canonical GitHub node ID; never use the PR’s
+head-versus-base `isCrossRepository` flag for this. Unknown identities do not link passively. Identity resolution
+and per-branch historical hits/misses are bounded-cache entries with a five-minute TTL; fresh open-list matches win.
 
 - Unpushed = the current branch's merge base with its tracking upstream → HEAD, excluding
   dirty/index/untracked files. Never substitute the default branch and never fetch automatically.

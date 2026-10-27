@@ -298,7 +298,8 @@ export function ComparisonMenu({
           <span className="shrink-0">{t.branch} </span>
           {selectedBranch && (
             <span className="min-w-0 truncate text-muted-foreground">
-              · {selectedBranch}
+              · {reviewContext.driver === "pr" ? `${t.prHead}: ` : ""}
+              {selectedBranch}
             </span>
           )}
         </span>
@@ -321,6 +322,11 @@ export function ComparisonMenu({
           {linkedPrNumber && (
             <span className="min-w-0 truncate text-muted-foreground">
               · #{linkedPrNumber}
+              {reviewContext.pr?.state === "MERGED"
+                ? ` · ${t.prMerged}`
+                : reviewContext.pr?.state === "CLOSED"
+                  ? ` · ${t.prClosed}`
+                  : ""}
             </span>
           )}
         </span>
