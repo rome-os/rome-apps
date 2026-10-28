@@ -34,5 +34,13 @@ was rewritten. Repository tests apply the complete migration chain to SQLite.
   manual fan-out, dispatch failures, prompt precedence, separate COMMENT headings,
   main-only reaction lifecycle and skip markers, and per-row cancellation.
 
-Installation and brief browser CRUD verification will be recorded after install.
+- Source install through system:app_management succeeded at 0.36.0.
+- Read-only SQLite inspection confirms the new review_lenses table, all three
+  lens snapshot columns, and migration journal timestamp 1793145600000.
+- Browser smoke test on /apps/code-review/trigger-settings?repo=rome-os%2Frome-apps:
+  clicked Adversarial, verified the saved template via GET, toggled it off,
+  verified enabled=false, then deleted the temporary reviewer via the UI.
+  The repo is left with no lenses, ready for the guardian's live test.
+- Light and dark screenshots: [desktop](screenshots/reviewer-lenses-desktop.png),
+  [dark](screenshots/reviewer-lenses-dark.png).
 No live PR review will be triggered by this development task.
