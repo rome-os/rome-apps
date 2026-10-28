@@ -15,7 +15,7 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 - Runs automatically when PRs open or receive new commits.
 - Supports manual runs from Rome, GitHub review requests, or a PR mention command.
 - Posts line-level findings plus a concise review summary and verdict.
-- Lets you tune review instructions per repository, including optional parallel reviewer lenses.
+- Lets you tune review instructions per repository, including two optional built-in parallel reviewers.
 - Lets you allow everyone except people you block (the default for newly configured repositories) or allow only selected GitHub users.
 - Keeps a review history dashboard in Rome for status, results, and follow-up.
 - Groups every review run and bot conversation on a PR into one history view, so you can trace how the feedback evolved. Each GitHub review links to that history in its footer.
@@ -28,30 +28,46 @@ It does not replace human review. It handles the repetitive first pass so humans
 
 ## Additional reviewers
 
-In a repository's settings, use **Additional reviewers** to add a named lens with
-its own instructions, or click **Adversarial** for an evidence-focused template.
-Enabled lenses run alongside the unchanged main reviewer on every PR-open, push,
-review-request, PTAL, or dashboard trigger. Each posts a separate GitHub review
-(always a COMMENT event) and has its own status, session, and per-run cancellation.
+In a repository's settings, **Additional reviewers** offers two toggles, both off by default:
 
-Names and instructions are snapshotted on each run; editing, disabling, or deleting
-a lens only affects future triggers. Past runs retain their instructions in the
-review detail view. Re-review supersedes only that same reviewer's previous review.
-Only the main reviewer manages the PR/comment eyes reactions.
+- **Design & Alternatives** compares the approach with 2–3 feasible alternatives,
+  citing inspected repo paths, and recommends the best fit. Its summary includes
+  the problem, goals/non-goals and a compact trade-off table. Trivial changes get
+  a brief APPROVE without the table: an agent judgment avoids brittle line-count
+  thresholds (a one-line schema change may matter more than a large formatting PR).
+- **Security** reports only exploitable issues with concrete attacker/input/gain
+  paths, using the existing security checklist. No hypothetical hardening advice.
+
+Enabled reviewers run in parallel with main on PR-open, push, review-request,
+PTAL and dashboard triggers. Each has a separate GitHub review headed with its
+name, status, session and per-run cancellation. Claims and supersession are
+reviewer-scoped; only main manages PR/comment eyes reactions. History badges
+identify each reviewer. Definitions ship in `code-review-expert/references`,
+not the DB; each queued run keeps an immutable name/instruction snapshot.
+The base agent explicitly authorizes each built-in's scope and verdict policy.
+
+Reviews retain GitHub's **COMMENT event** with the actual APPROVE / COMMENT /
+REQUEST_CHANGES verdict in the body. This preserves the app's advisory behavior,
+avoids branch-protection coupling and works when the guardian's GitHub identity
+is also the PR author (GitHub forbids approving/requesting changes on your own PR).
+Design blocks only a clearly inferior one-way door or genuine correctness/data
+loss; Security requests changes for exploitable P0/P1 issues.
+
+Migration 0016 is unchanged. Its configuration table now stores only opt-ins under
+repo + built-in ID keys; the legacy name/instructions columns are inert. Old
+custom rows are ignored, never matched by name, and old run snapshots remain
+readable. Queued custom runs are skipped rather than silently becoming main reviews.
+No custom name/instruction authoring or Adversarial template remains.
 
 ### API
 
-All paths below are under `/api/apps/code-review`, using the dashboard's guardian
-authentication. Encode the repository query value as `owner%2Frepo`.
+Paths are under `/api/apps/code-review`, with guardian authentication.
 
-- `GET /review-lenses?repo=owner%2Frepo` → `{ lenses: [...] }`.
-- `POST /review-lenses?repo=owner%2Frepo` with
-  `{ "name": "Adversarial", "instructions": "Try to break the change. Report only concrete, code-evidenced bugs; no style nits.", "enabled": true }`
-  → `{ lens: { id, ... } }`. Enabled defaults to true.
-- `PATCH /review-lenses/<id>?repo=owner%2Frepo` with any of
-  `{ "name": "...", "instructions": "...", "enabled": false, "position": 0 }`.
-- `DELETE /review-lenses/<id>?repo=owner%2Frepo` removes the configuration, not run history.
+- `GET /review-lenses?repo=owner%2Frepo` → `{ lenses: [...] }` (the two built-ins).
+- `PATCH /review-lenses/security?repo=owner%2Frepo` with `{ "enabled": true }`.
+  The other ID is `design-alternatives`; only `enabled` is writable. POST/DELETE
+  and free-form configuration are not supported.
 - `POST /pr-reviews` with `{ "repo": "owner/repo", "prNumber": 123 }` or
   `{ "prUrl": "https://github.com/owner/repo/pull/123" }` queues main + enabled
-  lenses; the 202 response includes the main `reviewId` and all `reviewIds`.
+  reviewers; the 202 response includes main `reviewId` and all `reviewIds`.
 - `POST /pr-reviews/<reviewId>/cancel` cancels only that run.

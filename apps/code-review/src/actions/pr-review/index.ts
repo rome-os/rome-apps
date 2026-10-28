@@ -1,3 +1,4 @@
+import { BUILT_IN_REVIEWERS } from "../../lib/reviewers.js";
 import { createAppLogger } from "@rome-os/app-runtime";
 import type {
   Action,
@@ -395,7 +396,7 @@ function postInlineReview(
   }
 
   const summaryParts: string[] = [];
-  const heading = lensName ? `🗡️ ${lensName.replace(/[\r\n]/g, " ")} review` : "Code Review";
+  const heading = lensName ? `${lensName.replace(/[\r\n]/g, " ")} review` : "Code Review";
   summaryParts.push(`## ${heading}: ${verdictEmoji[reviewOutput.verdict] || ""} ${reviewOutput.verdict}`);
   summaryParts.push("");
   summaryParts.push(cleanSummary);
@@ -579,7 +580,7 @@ export function buildAgentPrompt(
   projectMemory: string | null,
   clonePath: string | null,
   cloneAtPrHead: boolean,
-  lens?: { lensName: string | null; lensInstructions: string | null },
+  lens?: { lensId: string | null; lensName: string | null; lensInstructions: string | null },
 ): string {
   const parts: string[] = [];
 
@@ -608,8 +609,8 @@ export function buildAgentPrompt(
     parts.push(`**Project Memory (accumulated knowledge & past feedback for this repo — weigh it during review):**\n${projectMemory}\n`);
   }
 
-  if (lens?.lensName) {
-    parts.push(`## Reviewer lens: ${lens.lensName}\n${lens.lensInstructions ?? ""}\n\nThese reviewer-lens instructions take precedence over the agent's default review stance/policy where they conflict. The output schema still applies.\n`);
+  if (lens?.lensId && BUILT_IN_REVIEWERS.some((reviewer) => reviewer.id === lens.lensId)) {
+    parts.push(`## Reviewer mode: ${lens.lensId}\n**${lens.lensName}**\nReference snapshot for this run:\n${lens.lensInstructions ?? ""}\n`);
   }
 
   parts.push(`## Task`);
@@ -829,6 +830,10 @@ export function createAction(
         const cancelled = db.cancelPRReview(review.id);
         log.info("PR review cancelled after claim", { reviewId: review.id, repo: repoSlug, prNumber });
         return { status: "ok", data: { reviewId: review.id, repo: repoSlug, prNumber, status: "cancelled", review: cancelled } };
+      }
+      if (review.lensId && !BUILT_IN_REVIEWERS.some((reviewer) => reviewer.id === review.lensId)) {
+        db.skipPRReview(review.id, "Custom reviewers are no longer supported.");
+        return { status: "ok", data: { reviewId: review.id, status: "skipped" } };
       }
       const previousReview = db.getPreviousCompletedPRReviewByPR(repoSlug, prNumber, review.id, review.lensId ?? null);
 

@@ -456,7 +456,7 @@ describe("pr-webhook lens fan-out", () => {
     enableAllTriggers();
     mocks.execFileSync.mockReturnValue("rome-bot");
     mocks.db.listReviewLenses.mockReturnValue([
-      { id: "adversarial", name: "Adversarial", instructions: "Break it", enabled: true },
+      { id: "security", name: "Security", instructions: "Audit", enabled: true },
       { id: "disabled", name: "Disabled", instructions: "Skip", enabled: false },
     ]);
     mocks.db.createQueuedPRReview.mockReturnValueOnce({ id: "main" }).mockReturnValueOnce({ id: "lens" });
@@ -477,7 +477,7 @@ describe("pr-webhook lens fan-out", () => {
     expect(result.status).toBe("ok");
     expect(mocks.db.createQueuedPRReview).toHaveBeenCalledTimes(2);
     expect(mocks.db.createQueuedPRReview.mock.calls[1][0]).toMatchObject({
-      lensId: "adversarial", lensName: "Adversarial", lensInstructions: "Break it",
+      lensId: "security", lensName: "Security", lensInstructions: "Audit",
     });
     expect(deps.appContext.runAction).toHaveBeenCalledTimes(2);
     if (trigger === "PTAL") {

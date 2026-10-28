@@ -10,6 +10,16 @@ Senior engineer code review skill — delivers structured reviews covering archi
 
 This skill is the **single source of truth for the review workflow**. The `code-review-expert` agent's system prompt intentionally defers to it.
 
+## Built-in reviewer modes
+
+When given reviewer mode `design-alternatives`, use [Design & Alternatives](references/design-alternatives.md).
+When given reviewer mode `security`, use [Security](references/security-reviewer.md)
+and [the security checklist](references/security-checklist.md).
+Use the task's immutable reference snapshot for that run's mode guidance.
+These modes replace the default broad workflow and verdict policy below, not the
+agent's output contract. Still inspect the full relevant implementation and callers.
+With no reviewer mode, follow the default workflow below.
+
 ## Review Philosophy: Simplicity First
 
 Complexity is the main long-term cost of software. A review succeeds when the

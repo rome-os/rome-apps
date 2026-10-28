@@ -1,3 +1,4 @@
+import { BUILT_IN_REVIEWERS } from "../../lib/reviewers.js";
 import type { AppDbContext, DrizzleDb, RomeSessionRef } from "@rome-os/app-runtime";
 import { normalizeTriggerAccessMode, type TriggerAccessMode } from "../../lib/trigger-access.js";
 
@@ -8,16 +9,7 @@ export interface Repository {
   addedAt: string;
 }
 
-export interface ReviewLens {
-  id: string;
-  repo: string;
-  name: string;
-  instructions: string;
-  enabled: boolean;
-  position: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export type ReviewLens = (typeof BUILT_IN_REVIEWERS)[number] & { enabled: boolean };
 
 export interface PRReview {
   id: string;
@@ -287,38 +279,28 @@ export class ScanRepository {
 
   // --- Additional reviewers ---
   listReviewLenses(repo: string): ReviewLens[] {
-    return this.all<any>(
-      `SELECT id, repo, name, instructions, enabled, position, created_at as createdAt, updated_at as updatedAt
-       FROM "${this.t("review_lenses")}" WHERE repo = ? COLLATE NOCASE ORDER BY position, created_at, id`,
-      [repo],
-    ).map((row) => ({ ...row, enabled: !!row.enabled }));
+    // Legacy custom UUID rows are deliberately ignored, never mapped by name.
+    return BUILT_IN_REVIEWERS.map((reviewer) => ({
+      ...reviewer,
+      enabled: !!this.get<{ enabled: number }>(
+        `SELECT enabled FROM "${this.t("review_lenses")}" WHERE id = ?`,
+        [`${repo.toLowerCase()}:${reviewer.id}`],
+      )?.enabled,
+    }));
   }
 
-  createReviewLens(repo: string, lens: { name: string; instructions: string; enabled?: boolean; position?: number }): ReviewLens {
-    const id = crypto.randomUUID();
+  setReviewLensEnabled(repo: string, id: string, enabled: boolean): ReviewLens | undefined {
+    if (!BUILT_IN_REVIEWERS.some((reviewer) => reviewer.id === id)) return undefined;
     const now = new Date().toISOString();
-    const position = lens.position ?? (Math.max(-1, ...this.listReviewLenses(repo).map((l) => l.position)) + 1);
+    // Reuse 0016 without rewriting an applied migration. Legacy required columns
+    // are inert; definitions and run snapshots always come from shipped files.
     this.run(
-      `INSERT INTO "${this.t("review_lenses")}" (id, repo, name, instructions, enabled, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, repo, lens.name, lens.instructions, lens.enabled === false ? 0 : 1, position, now, now],
+      `INSERT INTO "${this.t("review_lenses")}" (id, repo, name, instructions, enabled, created_at, updated_at)
+       VALUES (?, ?, '', '', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+      [`${repo.toLowerCase()}:${id}`, repo, enabled ? 1 : 0, now, now],
     );
-    return { id, repo, name: lens.name, instructions: lens.instructions, enabled: lens.enabled ?? true, position, createdAt: now, updatedAt: now };
-  }
-
-  updateReviewLens(repo: string, id: string, patch: Partial<Pick<ReviewLens, "name" | "instructions" | "enabled" | "position">>): ReviewLens | undefined {
-    const existing = this.listReviewLenses(repo).find((lens) => lens.id === id);
-    if (!existing) return undefined;
-    const updated = { ...existing, ...patch, updatedAt: new Date().toISOString() };
-    this.run(
-      `UPDATE "${this.t("review_lenses")}" SET name = ?, instructions = ?, enabled = ?, position = ?, updated_at = ? WHERE id = ? AND repo = ? COLLATE NOCASE`,
-      [updated.name, updated.instructions, updated.enabled ? 1 : 0, updated.position, updated.updatedAt, id, repo],
-    );
-    return updated;
-  }
-
-  deleteReviewLens(repo: string, id: string): void {
-    // Runs retain their snapshots and lens identity after configuration deletion.
-    this.run(`DELETE FROM "${this.t("review_lenses")}" WHERE id = ? AND repo = ? COLLATE NOCASE`, [id, repo]);
+    return this.listReviewLenses(repo).find((reviewer) => reviewer.id === id);
   }
 
   // --- PR Reviews ---

@@ -165,9 +165,9 @@ describe("pr-review lens execution", () => {
   const config = { name: "code-review_pr-review", type: "custom", description: "Review",
     complexity: "moderate", speed: "moderate", reliability: "high", sideEffects: "write" } as const;
 
-  it.each([null, "lens-id"])("posts a separate COMMENT review with the correct heading and reactions for lens %s", async (lensId) => {
+  it.each([null, "design-alternatives", "security"])("posts a separate COMMENT review with the correct heading and reactions for lens %s", async (lensId) => {
     const review = { id: "run", repo: "o/r", prNumber: 7, lensId,
-      lensName: lensId ? "Adversarial" : null, lensInstructions: lensId ? "Snapshot: break it" : null };
+      lensName: lensId === "design-alternatives" ? "Design & Alternatives" : lensId ? "Security" : null, lensInstructions: lensId ? "Snapshot: break it" : null };
     mocks.db.getPRReview.mockReturnValue(review);
     mocks.db.claimQueuedPRReview.mockReturnValue(review);
     mocks.db.getAppSetting.mockReturnValue("https://test.romeos.cc");
@@ -194,14 +194,14 @@ describe("pr-review lens execution", () => {
     expect(mocks.db.getPreviousCompletedPRReviewByPR).toHaveBeenCalledWith("o/r", 7, "run", lensId);
     const prompt = invokeAction.mock.calls[0][1].prompt;
     if (lensId) {
-      expect(prompt).toContain("## Reviewer lens: Adversarial");
+      expect(prompt).toContain(`## Reviewer mode: ${lensId}`);
       expect(prompt).toContain("Snapshot: break it");
-      expect(prompt).toContain("take precedence");
-    } else expect(prompt).not.toContain("Reviewer lens:");
+      expect(prompt).not.toContain("take precedence");
+    } else expect(prompt).not.toContain("Reviewer mode:");
     const postingCall = mocks.execFileSync.mock.calls.find(([, args]) => args[1]?.endsWith("/reviews"));
     const payload = JSON.parse(postingCall![2].input);
     expect(payload.event).toBe("COMMENT");
-    expect(payload.body).toContain(lensId ? "## 🗡️ Adversarial review: 💬 COMMENT" : "## Code Review: 💬 COMMENT");
+    expect(payload.body).toContain(`## ${review.lensName ?? "Code Review"}${lensId ? " review" : ""}: 💬 COMMENT`);
     expect(payload.body).toContain("Automated review by");
     expect(payload.body).toContain("Full review history");
     const reactionCalls = mocks.execFileSync.mock.calls.filter(([, args]) => args.some((a: string) => a.includes("/reactions")));
@@ -220,13 +220,30 @@ describe("pr-review lens execution", () => {
     expect(mocks.execFileSync).toHaveBeenCalledTimes(1); // PR metadata only.
   });
 
+  it("skips queued legacy custom runs without summoning or posting", async () => {
+    const review = { id: "legacy", repo: "o/r", prNumber: 7, lensId: "old-custom-uuid" };
+    mocks.db.getPRReview.mockReturnValue(review);
+    mocks.db.claimQueuedPRReview.mockReturnValue(review);
+    mocks.execFileSync.mockReturnValue(JSON.stringify({ title: "Fix", headRefOid: "abc" }));
+    const invokeAction = vi.fn();
+    const { createAction } = await import("./index.js");
+    const result = await createAction(config, { appContext: { db: {}, invokeAction } } as any).execute({
+      repo: "o/r", prNumber: 7, reviewId: "legacy",
+    });
+    expect(result).toMatchObject({ status: "ok", data: { status: "skipped" } });
+    expect(mocks.db.skipPRReview).toHaveBeenCalledWith("legacy", "Custom reviewers are no longer supported.");
+    expect(invokeAction).not.toHaveBeenCalled();
+    expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves the default prompt and explicitly preserves the schema for a lens", async () => {
     const { buildAgentPrompt } = await import("./index.js");
     const base = buildAgentPrompt("o/r", 7, { title: "Fix", body: "" }, null, null, null, false);
     expect(buildAgentPrompt("o/r", 7, { title: "Fix", body: "" }, null, null, null, false,
-      { lensName: null, lensInstructions: null })).toBe(base);
+      { lensId: null, lensName: null, lensInstructions: null })).toBe(base);
     const lens = buildAgentPrompt("o/r", 7, { title: "Fix", body: "" }, null, null, null, false,
-      { lensName: "Adversarial", lensInstructions: "Break it" });
-    expect(lens).toContain("The output schema still applies.");
+      { lensId: "security", lensName: "Security", lensInstructions: "Break it" });
+    expect(lens).toContain("## Reviewer mode: security");
+    expect(lens).not.toContain("take precedence");
   });
 });

@@ -32,32 +32,24 @@ describe("reviewer lens API", () => {
     } as any);
   }
 
-  it("creates, edits, toggles and deletes only within the selected repo", async () => {
+  it("offers exactly two opt-in built-ins and only permits toggles", async () => {
     const handler = createApiHandler(ctx);
-    let res = await request(handler, "POST", "review-lenses", { name: "Adversarial", instructions: "Find evidenced bugs" });
-    expect(res.status).toBe(201);
-    const { lens } = await res.json();
-    expect(lens).toMatchObject({ repo: "o/r", enabled: true, position: 0 });
-    res = await request(handler, "PATCH", `review-lenses/${lens.id}`, { enabled: false, name: "Skeptical" });
-    expect(res.status).toBe(200);
-    expect((await res.json()).lens).toMatchObject({ enabled: false, name: "Skeptical", instructions: "Find evidenced bugs" });
-    expect((await request(handler, "DELETE", `review-lenses/${lens.id}`, undefined, "other/repo")).status).toBe(404);
-    const list = await request(handler, "GET", "review-lenses");
-    expect((await list.json()).lenses).toHaveLength(1);
-    expect((await request(handler, "DELETE", `review-lenses/${lens.id}`)).status).toBe(200);
-    expect((await (await request(handler, "GET", "review-lenses")).json()).lenses).toEqual([]);
+    const list = async (repo = "o/r") => (await (await request(handler, "GET", "review-lenses", undefined, repo)).json()).lenses;
+    expect((await list()).map((l: any) => [l.id, l.enabled])).toEqual([
+      ["design-alternatives", false], ["security", false],
+    ]);
+    expect((await request(handler, "PATCH", "review-lenses/security", { enabled: true })).status).toBe(200);
+    expect((await list("O/R"))[1].enabled).toBe(true);
+    expect((await list("other/repo"))[1].enabled).toBe(false);
+    expect((await request(handler, "PATCH", "review-lenses/security", { enabled: false })).status).toBe(200);
+    expect((await list())[1].enabled).toBe(false);
+    expect((await request(handler, "PATCH", "review-lenses/custom", { enabled: true })).status).toBe(404);
+    expect((await request(handler, "POST", "review-lenses", { name: "Custom", instructions: "Audit" })).status).toBe(405);
+    expect((await request(handler, "DELETE", "review-lenses/security")).status).toBe(405);
   });
 
-  it.each([
-    { name: "", instructions: "Audit" },
-    { name: "A", instructions: "" },
-    { name: "A", instructions: "Audit", enabled: "false" },
-    { name: "A", instructions: "Audit", position: -1 },
-    { name: "A", instructions: "Audit", position: 1.5 },
-    { name: "a".repeat(101), instructions: "Audit" },
-    { name: "A", instructions: "a".repeat(20001) },
-  ])("rejects invalid configuration", async (body) => {
-    expect((await request(createApiHandler(ctx), "POST", "review-lenses", body)).status).toBe(400);
+  it.each([{ enabled: "false" }, {}, { enabled: true, name: "Custom" }, { enabled: true, instructions: "Override" }])("rejects non-toggle configuration", async (body) => {
+    expect((await request(createApiHandler(ctx), "PATCH", "review-lenses/security", body)).status).toBe(400);
   });
 
   it("requires a repo and guardian access", async () => {
@@ -68,14 +60,13 @@ describe("reviewer lens API", () => {
 
   it.each([{ repo: "o/r", prNumber: 7 }, { prUrl: "https://github.com/o/r/pull/7" }])("fans out dashboard manual triggers and keeps reviewId pointing at main", async (payload) => {
     const db = createScanRepository(ctx.db);
-    db.createReviewLens("o/r", { name: "Adversarial", instructions: "Original" });
-    db.createReviewLens("o/r", { name: "Off", instructions: "Skip", enabled: false });
+    db.setReviewLensEnabled("o/r", "security", true);
     const res = await request(createApiHandler(ctx), "POST", "pr-reviews", payload);
     expect(res.status).toBe(202);
     const data = await res.json();
     expect(data.reviewIds).toHaveLength(2);
     expect(db.getPRReview(data.reviewId)?.lensId).toBeNull();
-    expect(db.getPRReview(data.reviewIds[1])).toMatchObject({ lensName: "Adversarial", lensInstructions: "Original" });
+    expect(db.getPRReview(data.reviewIds[1])).toMatchObject({ lensName: "Security", lensInstructions: expect.stringContaining("concrete attack path") });
     expect(ctx.runAction).toHaveBeenCalledTimes(2);
     expect(db.listPRReviews()).toHaveLength(2);
   });

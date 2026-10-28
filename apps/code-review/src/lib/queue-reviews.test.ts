@@ -7,9 +7,9 @@ describe("queueReviews", () => {
     const rows: any[] = [];
     const db = {
       listReviewLenses: vi.fn(() => [
-        { id: "a", name: "Adversarial", instructions: "Try to break it", enabled: true },
+        { id: "design-alternatives", name: "Design & Alternatives", instructions: "Compare approaches", enabled: true },
         { id: "off", enabled: false },
-        { id: "b", name: "Security", instructions: "Audit trust boundaries", enabled: true },
+        { id: "security", name: "Security", instructions: "Audit trust boundaries", enabled: true },
       ]),
       createQueuedPRReview: vi.fn((input) => {
         const row = { id: String(rows.length), ...input };
@@ -29,8 +29,8 @@ describe("queueReviews", () => {
     accept.forEach((resolve) => resolve());
     expect(await queued).toEqual(rows);
     expect(rows[0]).not.toHaveProperty("lensId");
-    expect(rows[1]).toMatchObject({ lensId: "a", lensName: "Adversarial", lensInstructions: "Try to break it" });
-    expect(rows[2]).toMatchObject({ lensId: "b", lensName: "Security" });
+    expect(rows[1]).toMatchObject({ lensId: "design-alternatives", lensName: "Design & Alternatives", lensInstructions: "Compare approaches" });
+    expect(rows[2]).toMatchObject({ lensId: "security", lensName: "Security" });
     expect(db.listReviewLenses).toHaveBeenCalledWith("o/r");
     for (const row of rows) {
       expect(runAction).toHaveBeenCalledWith("code-review:code-review_pr-review",

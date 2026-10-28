@@ -575,34 +575,14 @@ class GuardianApiHandler implements RomeAppApiHandler {
       if (id && !repo.listReviewLenses(repoName).some((lens) => lens.id === id)) {
         return json({ error: "not_found" }, { status: 404 });
       }
-      if (request.method === "DELETE" && id) {
-        repo.deleteReviewLens(repoName, id);
-        return json({ ok: true });
-      }
-      if ((request.method === "POST" && !id) || (request.method === "PATCH" && id)) {
+      if (request.method === "PATCH" && id) {
         const body = readJson(request);
-        const patch: { name?: string; instructions?: string; enabled?: boolean; position?: number } = {};
-        for (const [key, max] of [["name", 100], ["instructions", 20000]] as const) {
-          if (body[key] !== undefined || request.method === "POST") {
-            if (typeof body[key] !== "string" || !body[key].trim() || body[key].length > max) {
-              return json({ error: `${key} must be non-empty text (max ${max} characters)` }, { status: 400 });
-            }
-            patch[key] = body[key].trim();
-          }
+        if (typeof body.enabled !== "boolean" || Object.keys(body).some((key) => key !== "enabled")) {
+          return json({ error: "Only enabled (boolean) can be changed" }, { status: 400 });
         }
-        if (body.enabled !== undefined) {
-          if (typeof body.enabled !== "boolean") return json({ error: "enabled must be boolean" }, { status: 400 });
-          patch.enabled = body.enabled;
-        }
-        if (body.position !== undefined) {
-          if (!Number.isSafeInteger(body.position) || body.position < 0) return json({ error: "position must be a non-negative integer" }, { status: 400 });
-          patch.position = body.position;
-        }
-        const lens = id
-          ? repo.updateReviewLens(repoName, id, patch)
-          : repo.createReviewLens(repoName, { ...patch, name: patch.name!, instructions: patch.instructions! });
-        return json({ lens }, { status: id ? 200 : 201 });
+        return json({ lens: repo.setReviewLensEnabled(repoName, id, body.enabled) });
       }
+      return json({ error: "method_not_allowed" }, { status: 405 });
     }
 
     // --- PR Reviews ---

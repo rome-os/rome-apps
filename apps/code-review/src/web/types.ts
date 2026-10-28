@@ -215,11 +215,7 @@ export interface TriggerSettingsPayload {
 
 export interface ReviewLensData {
   id: string;
-  repo: string;
   name: string;
-  instructions: string;
+  description: string;
   enabled: boolean;
-  position: number;
-  createdAt: string;
-  updatedAt: string;
 }
