@@ -347,9 +347,11 @@ export default function App({
             triggerAccessMode: settings.triggerAccessMode,
             triggerAllowlist: allowlist,
             triggerBlocklist: blocklist,
-            mentionTriggerPhrase: settings.mentionTriggerPhrase.trim() || "PTAL",
-            summaryTriggerPhrase: settings.summaryTriggerPhrase.trim() || "summary",
+            mentionTriggerPhrase: settings.mentionTriggerPhrase.trim(),
+            summaryTriggerPhrase: settings.summaryTriggerPhrase.trim(),
             customRules: settings.customRules.trim() || null,
+            agentSettings: settings.agentSettings,
+            reviewerEnabled: settings.reviewerEnabled,
           }),
         });
         if (!response.ok) {

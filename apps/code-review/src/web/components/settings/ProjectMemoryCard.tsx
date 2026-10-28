@@ -13,11 +13,16 @@ import type { MemoryEditData } from "@/types";
 export function ProjectMemoryCard({
   repoName,
   initialProjectMemory,
+  onDirtyChange,
 }: {
   repoName: string;
   initialProjectMemory: string | null;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [value, setValue] = useState(initialProjectMemory ?? "");
+  const [baseline, setBaseline] = useState(initialProjectMemory ?? "");
+  const dirty = value !== baseline;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [edits, setEdits] = useState<MemoryEditData[]>([]);
   const [saving, setSaving] = useState(false);
   const [loadingEdits, setLoadingEdits] = useState(false);
@@ -26,7 +31,7 @@ export function ProjectMemoryCard({
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
-    setValue(initialProjectMemory ?? "");
+    if (!dirty) { setValue(initialProjectMemory ?? ""); setBaseline(initialProjectMemory ?? ""); }
   }, [initialProjectMemory, repoName]);
 
   const loadEdits = useCallback(async () => {
@@ -58,6 +63,7 @@ export function ProjectMemoryCard({
       }
       const data = (await res.json()) as { edits: MemoryEditData[] };
       setEdits(Array.isArray(data.edits) ? data.edits : []);
+      setBaseline(value);
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -75,6 +81,7 @@ export function ProjectMemoryCard({
   return (
     <div className="space-y-2">
       <textarea
+        aria-label="Project memory"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={`Project knowledge, e.g.\n- We intentionally use default exports in src/legacy/\n- Don't flag console.log under scripts/\n- Deploy via the release workflow, never by hand`}
@@ -87,7 +94,7 @@ export function ProjectMemoryCard({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => void save()} disabled={saving}>
+        <Button size="sm" onClick={() => void save()} disabled={saving || !dirty}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save memory
         </Button>
@@ -95,7 +102,8 @@ export function ProjectMemoryCard({
           <History className="h-4 w-4" />
           {showHistory ? "Hide history" : "History"}
         </Button>
-        {savedAt && <span className="text-xs text-muted-foreground">Saved</span>}
+        {dirty && <span className="text-xs text-muted-foreground">Unsaved memory</span>}
+        {!dirty && savedAt && <span className="text-xs text-muted-foreground">Saved</span>}
       </div>
 
       {showHistory && (

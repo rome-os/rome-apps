@@ -1,3 +1,5 @@
+import { decideAgentTrigger } from "./agent-decision.js";
+import { hasAgentTriggers } from "../../lib/agent-settings.js";
 import { execFileSync } from "child_process";
 
 import { createAppLogger } from "@rome-os/app-runtime";
@@ -9,7 +11,6 @@ import type {
 } from "@rome-os/app-runtime";
 import { createScanRepository } from "../../db/repositories/repo.js";
 import {
-  decidePRReviewTrigger,
   normalizeInput,
   repoFromPayload,
   triggerMayNeedCurrentGitHubLogin,
@@ -41,6 +42,7 @@ async function queueReview(
     action: string;
     pr?: GitHubPullRequest;
     triggerCommentId?: number | null;
+    reviewAgentIds?: string[];
   },
 ): Promise<ActionResult> {
   const [queuedReview] = await queueReviews(db, deps.appContext.runAction.bind(deps.appContext), {
@@ -51,6 +53,7 @@ async function queueReview(
     prAuthor: args.pr?.user?.login || null,
     headSha: args.pr?.head?.sha || null,
     triggerCommentId: args.triggerCommentId,
+    reviewAgentIds: args.reviewAgentIds,
   });
 
   return {
@@ -110,10 +113,14 @@ export function createAction(
 
       const repoSlug = repoFromPayload(payload);
       const settings = repoSlug ? db.getPRReviewSettings(repoSlug) : undefined;
-      const currentGitHubLogin = triggerMayNeedCurrentGitHubLogin({ githubEvent: event, payload, settings })
+      const lenses = repoSlug ? db.listReviewLenses(repoSlug) : [];
+      const currentGitHubLogin = (settings?.agentSettings
+        ? hasAgentTriggers(settings, lenses)
+        : triggerMayNeedCurrentGitHubLogin({ githubEvent: event, payload, settings }))
         ? resolveGitHubLogin()
         : null;
-      const decision = decidePRReviewTrigger({
+      const decision = decideAgentTrigger({
+        lenses,
         githubEvent: event,
         payload,
         settings,
@@ -141,6 +148,14 @@ export function createAction(
             ...(typeof decision.prNumber === "number" ? { prNumber: decision.prNumber } : {}),
           },
         };
+      }
+
+      if (decision.kind === "assistant") {
+        await deps.appContext.runAction("code-review:code-review_pr-assistant", {
+          repo: decision.repo, number: decision.prNumber, surface: decision.surface,
+          triggerCommentId: decision.triggerCommentId, commentBody: decision.commentBody, actorLogin: decision.actorLogin,
+        }, { detached: true });
+        return { status: "ok", data: { assistantQueued: true, repo: decision.repo, prNumber: decision.prNumber } };
       }
 
       // Exact `@bot <summaryPhrase>` command → recap the PR's reviews/discussion
@@ -181,6 +196,7 @@ export function createAction(
         triggerType: decision.triggerType,
         actorLogin: decision.actorLogin,
         triggerCommentId: decision.triggerCommentId,
+        reviewAgentIds: decision.reviewAgentIds,
       });
       return await queueReview(deps, db, {
         repo: decision.repo,
@@ -188,6 +204,7 @@ export function createAction(
         action: decision.action,
         pr: decision.pr,
         triggerCommentId: decision.triggerCommentId,
+        reviewAgentIds: decision.reviewAgentIds,
       });
     },
   };

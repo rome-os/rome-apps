@@ -45,6 +45,7 @@ export interface RoutineWebhookInput {
 }
 
 export interface PRReviewTriggerSettings {
+  agentSettings?: import("../../lib/agent-settings.js").AgentSettings;
   autoReviewEnabled: boolean;
   triggerOnCreate: boolean;
   triggerOnRequest: boolean;
@@ -221,6 +222,17 @@ function actorDeniedReason(
     : `${actorRole} is not in the review trigger allowlist.`;
 }
 
+/** Shared fail-closed access gate for addressed comment commands. */
+export function commentTriggerAccess(payload: GitHubWebhookPayload, settings: PRReviewTriggerSettings, botLogin: string | null) {
+  if (typeof payload.issue?.number !== "number") return { kind: "skip" as const, reason: "Issue comment has no issue/PR number." };
+  if (!botLogin) return { kind: "skip" as const, reason: "Could not resolve GitHub bot login for mention filtering." };
+  const actorLogin = triggerActor(payload, "mention");
+  if (!isTriggerActorAllowed(actorLogin, botLogin, triggerAccessPolicy(settings))) {
+    return { kind: "skip" as const, reason: actorDeniedReason("Mention trigger actor", actorLogin, settings) };
+  }
+  return { kind: "allowed" as const, actorLogin, number: payload.issue.number };
+}
+
 function prNumberFromPayload(payload: GitHubWebhookPayload): { prNumber?: number } {
   if (typeof payload.pull_request?.number === "number") return { prNumber: payload.pull_request.number };
   if (typeof payload.issue?.number === "number") return { prNumber: payload.issue.number };
@@ -309,10 +321,9 @@ export function decidePRReviewTrigger(input: {
       return { kind: "skip", reason: "Comment is not an exact '@bot <command>' request." };
     }
 
-    const actorLogin = triggerActor(payload, "mention");
-    if (!isTriggerActorAllowed(actorLogin, botLogin, triggerAccessPolicy(settings))) {
-      return { kind: "skip", reason: actorDeniedReason("Mention trigger actor", actorLogin, settings) };
-    }
+    const access = commentTriggerAccess(payload, settings, botLogin);
+    if (access.kind === "skip") return access;
+    const actorLogin = access.actorLogin;
 
     // Both commands operate on a PR's diff / reviews. A comment on a real issue
     // (no linked pull request) has nothing to review or summarize.

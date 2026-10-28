@@ -1,0 +1,9 @@
+name: code-review_pr-assistant
+type: custom
+description: Reply-only assistant for explicitly addressed PR and issue questions. Persists a mention task, reads thread context, and posts one answer. Off by default.
+entry: ./index.ts
+complexity: complex
+speed: slow
+reliability: high
+sideEffects: write
+cancellable: true
