@@ -22,7 +22,7 @@ import { GithubAvatar } from "@/components/home/GithubAvatar";
 import { MiniStatusBadge } from "@/components/home/HomeDashboard";
 import type { MentionTaskData, PRHistoryData, PRReviewData } from "@/types";
 import { formatDate, formatRelative } from "@/lib/helpers";
-import { ACTIVE_REVIEW_STATUSES, MarkdownBlock } from "./review-components";
+import { ACTIVE_REVIEW_STATUSES, LensBadge, MarkdownBlock } from "./review-components";
 import { ACTIVE_MENTION_STATUSES, INTENT_META, parseResult } from "./MentionTaskDetailPage";
 
 type Entry =
@@ -204,6 +204,7 @@ function ReviewEntry({
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b bg-muted/30 px-4 py-2.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <span className="font-semibold">Review run {entry.run}</span>
+            <LensBadge name={r.lensName} />
             {isLatest && (
               <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">
                 Latest
@@ -430,7 +431,8 @@ export function PRHistoryPage({
     return [...reviews, ...tasks].sort((a, b) => a.at - b.at);
   }, [history]);
 
-  const latestReviewId = history?.reviews[history.reviews.length - 1]?.id ?? null;
+  const latestReview = history?.reviews.filter((r) => !r.lensId).at(-1) ?? null;
+  const latestReviewId = latestReview?.id ?? null;
 
   // Open the latest review by default; everything older starts as a preview.
   useEffect(() => {
@@ -454,10 +456,9 @@ export function PRHistoryPage({
 
   const reviewCount = history?.reviews.length ?? 0;
   const taskCount = history?.tasks.length ?? 0;
-  const latestReview = history?.reviews[reviewCount - 1] ?? null;
   const lastActivity = entries.length ? new Date(entries[entries.length - 1].at).toISOString() : null;
   const prUrl = history?.url ?? `https://github.com/${repo}/pull/${prNumber}`;
-  const reviewActive = latestReview ? ACTIVE_REVIEW_STATUSES.has(latestReview.status) : false;
+  const reviewActive = history?.reviews.some((r) => ACTIVE_REVIEW_STATUSES.has(r.status)) ?? false;
 
   const filters: { value: Filter; label: string; count: number }[] = [
     { value: "all", label: "All", count: entries.length },

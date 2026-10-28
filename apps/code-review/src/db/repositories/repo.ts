@@ -8,6 +8,17 @@ export interface Repository {
   addedAt: string;
 }
 
+export interface ReviewLens {
+  id: string;
+  repo: string;
+  name: string;
+  instructions: string;
+  enabled: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PRReview {
   id: string;
   repo: string;
@@ -16,6 +27,9 @@ export interface PRReview {
   prTitle: string;
   prAuthor: string | null;
   headSha: string | null;
+  lensId: string | null;
+  lensName: string | null;
+  lensInstructions: string | null;
   status: string;
   stageHistory: string | null;
   reviewComment: string | null;
@@ -136,7 +150,7 @@ export class ScanRepository {
   }
 
   private prReviewSelectColumns(): string {
-    return "id, repo, pr_number as prNumber, pr_url as prUrl, pr_title as prTitle, pr_author as prAuthor, head_sha as headSha, status, stage_history as stageHistory, review_comment as reviewComment, github_comment_url as githubCommentUrl, rome_session as romeSession, started_at as startedAt, completed_at as completedAt";
+    return "id, repo, pr_number as prNumber, pr_url as prUrl, pr_title as prTitle, pr_author as prAuthor, head_sha as headSha, lens_id as lensId, lens_name as lensName, lens_instructions as lensInstructions, status, stage_history as stageHistory, review_comment as reviewComment, github_comment_url as githubCommentUrl, rome_session as romeSession, started_at as startedAt, completed_at as completedAt";
   }
 
   /**
@@ -271,6 +285,42 @@ export class ScanRepository {
     );
   }
 
+  // --- Additional reviewers ---
+  listReviewLenses(repo: string): ReviewLens[] {
+    return this.all<any>(
+      `SELECT id, repo, name, instructions, enabled, position, created_at as createdAt, updated_at as updatedAt
+       FROM "${this.t("review_lenses")}" WHERE repo = ? COLLATE NOCASE ORDER BY position, created_at, id`,
+      [repo],
+    ).map((row) => ({ ...row, enabled: !!row.enabled }));
+  }
+
+  createReviewLens(repo: string, lens: { name: string; instructions: string; enabled?: boolean; position?: number }): ReviewLens {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const position = lens.position ?? (Math.max(-1, ...this.listReviewLenses(repo).map((l) => l.position)) + 1);
+    this.run(
+      `INSERT INTO "${this.t("review_lenses")}" (id, repo, name, instructions, enabled, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, repo, lens.name, lens.instructions, lens.enabled === false ? 0 : 1, position, now, now],
+    );
+    return { id, repo, name: lens.name, instructions: lens.instructions, enabled: lens.enabled ?? true, position, createdAt: now, updatedAt: now };
+  }
+
+  updateReviewLens(repo: string, id: string, patch: Partial<Pick<ReviewLens, "name" | "instructions" | "enabled" | "position">>): ReviewLens | undefined {
+    const existing = this.listReviewLenses(repo).find((lens) => lens.id === id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.run(
+      `UPDATE "${this.t("review_lenses")}" SET name = ?, instructions = ?, enabled = ?, position = ?, updated_at = ? WHERE id = ? AND repo = ? COLLATE NOCASE`,
+      [updated.name, updated.instructions, updated.enabled ? 1 : 0, updated.position, updated.updatedAt, id, repo],
+    );
+    return updated;
+  }
+
+  deleteReviewLens(repo: string, id: string): void {
+    // Runs retain their snapshots and lens identity after configuration deletion.
+    this.run(`DELETE FROM "${this.t("review_lenses")}" WHERE id = ? AND repo = ? COLLATE NOCASE`, [id, repo]);
+  }
+
   // --- PR Reviews ---
 
   private selectPRReviewById(id: string): PRReview | undefined {
@@ -289,6 +339,9 @@ export class ScanRepository {
     prTitle?: string | null;
     prAuthor?: string | null;
     headSha?: string | null;
+    lensId?: string | null;
+    lensName?: string | null;
+    lensInstructions?: string | null;
   }): PRReview {
     const id = crypto.randomUUID();
     const startedAt = new Date().toISOString();
@@ -296,7 +349,7 @@ export class ScanRepository {
     const prTitle = review.prTitle || `PR #${review.prNumber}`;
     const stageHistory = this.newStageHistory("queued");
     this.run(
-      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, lens_id, lens_name, lens_instructions, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         review.repo,
@@ -305,6 +358,9 @@ export class ScanRepository {
         prTitle,
         review.prAuthor ?? null,
         review.headSha ?? null,
+        review.lensId ?? null,
+        review.lensName ?? null,
+        review.lensInstructions ?? null,
         "queued",
         stageHistory,
         null,
@@ -321,6 +377,9 @@ export class ScanRepository {
       prTitle,
       prAuthor: review.prAuthor ?? null,
       headSha: review.headSha ?? null,
+      lensId: review.lensId ?? null,
+      lensName: review.lensName ?? null,
+      lensInstructions: review.lensInstructions ?? null,
       status: "queued",
       stageHistory,
       reviewComment: null,
@@ -376,7 +435,7 @@ export class ScanRepository {
 
   claimQueuedPRReview(
     id: string,
-    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt">,
+    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt" | "lensId" | "lensName" | "lensInstructions">,
   ): PRReview | null {
     const stageHistory = this.appendStageHistory(id, "pending");
     const stmt = this.driver.prepare(
@@ -388,7 +447,8 @@ export class ScanRepository {
            SELECT 1 FROM "${this.t("pr_reviews")}"
            WHERE repo = ?
              AND pr_number = ?
-             AND head_sha = ?
+             AND head_sha IS ?
+             AND lens_id IS (SELECT lens_id FROM "${this.t("pr_reviews")}" WHERE id = ?)
              -- Only an IN-PROGRESS review of the same commit blocks a new claim.
              -- A previously 'completed' review no longer blocks: a fresh PTAL on
              -- the same commit re-triggers a review (the old one is collapsed /
@@ -413,6 +473,7 @@ export class ScanRepository {
       review.repo,
       review.prNumber,
       review.headSha ?? null,
+      id,
       id,
     );
     if (result.changes === 0) return null;
@@ -461,14 +522,14 @@ export class ScanRepository {
   }
 
   createFailedPRReview(
-    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt">,
+    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt" | "lensId" | "lensName" | "lensInstructions">,
     error: string,
   ): PRReview {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const stageHistory = this.newStageHistory("failed");
     this.run(
-      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, lens_id, lens_name, lens_instructions, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         review.repo,
@@ -477,6 +538,7 @@ export class ScanRepository {
         review.prTitle,
         review.prAuthor ?? null,
         review.headSha ?? null,
+        null, null, null,
         "failed",
         stageHistory,
         error,
@@ -490,6 +552,9 @@ export class ScanRepository {
       ...review,
       prAuthor: review.prAuthor ?? null,
       headSha: review.headSha ?? null,
+      lensId: null,
+      lensName: null,
+      lensInstructions: null,
       status: "failed",
       stageHistory,
       reviewComment: error,
@@ -626,17 +691,17 @@ export class ScanRepository {
   getPRReviewByPR(repo: string, prNumber: number): PRReview | undefined {
     return this.hydratePRReview(
       this.get<any>(
-        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? ORDER BY started_at DESC LIMIT 1`,
+        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND lens_id IS NULL ORDER BY started_at DESC LIMIT 1`,
         [repo, prNumber],
       ),
     );
   }
 
-  getPreviousCompletedPRReviewByPR(repo: string, prNumber: number, excludeId: string): PRReview | undefined {
+  getPreviousCompletedPRReviewByPR(repo: string, prNumber: number, excludeId: string, lensId: string | null = null): PRReview | undefined {
     return this.hydratePRReview(
       this.get<any>(
-        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND id <> ? AND status = 'completed' AND github_comment_url IS NOT NULL ORDER BY started_at DESC LIMIT 1`,
-        [repo, prNumber, excludeId],
+        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND id <> ? AND lens_id IS ? AND status = 'completed' AND github_comment_url IS NOT NULL ORDER BY started_at DESC LIMIT 1`,
+        [repo, prNumber, excludeId, lensId],
       ),
     );
   }

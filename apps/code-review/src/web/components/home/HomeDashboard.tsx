@@ -1,3 +1,4 @@
+import { LensBadge } from "@/components/reviews/review-components";
 import { useState } from "react";
 import { Bot, Brain, CheckCircle, ChevronDown, ExternalLink, Eye, Github, History, ListFilter, MessageSquare, Plus, RefreshCw, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,7 @@ function ActivityRow({ item, onOpen }: { item: ActivityItem; onOpen: (item: Acti
           <span className="font-medium text-foreground">{item.title}</span>
         </div>
         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <LensBadge name={item.lensName} />
           <span className="truncate">{item.repo}</span>
           <span className="shrink-0 whitespace-nowrap">· {formatRelative(item.createdAt)}</span>
         </div>

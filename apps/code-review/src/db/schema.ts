@@ -17,6 +17,9 @@ export function createAppDbSchema(tablePrefix: string = "repo_guardian") {
     prTitle: text("pr_title").notNull(),
     prAuthor: text("pr_author"),
     headSha: text("head_sha"),
+    lensId: text("lens_id"),
+    lensName: text("lens_name"),
+    lensInstructions: text("lens_instructions"),
     status: text("status").notNull().default("pending"),
     stageHistory: text("stage_history"),
     reviewComment: text("review_comment"),
@@ -126,7 +129,18 @@ export function createAppDbSchema(tablePrefix: string = "repo_guardian") {
     value: text("value").notNull(),
   });
 
-  return { repositories, prReviews, prReviewSettings, mentionTasks, memoryEdits, appSettings };
+  const reviewLenses = sqliteTable(`${tablePrefix}__review_lenses`, {
+    id: text("id").primaryKey(),
+    repo: text("repo").notNull(),
+    name: text("name").notNull(),
+    instructions: text("instructions").notNull(),
+    enabled: integer("enabled").notNull().default(1),
+    position: integer("position").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  });
+
+  return { reviewLenses, repositories, prReviews, prReviewSettings, mentionTasks, memoryEdits, appSettings };
 }
 
 const defaultSchema = createAppDbSchema();
@@ -136,3 +150,5 @@ export const prReviewSettings = defaultSchema.prReviewSettings;
 export const mentionTasks = defaultSchema.mentionTasks;
 export const memoryEdits = defaultSchema.memoryEdits;
 export const appSettings = defaultSchema.appSettings;
+
+export const reviewLenses = defaultSchema.reviewLenses;

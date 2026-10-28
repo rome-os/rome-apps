@@ -14,6 +14,10 @@ const mocks = vi.hoisted(() => ({
     skipPRReview: vi.fn(),
     isPRReviewCancelled: vi.fn(),
     cancelPRReview: vi.fn(),
+    getPRReviewSettings: vi.fn(),
+    getAppSetting: vi.fn(),
+    completePRReview: vi.fn(),
+    setPRReviewRomeSession: vi.fn(),
   },
 }));
 
@@ -146,5 +150,83 @@ describe("pr-review action", () => {
     );
     expect(reactionCall).toBeDefined();
     expect(reactionCall?.[2]).toMatchObject({ input: JSON.stringify({ content: "confused" }) });
+  });
+});
+
+
+describe("pr-review lens execution", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.db.isPRReviewCancelled.mockReturnValue(false);
+    mocks.db.getPRReviewSettings.mockReturnValue(null);
+    mocks.db.getPreviousCompletedPRReviewByPR.mockReturnValue(undefined);
+  });
+
+  const config = { name: "code-review_pr-review", type: "custom", description: "Review",
+    complexity: "moderate", speed: "moderate", reliability: "high", sideEffects: "write" } as const;
+
+  it.each([null, "lens-id"])("posts a separate COMMENT review with the correct heading and reactions for lens %s", async (lensId) => {
+    const review = { id: "run", repo: "o/r", prNumber: 7, lensId,
+      lensName: lensId ? "Adversarial" : null, lensInstructions: lensId ? "Snapshot: break it" : null };
+    mocks.db.getPRReview.mockReturnValue(review);
+    mocks.db.claimQueuedPRReview.mockReturnValue(review);
+    mocks.db.getAppSetting.mockReturnValue("https://test.romeos.cc");
+    mocks.execFileSync.mockImplementation((command, args) => {
+      if (command === "git") return "";
+      if (args[0] === "pr") return JSON.stringify({
+        title: "Fix", author: { login: "author" }, url: "https://github.com/o/r/pull/7", body: "", headRefOid: "abc1234",
+      });
+      if (args[1]?.endsWith("/files")) return "[]";
+      if (args[1]?.endsWith("/reviews")) return JSON.stringify({ html_url: "https://github.com/review" });
+      return JSON.stringify({ id: 123 });
+    });
+    const invokeAction = vi.fn((..._args: any[]) => ({
+      events: (async function* () {})(),
+      result: Promise.resolve({ status: "ok", data: { output: {
+        summary: "Examined change", verdict: "COMMENT", verdict_reason: "Review complete", findings: [],
+      } } }),
+    }));
+    const { createAction } = await import("./index.js");
+    const result = await createAction(config, { appContext: { db: {}, invokeAction } } as any).execute({
+      repo: "o/r", prNumber: 7, reviewId: "run", triggerCommentId: 99,
+    });
+    expect(result.status).toBe("ok");
+    expect(mocks.db.getPreviousCompletedPRReviewByPR).toHaveBeenCalledWith("o/r", 7, "run", lensId);
+    const prompt = invokeAction.mock.calls[0][1].prompt;
+    if (lensId) {
+      expect(prompt).toContain("## Reviewer lens: Adversarial");
+      expect(prompt).toContain("Snapshot: break it");
+      expect(prompt).toContain("take precedence");
+    } else expect(prompt).not.toContain("Reviewer lens:");
+    const postingCall = mocks.execFileSync.mock.calls.find(([, args]) => args[1]?.endsWith("/reviews"));
+    const payload = JSON.parse(postingCall![2].input);
+    expect(payload.event).toBe("COMMENT");
+    expect(payload.body).toContain(lensId ? "## 🗡️ Adversarial review: 💬 COMMENT" : "## Code Review: 💬 COMMENT");
+    expect(payload.body).toContain("Automated review by");
+    expect(payload.body).toContain("Full review history");
+    const reactionCalls = mocks.execFileSync.mock.calls.filter(([, args]) => args.some((a: string) => a.includes("/reactions")));
+    expect(reactionCalls).toHaveLength(lensId ? 0 : 4); // Add + remove for PR and comment.
+    expect(mocks.db.completePRReview).toHaveBeenCalledWith("run", expect.any(String), "https://github.com/review");
+  });
+
+  it("does not mark the triggering comment when a lens claim is skipped", async () => {
+    mocks.db.getPRReview.mockReturnValue({ id: "run", repo: "o/r", prNumber: 7, lensId: "lens" });
+    mocks.db.claimQueuedPRReview.mockReturnValue(null);
+    mocks.execFileSync.mockReturnValue(JSON.stringify({ title: "Fix", headRefOid: "abc1234" }));
+    const { createAction } = await import("./index.js");
+    await createAction(config, { appContext: { db: {} } } as any).execute({
+      repo: "o/r", prNumber: 7, reviewId: "run", triggerCommentId: 99,
+    });
+    expect(mocks.execFileSync).toHaveBeenCalledTimes(1); // PR metadata only.
+  });
+
+  it("preserves the default prompt and explicitly preserves the schema for a lens", async () => {
+    const { buildAgentPrompt } = await import("./index.js");
+    const base = buildAgentPrompt("o/r", 7, { title: "Fix", body: "" }, null, null, null, false);
+    expect(buildAgentPrompt("o/r", 7, { title: "Fix", body: "" }, null, null, null, false,
+      { lensName: null, lensInstructions: null })).toBe(base);
+    const lens = buildAgentPrompt("o/r", 7, { title: "Fix", body: "" }, null, null, null, false,
+      { lensName: "Adversarial", lensInstructions: "Break it" });
+    expect(lens).toContain("The output schema still applies.");
   });
 });

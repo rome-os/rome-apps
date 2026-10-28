@@ -21,6 +21,8 @@ import {
   type RunAction,
 } from "../utils/github-events.js";
 
+import { queueReviews } from "../lib/queue-reviews.js";
+
 const log = createAppLogger("code-review_api");
 const execFileAsync = promisify(execFile);
 
@@ -91,6 +93,7 @@ interface ActivityItem {
   type: string;
   /** Human-readable tag shown on the item. */
   tag: string;
+  lensName?: string | null;
   id: string;
   repo: string;
   surface: "pr" | "issue";
@@ -134,6 +137,7 @@ function buildActivityItems(repo: ScanRepository): ActivityItem[] {
     kind: "review",
     type: "review",
     tag: "Review",
+    lensName: r.lensName,
     id: r.id,
     repo: r.repo,
     surface: "pr",
@@ -559,6 +563,48 @@ class GuardianApiHandler implements RomeAppApiHandler {
       return json({ ok: true });
     }
 
+    // --- Reviewer lenses (guardian-owned repo configuration) ---
+    if (request.path[0] === "review-lenses" && request.path.length <= 2) {
+      if (request.caller.kind !== "guardian") return json({ error: "forbidden" }, { status: 401 });
+      const repoName = request.query.get("repo")?.trim();
+      if (!repoName || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repoName)) {
+        return json({ error: "repo must be owner/repo" }, { status: 400 });
+      }
+      const id = request.path[1];
+      if (request.method === "GET" && !id) return json({ lenses: repo.listReviewLenses(repoName) });
+      if (id && !repo.listReviewLenses(repoName).some((lens) => lens.id === id)) {
+        return json({ error: "not_found" }, { status: 404 });
+      }
+      if (request.method === "DELETE" && id) {
+        repo.deleteReviewLens(repoName, id);
+        return json({ ok: true });
+      }
+      if ((request.method === "POST" && !id) || (request.method === "PATCH" && id)) {
+        const body = readJson(request);
+        const patch: { name?: string; instructions?: string; enabled?: boolean; position?: number } = {};
+        for (const [key, max] of [["name", 100], ["instructions", 20000]] as const) {
+          if (body[key] !== undefined || request.method === "POST") {
+            if (typeof body[key] !== "string" || !body[key].trim() || body[key].length > max) {
+              return json({ error: `${key} must be non-empty text (max ${max} characters)` }, { status: 400 });
+            }
+            patch[key] = body[key].trim();
+          }
+        }
+        if (body.enabled !== undefined) {
+          if (typeof body.enabled !== "boolean") return json({ error: "enabled must be boolean" }, { status: 400 });
+          patch.enabled = body.enabled;
+        }
+        if (body.position !== undefined) {
+          if (!Number.isSafeInteger(body.position) || body.position < 0) return json({ error: "position must be a non-negative integer" }, { status: 400 });
+          patch.position = body.position;
+        }
+        const lens = id
+          ? repo.updateReviewLens(repoName, id, patch)
+          : repo.createReviewLens(repoName, { ...patch, name: patch.name!, instructions: patch.instructions! });
+        return json({ lens }, { status: id ? 200 : 201 });
+      }
+    }
+
     // --- PR Reviews ---
     if (request.method === "GET" && route === "pr-reviews") {
       const limitParam = parseInt(request.query.get("limit") || "20", 10);
@@ -626,19 +672,8 @@ class GuardianApiHandler implements RomeAppApiHandler {
         return json({ error: "Invalid PR number." }, { status: 400 });
       }
 
-      const queuedReview = repo.createQueuedPRReview({ repo: repoSlug, prNumber });
-
-      await this.ctx.runAction(
-        "code-review:code-review_pr-review",
-        {
-          repo: repoSlug,
-          prNumber,
-          reviewId: queuedReview.id,
-        },
-        { detached: true },
-      );
-
-      return json({ queued: true, reviewId: queuedReview.id, repo: repoSlug, prNumber }, { status: 202 });
+      const reviews = await queueReviews(repo, this.ctx.runAction.bind(this.ctx), { repo: repoSlug, prNumber });
+      return json({ queued: true, reviewId: reviews[0].id, reviewIds: reviews.map((r) => r.id), repo: repoSlug, prNumber }, { status: 202 });
     }
 
     // --- PR Review Settings ---
@@ -924,7 +959,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
       }
       const reviews = repo.listPRReviewsForPR(repoName, prNumber);
       const tasks = repo.listMentionTasksForPR(repoName, prNumber);
-      const latest = reviews[reviews.length - 1];
+      const latest = reviews.filter((r) => !r.lensId).at(-1) ?? reviews.at(-1);
       return json({
         repo: repoName,
         number: prNumber,
