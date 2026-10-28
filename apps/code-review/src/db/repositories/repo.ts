@@ -1,3 +1,4 @@
+import { BUILT_IN_REVIEWERS } from "../../lib/reviewers.js";
 import type { AppDbContext, DrizzleDb, RomeSessionRef } from "@rome-os/app-runtime";
 import { normalizeTriggerAccessMode, type TriggerAccessMode } from "../../lib/trigger-access.js";
 
@@ -8,6 +9,8 @@ export interface Repository {
   addedAt: string;
 }
 
+export type ReviewLens = (typeof BUILT_IN_REVIEWERS)[number] & { enabled: boolean };
+
 export interface PRReview {
   id: string;
   repo: string;
@@ -16,6 +19,9 @@ export interface PRReview {
   prTitle: string;
   prAuthor: string | null;
   headSha: string | null;
+  lensId: string | null;
+  lensName: string | null;
+  lensInstructions: string | null;
   status: string;
   stageHistory: string | null;
   reviewComment: string | null;
@@ -136,7 +142,7 @@ export class ScanRepository {
   }
 
   private prReviewSelectColumns(): string {
-    return "id, repo, pr_number as prNumber, pr_url as prUrl, pr_title as prTitle, pr_author as prAuthor, head_sha as headSha, status, stage_history as stageHistory, review_comment as reviewComment, github_comment_url as githubCommentUrl, rome_session as romeSession, started_at as startedAt, completed_at as completedAt";
+    return "id, repo, pr_number as prNumber, pr_url as prUrl, pr_title as prTitle, pr_author as prAuthor, head_sha as headSha, lens_id as lensId, lens_name as lensName, lens_instructions as lensInstructions, status, stage_history as stageHistory, review_comment as reviewComment, github_comment_url as githubCommentUrl, rome_session as romeSession, started_at as startedAt, completed_at as completedAt";
   }
 
   /**
@@ -271,6 +277,32 @@ export class ScanRepository {
     );
   }
 
+  // --- Additional reviewers ---
+  listReviewLenses(repo: string): ReviewLens[] {
+    // Legacy custom UUID rows are deliberately ignored, never mapped by name.
+    return BUILT_IN_REVIEWERS.map((reviewer) => ({
+      ...reviewer,
+      enabled: !!this.get<{ enabled: number }>(
+        `SELECT enabled FROM "${this.t("review_lenses")}" WHERE id = ?`,
+        [`${repo.toLowerCase()}:${reviewer.id}`],
+      )?.enabled,
+    }));
+  }
+
+  setReviewLensEnabled(repo: string, id: string, enabled: boolean): ReviewLens | undefined {
+    if (!BUILT_IN_REVIEWERS.some((reviewer) => reviewer.id === id)) return undefined;
+    const now = new Date().toISOString();
+    // Reuse 0016 without rewriting an applied migration. Legacy required columns
+    // are inert; definitions and run snapshots always come from shipped files.
+    this.run(
+      `INSERT INTO "${this.t("review_lenses")}" (id, repo, name, instructions, enabled, created_at, updated_at)
+       VALUES (?, ?, '', '', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+      [`${repo.toLowerCase()}:${id}`, repo, enabled ? 1 : 0, now, now],
+    );
+    return this.listReviewLenses(repo).find((reviewer) => reviewer.id === id);
+  }
+
   // --- PR Reviews ---
 
   private selectPRReviewById(id: string): PRReview | undefined {
@@ -289,6 +321,9 @@ export class ScanRepository {
     prTitle?: string | null;
     prAuthor?: string | null;
     headSha?: string | null;
+    lensId?: string | null;
+    lensName?: string | null;
+    lensInstructions?: string | null;
   }): PRReview {
     const id = crypto.randomUUID();
     const startedAt = new Date().toISOString();
@@ -296,7 +331,7 @@ export class ScanRepository {
     const prTitle = review.prTitle || `PR #${review.prNumber}`;
     const stageHistory = this.newStageHistory("queued");
     this.run(
-      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, lens_id, lens_name, lens_instructions, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         review.repo,
@@ -305,6 +340,9 @@ export class ScanRepository {
         prTitle,
         review.prAuthor ?? null,
         review.headSha ?? null,
+        review.lensId ?? null,
+        review.lensName ?? null,
+        review.lensInstructions ?? null,
         "queued",
         stageHistory,
         null,
@@ -321,6 +359,9 @@ export class ScanRepository {
       prTitle,
       prAuthor: review.prAuthor ?? null,
       headSha: review.headSha ?? null,
+      lensId: review.lensId ?? null,
+      lensName: review.lensName ?? null,
+      lensInstructions: review.lensInstructions ?? null,
       status: "queued",
       stageHistory,
       reviewComment: null,
@@ -376,7 +417,7 @@ export class ScanRepository {
 
   claimQueuedPRReview(
     id: string,
-    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt">,
+    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt" | "lensId" | "lensName" | "lensInstructions">,
   ): PRReview | null {
     const stageHistory = this.appendStageHistory(id, "pending");
     const stmt = this.driver.prepare(
@@ -388,7 +429,8 @@ export class ScanRepository {
            SELECT 1 FROM "${this.t("pr_reviews")}"
            WHERE repo = ?
              AND pr_number = ?
-             AND head_sha = ?
+             AND head_sha IS ?
+             AND lens_id IS (SELECT lens_id FROM "${this.t("pr_reviews")}" WHERE id = ?)
              -- Only an IN-PROGRESS review of the same commit blocks a new claim.
              -- A previously 'completed' review no longer blocks: a fresh PTAL on
              -- the same commit re-triggers a review (the old one is collapsed /
@@ -413,6 +455,7 @@ export class ScanRepository {
       review.repo,
       review.prNumber,
       review.headSha ?? null,
+      id,
       id,
     );
     if (result.changes === 0) return null;
@@ -461,14 +504,14 @@ export class ScanRepository {
   }
 
   createFailedPRReview(
-    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt">,
+    review: Omit<PRReview, "id" | "status" | "stageHistory" | "reviewComment" | "githubCommentUrl" | "romeSession" | "startedAt" | "completedAt" | "lensId" | "lensName" | "lensInstructions">,
     error: string,
   ): PRReview {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const stageHistory = this.newStageHistory("failed");
     this.run(
-      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO "${this.t("pr_reviews")}" (id, repo, pr_number, pr_url, pr_title, pr_author, head_sha, lens_id, lens_name, lens_instructions, status, stage_history, review_comment, github_comment_url, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         review.repo,
@@ -477,6 +520,7 @@ export class ScanRepository {
         review.prTitle,
         review.prAuthor ?? null,
         review.headSha ?? null,
+        null, null, null,
         "failed",
         stageHistory,
         error,
@@ -490,6 +534,9 @@ export class ScanRepository {
       ...review,
       prAuthor: review.prAuthor ?? null,
       headSha: review.headSha ?? null,
+      lensId: null,
+      lensName: null,
+      lensInstructions: null,
       status: "failed",
       stageHistory,
       reviewComment: error,
@@ -626,17 +673,17 @@ export class ScanRepository {
   getPRReviewByPR(repo: string, prNumber: number): PRReview | undefined {
     return this.hydratePRReview(
       this.get<any>(
-        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? ORDER BY started_at DESC LIMIT 1`,
+        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND lens_id IS NULL ORDER BY started_at DESC LIMIT 1`,
         [repo, prNumber],
       ),
     );
   }
 
-  getPreviousCompletedPRReviewByPR(repo: string, prNumber: number, excludeId: string): PRReview | undefined {
+  getPreviousCompletedPRReviewByPR(repo: string, prNumber: number, excludeId: string, lensId: string | null = null): PRReview | undefined {
     return this.hydratePRReview(
       this.get<any>(
-        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND id <> ? AND status = 'completed' AND github_comment_url IS NOT NULL ORDER BY started_at DESC LIMIT 1`,
-        [repo, prNumber, excludeId],
+        `SELECT ${this.prReviewSelectColumns()} FROM "${this.t("pr_reviews")}" WHERE repo = ? AND pr_number = ? AND id <> ? AND lens_id IS ? AND status = 'completed' AND github_comment_url IS NOT NULL ORDER BY started_at DESC LIMIT 1`,
+        [repo, prNumber, excludeId, lensId],
       ),
     );
   }

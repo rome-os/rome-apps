@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(),
   db: {
     createQueuedPRReview: vi.fn(),
+    listReviewLenses: vi.fn(),
+    failPRReview: vi.fn(),
     getPRReviewSettings: vi.fn(),
   },
 }));
@@ -53,6 +55,7 @@ describe("pr-webhook action", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.db.listReviewLenses.mockReturnValue([]);
     enableAllTriggers();
     mocks.db.createQueuedPRReview.mockReturnValue({ id: "queued-review-id" });
     mocks.execFileSync.mockReturnValue("rome-bot\n");
@@ -444,5 +447,41 @@ describe("pr-webhook action", () => {
 
     expect(result.status).toBe("ok");
     expect(result.data).toMatchObject({ queued: true, prNumber: 79, triggerCommentId: 789 });
+  });
+});
+
+describe("pr-webhook lens fan-out", () => {
+  it.each(["opened", "synchronize", "review_requested", "PTAL"])("fans out %s to the same shared queue helper", async (trigger) => {
+    vi.clearAllMocks();
+    enableAllTriggers();
+    mocks.execFileSync.mockReturnValue("rome-bot");
+    mocks.db.listReviewLenses.mockReturnValue([
+      { id: "security", name: "Security", instructions: "Audit", enabled: true },
+      { id: "disabled", name: "Disabled", instructions: "Skip", enabled: false },
+    ]);
+    mocks.db.createQueuedPRReview.mockReturnValueOnce({ id: "main" }).mockReturnValueOnce({ id: "lens" });
+    const { createAction } = await import("./index.js");
+    const deps = makeDeps();
+    const payload = trigger === "PTAL" ? {
+      action: "created", repository: { full_name: "o/r" },
+      issue: { number: 7, pull_request: {} },
+      comment: { id: 123, body: "@rome-bot PTAL", user: { login: "rome-bot" } },
+    } : {
+      action: trigger, repository: { full_name: "o/r" },
+      sender: { login: "rome-bot" }, requested_reviewer: { login: "rome-bot" },
+      pull_request: { number: 7, title: "Fix", user: { login: "rome-bot" }, head: { sha: "abc" } },
+    };
+    const result = await createAction(config, deps).execute({
+      githubEvent: trigger === "PTAL" ? "issue_comment" : "pull_request", __triggerPayload: payload,
+    });
+    expect(result.status).toBe("ok");
+    expect(mocks.db.createQueuedPRReview).toHaveBeenCalledTimes(2);
+    expect(mocks.db.createQueuedPRReview.mock.calls[1][0]).toMatchObject({
+      lensId: "security", lensName: "Security", lensInstructions: "Audit",
+    });
+    expect(deps.appContext.runAction).toHaveBeenCalledTimes(2);
+    if (trigger === "PTAL") {
+      for (const call of deps.appContext.runAction.mock.calls) expect(call[1].triggerCommentId).toBe(123);
+    }
   });
 });

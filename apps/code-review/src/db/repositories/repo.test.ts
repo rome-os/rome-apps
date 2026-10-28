@@ -152,3 +152,63 @@ describe("ScanRepository app settings", () => {
     sqlite.close();
   });
 });
+
+describe("ScanRepository reviewer lenses", () => {
+  let sqlite: Database.Database;
+  let appDb: AppDbContext;
+  beforeEach(() => { ({ sqlite, appDb } = createTestContext()); });
+  afterEach(() => sqlite.close());
+
+  const metadata = {
+    repo: "rome-os/rome", prNumber: 7, prUrl: "https://github.com/rome-os/rome/pull/7",
+    prTitle: "Fix", prAuthor: "octocat", headSha: "sha1",
+  };
+
+  it("claims main and distinct lenses independently but blocks duplicates within each lens", () => {
+    const db = createScanRepository(appDb);
+    const rows = [null, "design-alternatives", "security"].map((lensId) =>
+      db.createQueuedPRReview({ ...metadata, lensId, lensName: lensId, lensInstructions: lensId && "Be skeptical" }));
+    // All three must own the same PR + SHA concurrently.
+    for (const row of rows) expect(db.claimQueuedPRReview(row.id, metadata)?.lensId).toBe(row.lensId);
+    for (const row of rows) {
+      const duplicate = db.createQueuedPRReview({ ...metadata, lensId: row.lensId });
+      expect(db.claimQueuedPRReview(duplicate.id, metadata)).toBeNull();
+      db.completePRReview(row.id, "Done", "https://github.com/review");
+      // Completed runs do not prevent a fresh review of the same SHA.
+      expect(db.claimQueuedPRReview(duplicate.id, metadata)?.id).toBe(duplicate.id);
+      db.cancelPRReview(duplicate.id);
+    }
+  });
+
+  it("scopes supersession and the latest single verdict to the main review or the requested lens", () => {
+    const db = createScanRepository(appDb);
+    const main = db.createQueuedPRReview(metadata);
+    const lens = db.createQueuedPRReview({ ...metadata, lensId: "adversarial", lensName: "Adversarial", lensInstructions: "Original" });
+    const security = db.createQueuedPRReview({ ...metadata, lensId: "security" });
+    for (const row of [main, lens, security]) db.completePRReview(row.id, "Done", `https://github.com/review/${row.id}`);
+    sqlite.prepare("UPDATE repo_guardian__pr_reviews SET started_at = ? WHERE id = ?").run("2099-01-01", security.id);
+
+    expect(db.getPreviousCompletedPRReviewByPR(metadata.repo, 7, "new")?.id).toBe(main.id);
+    expect(db.getPreviousCompletedPRReviewByPR(metadata.repo, 7, "new", "adversarial")?.id).toBe(lens.id);
+    expect(db.getPreviousCompletedPRReviewByPR(metadata.repo, 7, lens.id, "adversarial")).toBeUndefined();
+    expect(db.getPreviousCompletedPRReviewByPR(metadata.repo, 7, "new", "other")).toBeUndefined();
+    expect(db.getPRReviewByPR(metadata.repo, 7)?.id).toBe(main.id);
+  });
+
+  it("stores only opt-ins, ignores legacy custom rows and preserves run snapshots", () => {
+    const db = createScanRepository(appDb);
+    sqlite.exec(`INSERT INTO repo_guardian__review_lenses
+      (id, repo, name, instructions, enabled, created_at, updated_at)
+      VALUES ('legacy', 'rome-os/rome', 'Security', 'Untrusted custom prompt', 1, '', '')`);
+    expect(db.listReviewLenses(metadata.repo).every((l) => !l.enabled)).toBe(true);
+    const lens = db.setReviewLensEnabled(metadata.repo, "security", true)!;
+    const row = db.createQueuedPRReview({ ...metadata, lensId: lens.id, lensName: lens.name, lensInstructions: lens.instructions });
+    expect(db.listReviewLenses("ROME-OS/ROME")[1].enabled).toBe(true);
+    expect(db.listReviewLenses("other/repo")[1].enabled).toBe(false);
+    db.setReviewLensEnabled(metadata.repo, "security", false);
+    expect(db.getPRReview(row.id)).toMatchObject({ lensId: "security", lensName: "Security", lensInstructions: lens.instructions });
+    const main = db.createQueuedPRReview(metadata);
+    expect(db.cancelPRReview(row.id)?.status).toBe("cancelled");
+    expect(db.getPRReview(main.id)?.status).toBe("queued");
+  });
+});

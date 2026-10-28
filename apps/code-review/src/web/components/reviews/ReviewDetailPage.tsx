@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PRReviewData } from "@/types";
 import { formatDate } from "@/lib/helpers";
-import { ACTIVE_REVIEW_STATUSES, MarkdownBlock, StageTimeline, StatusBadge } from "./review-components";
+import { ACTIVE_REVIEW_STATUSES, LensBadge, MarkdownBlock, StageTimeline, StatusBadge } from "./review-components";
 
 export function ReviewDetailPage({
   selectedReview,
@@ -85,11 +85,18 @@ export function ReviewDetailPage({
         </Card>
       ) : selectedReview ? (
         <div className="space-y-6">
+          {selectedReview.lensInstructions && (
+            <details className="rounded-lg border p-4 text-sm">
+              <summary className="cursor-pointer font-medium">Reviewer instructions used for this run</summary>
+              <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{selectedReview.lensInstructions}</p>
+            </details>
+          )}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={selectedReview.status} />
+                  <LensBadge name={selectedReview.lensName} />
                   {selectedReview.prAuthor && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                       {selectedReview.prAuthor}

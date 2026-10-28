@@ -1,3 +1,4 @@
+import { BUILT_IN_REVIEWERS } from "../../lib/reviewers.js";
 import { createAppLogger } from "@rome-os/app-runtime";
 import type {
   Action,
@@ -375,6 +376,7 @@ function postInlineReview(
   headSha: string,
   reviewOutput: AgentReviewOutput,
   historyUrl: string | null,
+  lensName: string | null = null,
 ): { reviewUrl: string | null; postedFindings: number; skippedFindings: number } {
   validateRepoSlug(repoSlug);
 
@@ -394,7 +396,8 @@ function postInlineReview(
   }
 
   const summaryParts: string[] = [];
-  summaryParts.push(`## Code Review: ${verdictEmoji[reviewOutput.verdict] || ""} ${reviewOutput.verdict}`);
+  const heading = lensName ? `${lensName.replace(/[\r\n]/g, " ")} review` : "Code Review";
+  summaryParts.push(`## ${heading}: ${verdictEmoji[reviewOutput.verdict] || ""} ${reviewOutput.verdict}`);
   summaryParts.push("");
   summaryParts.push(cleanSummary);
   summaryParts.push("");
@@ -569,7 +572,7 @@ function collapsePreviousReview(
 // Agent prompt — thin context only, no diff content
 // ---------------------------------------------------------------------------
 
-function buildAgentPrompt(
+export function buildAgentPrompt(
   repoSlug: string,
   prNumber: number,
   prInfo: { title: string; body: string },
@@ -577,6 +580,7 @@ function buildAgentPrompt(
   projectMemory: string | null,
   clonePath: string | null,
   cloneAtPrHead: boolean,
+  lens?: { lensId: string | null; lensName: string | null; lensInstructions: string | null },
 ): string {
   const parts: string[] = [];
 
@@ -603,6 +607,10 @@ function buildAgentPrompt(
   // block) so past feedback shapes this review. See design doc §5 / §7a.
   if (projectMemory && projectMemory.trim()) {
     parts.push(`**Project Memory (accumulated knowledge & past feedback for this repo — weigh it during review):**\n${projectMemory}\n`);
+  }
+
+  if (lens?.lensId && BUILT_IN_REVIEWERS.some((reviewer) => reviewer.id === lens.lensId)) {
+    parts.push(`## Reviewer mode: ${lens.lensId}\n**${lens.lensName}**\nReference snapshot for this run:\n${lens.lensInstructions ?? ""}\n`);
   }
 
   parts.push(`## Task`);
@@ -799,7 +807,7 @@ export function createAction(
         db.skipPRReview(review.id, message);
         // Leave a visible marker on the triggering comment (e.g. a PTAL) so a
         // skipped request never goes silently unanswered.
-        if (typedInput.triggerCommentId) {
+        if (!review.lensId && typedInput.triggerCommentId) {
           markCommentReviewSkipped(repoSlug, typedInput.triggerCommentId);
         }
         log.info("Review already in progress for this commit, skipping", {
@@ -823,15 +831,21 @@ export function createAction(
         log.info("PR review cancelled after claim", { reviewId: review.id, repo: repoSlug, prNumber });
         return { status: "ok", data: { reviewId: review.id, repo: repoSlug, prNumber, status: "cancelled", review: cancelled } };
       }
-      const previousReview = db.getPreviousCompletedPRReviewByPR(repoSlug, prNumber, review.id);
+      if (review.lensId && !BUILT_IN_REVIEWERS.some((reviewer) => reviewer.id === review.lensId)) {
+        db.skipPRReview(review.id, "Custom reviewers are no longer supported.");
+        return { status: "ok", data: { reviewId: review.id, status: "skipped" } };
+      }
+      const previousReview = db.getPreviousCompletedPRReviewByPR(repoSlug, prNumber, review.id, review.lensId ?? null);
 
       // Add eyes reactions to signal review-in-progress
       const eyesReactions: ReactionHandle[] = [];
-      const prEyesReaction = addEyesReactionToIssue(repoSlug, prNumber);
-      if (prEyesReaction) eyesReactions.push(prEyesReaction);
-      if (typedInput.triggerCommentId) {
-        const commentEyesReaction = addEyesReactionToComment(repoSlug, typedInput.triggerCommentId);
-        if (commentEyesReaction) eyesReactions.push(commentEyesReaction);
+      if (!review.lensId) {
+        const prEyesReaction = addEyesReactionToIssue(repoSlug, prNumber);
+        if (prEyesReaction) eyesReactions.push(prEyesReaction);
+        if (typedInput.triggerCommentId) {
+          const commentEyesReaction = addEyesReactionToComment(repoSlug, typedInput.triggerCommentId);
+          if (commentEyesReaction) eyesReactions.push(commentEyesReaction);
+        }
       }
 
       // Shallow-clone the repo (at the PR head when possible) for broader context
@@ -861,7 +875,7 @@ export function createAction(
         const customRules = settings?.customRules || null;
         const projectMemory = settings?.projectMemory || null;
 
-        const prompt = buildAgentPrompt(repoSlug, prNumber, prInfo, customRules, projectMemory, clonePath, cloneAtPrHead);
+        const prompt = buildAgentPrompt(repoSlug, prNumber, prInfo, customRules, projectMemory, clonePath, cloneAtPrHead, review);
 
         log.info("Invoking Code Review Expert agent", { reviewId: review.id, clonePath });
         db.updatePRReviewStage(review.id, "reviewing");
@@ -942,6 +956,7 @@ export function createAction(
         const { reviewUrl, postedFindings, skippedFindings } = postInlineReview(
           repoSlug, prNumber, prInfo.headSha, reviewOutput,
           publicOrigin ? prHistoryUrl(publicOrigin, repoSlug, prNumber) : null,
+          review.lensName,
         );
         throwIfReviewCancelled(db, review.id);
 

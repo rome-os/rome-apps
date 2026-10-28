@@ -16,6 +16,8 @@ import {
   type GitHubPullRequest,
 } from "./decision.js";
 
+import { queueReviews } from "../../lib/queue-reviews.js";
+
 const log = createAppLogger("code-review_pr-webhook");
 
 function resolveGitHubLogin(): string | null {
@@ -41,28 +43,15 @@ async function queueReview(
     triggerCommentId?: number | null;
   },
 ): Promise<ActionResult> {
-  const queuedReview = db.createQueuedPRReview({
+  const [queuedReview] = await queueReviews(db, deps.appContext.runAction.bind(deps.appContext), {
     repo: args.repo,
     prNumber: args.prNumber,
     prUrl: args.pr?.html_url || null,
     prTitle: args.pr?.title || null,
     prAuthor: args.pr?.user?.login || null,
     headSha: args.pr?.head?.sha || null,
+    triggerCommentId: args.triggerCommentId,
   });
-
-  // Dispatch the review as an independent root execution, then wait only for
-  // the runtime to accept it. The pr-review action uses commit-based locking to
-  // prevent duplicate reviews.
-  await deps.appContext.runAction(
-    "code-review:code-review_pr-review",
-    {
-      repo: args.repo,
-      prNumber: args.prNumber,
-      reviewId: queuedReview.id,
-      ...(args.triggerCommentId ? { triggerCommentId: args.triggerCommentId } : {}),
-    },
-    { detached: true },
-  );
 
   return {
     status: "ok",

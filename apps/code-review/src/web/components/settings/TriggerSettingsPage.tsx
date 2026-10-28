@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
 import { RepoVisibilityBadge } from "@/components/github/RepoVisibilityBadge";
+import { ReviewerLensesSection } from "@/components/settings/ReviewerLensesSection";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
 import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, RepositoryData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
 import { fetchGithubUserProfile, getAppBasePath, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
@@ -788,6 +789,8 @@ function TriggerSettingsForm({
           </p>
         )}
       </section>
+
+      <ReviewerLensesSection key={repoName} repoName={repoName} />
 
       {/* Project memory — shared knowledge for every task the bot runs here */}
       <section className="space-y-3 rounded-lg border bg-muted/20 p-4">

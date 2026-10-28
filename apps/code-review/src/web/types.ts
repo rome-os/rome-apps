@@ -20,6 +20,9 @@ export interface PRReviewData {
   prTitle: string;
   prAuthor: string | null;
   headSha?: string | null;
+  lensId: string | null;
+  lensName: string | null;
+  lensInstructions: string | null;
   status: string;
   stageHistory: string | null;
   reviewComment: string | null;
@@ -119,6 +122,7 @@ export interface ActivityItem {
   kind: "review" | "mention";
   type: string;
   tag: string;
+  lensName?: string | null;
   id: string;
   repo: string;
   surface: "pr" | "issue";
@@ -207,4 +211,11 @@ export interface TriggerSettingsPayload {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
+}
+
+export interface ReviewLensData {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
 }

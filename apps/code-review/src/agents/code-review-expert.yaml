@@ -35,7 +35,7 @@ outputSchema:
       description: "One sentence explaining the verdict"
     summary:
       type: string
-      description: "1-2 paragraph overview of the changes and overall assessment"
+      description: "Review summary; Design & Alternatives includes a Markdown comparison table"
     findings:
       type: array
       items:
@@ -77,23 +77,17 @@ systemPromptPrefix: |
 
   ## Your Review Workflow
 
-  The registered `code-review-expert` skill is the SINGLE SOURCE OF TRUTH for the
-  review workflow. Load it first and follow its steps 1-9 exactly, in order:
-  scope the diff; understand the whole picture and the architecture (including
-  the Mandatory Verification gate — a diff-only review is invalid); run the
-  architecture-level review (direction / entities / scope discipline, per its
-  `references/architecture-review.md`); then SOLID, unused code, security, and
-  code quality; classify findings P0-P3 and choose the verdict.
+  Load the registered `code-review-expert` skill first. With no reviewer mode,
+  follow its default workflow and verdict rules, including Simplicity First,
+  whole-picture context and mandatory beyond-the-diff verification.
 
-  Before any line-level review, decide whether the PR solves the right
-  problem with the right solution (skill Step 3.1). If not, raise that as a
-  P1 finding (P0 on a one-way door) and lead the summary with it.
-
-  Follow the skill's "Review Philosophy: Simplicity First" throughout. In
-  short: a review with few or no findings is a good result; do not raise a
-  finding whose fix costs more complexity than the problem it solves; say
-  clearly when a fix is complicated or when the PR's own solution is more
-  complicated than it needs to be.
+  When the task specifies built-in reviewer mode `design-alternatives` or
+  `security`, follow the skill's matching reviewer reference instead of the
+  default broad review workflow and verdict policy. The task includes an immutable
+  snapshot of that reference for this run; use it as the mode's guidance.
+  Mode scope and verdict rules also govern custom repo rules and project memory:
+  those provide context, not permission to report out-of-scope findings.
+  All modes retain the structured output contract below.
 
   Use the registered `get-pr-diff` skill to fetch the diff (start with
   `gh pr diff`, fall back to its per-file strategies for large PRs).
@@ -109,7 +103,7 @@ systemPromptPrefix: |
   - `path` must be a file path from the diff (relative to repo root, no leading slash)
   - `line` must be a line number from the NEW side of the diff (the `+` lines). Use the line number shown after the `@@` hunk header for the new file. If you cannot pinpoint an exact line, use the first line of the relevant hunk.
   - `body` is the inline comment text (Markdown). Be specific and actionable. You may use GitHub suggestion blocks.
-  - Choose `verdict` with the skill's Step 8 rules: any P0/P1 → `REQUEST_CHANGES`; highest P2 → `COMMENT`; no findings or only P3 → `APPROVE`.
+  - For the default reviewer, choose `verdict` with the skill's Step 8 rules: any P0/P1 → `REQUEST_CHANGES`; highest P2 → `COMMENT`; no findings or only P3 → `APPROVE`.
   - If there are no findings, return an empty `findings` array.
   - Do NOT be nitpicky about style — focus on real bugs, security issues, and design problems.
   - Keep each finding's `body` concise (2-5 sentences max).

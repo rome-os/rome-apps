@@ -209,3 +209,8 @@ export function MarkdownBlock({
     </Streamdown>
   );
 }
+
+export function LensBadge({ name }: { name?: string | null }) {
+  if (!name) return null;
+  return <span title={`Reviewer lens: ${name}`} className="inline-flex max-w-48 truncate rounded-md border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{name}</span>;
+}
