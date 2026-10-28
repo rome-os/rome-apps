@@ -354,7 +354,15 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
   onSave: (s: TriggerSettingsPayload) => Promise<void>; onRepair: () => Promise<void>;
   onRemove: () => Promise<void>; onBack: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("project");
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    return AGENT_TABS.some(t => t.id === requested) ? requested as Tab : "project";
+  });
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState({}, "", url);
+  }, [tab]);
   const [baseline, setBaseline] = useState(() => initialDraft(settings));
   const [draft, setDraft] = useState(baseline);
   const [busy, setBusy] = useState(false);
@@ -408,6 +416,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
   };
   const navButton = (id: Tab, name: string, Icon: LucideIcon) => <button key={id} type="button"
     id={`settings-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls="settings-panel" tabIndex={tab === id ? 0 : -1}
+    title={id === "project" ? "Project settings" : `${name} · ${enabled(id) ? "On" : "Off"}`}
     onClick={() => setTab(id)} className={`flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === id ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
     <Icon className="h-4 w-4 shrink-0" /><span className="flex-1">{name}</span>
     {id !== "project" && <><span aria-hidden="true" className={`ml-2 h-1.5 w-1.5 shrink-0 rounded-full ${enabled(id) ? "bg-primary" : "bg-muted-foreground/40"}`} /><span className="sr-only">{enabled(id) ? "On" : "Off"}</span></>}
@@ -422,8 +431,8 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
         </div></div>
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Plug className="h-3.5 w-3.5" />{settings?.webhookConnected ? "GitHub connected" : "GitHub not subscribed"}</span>
     </header>
-    <div className="grid items-start gap-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-9">
-      <nav aria-label="Settings sections" role="tablist" aria-orientation="vertical" className="flex flex-col gap-1 md:sticky md:top-4"
+    <div className="grid min-w-0 grid-cols-1 items-start gap-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-9">
+      <nav aria-label="Settings sections" role="tablist" aria-orientation="vertical" className="flex min-w-0 flex-col gap-1 md:sticky md:top-4"
         onKeyDown={e => {
           if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
           e.preventDefault(); const ids: Tab[] = ["project", ...AGENT_TABS.map(t => t.id)];
@@ -479,7 +488,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
           <div className="flex items-start justify-between gap-5"><div>
             <h2 className="text-lg font-semibold">{agent.name}</h2><p className="mt-1 text-sm text-muted-foreground">{agent.description}</p>
           </div><Switch checked={enabled(tab)} aria-label={`Enable ${agent.name}`} disabled={busy} onCheckedChange={toggleAgent} /></div>
-          {!enabled(tab) && <p className="rounded-md border bg-muted p-3 text-sm text-muted-foreground">This agent is off. Its settings are kept for when you enable it.</p>}
+          {!enabled(tab) && <p className="rounded-md border bg-muted p-3 text-sm text-muted-foreground">This agent is off. Configure it below; it will not run until enabled.</p>}
           {tab === "assistant" && <p className="text-sm text-muted-foreground">Opt-in, reply-only assistant. Use an addressed request; bare mentions are ignored to prevent reply loops.</p>}
           <fieldset disabled={busy} className="space-y-6">
             <Section title="When it runs">

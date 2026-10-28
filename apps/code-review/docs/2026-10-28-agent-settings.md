@@ -23,3 +23,9 @@
 ## Scope / follow-up
 - Assistant answers from bounded thread/diff/project-memory context, has no tools, and cannot modify code or memory. It reports missing context rather than pretending to implement requested changes.
 - No live GitHub comment is posted during visual verification; action/agent dispatch and posting lifecycle are covered with deterministic tests.
+
+## First browser pass
+- Source install succeeded at version 0.38.0 (`9ada4f686e44fd5bb09a262d98086292a153dfa80f3e12009d122793d24addcf`).
+- Visually inspected Project, Code Review and Security on `rome-os/rome-apps` at 1440px. No console messages/errors.
+- Live duplicate-phrase validation rejects Security = PTAL and disables Save; its comment example updates immediately.
+- Found a mobile min-content overflow in the agent rail; fixed with an explicit single minmax grid column and min-width constraints. Clarified off-state copy. Added tab deep links.
