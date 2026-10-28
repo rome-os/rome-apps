@@ -26,7 +26,8 @@ was rewritten. Repository tests apply the complete migration chain to SQLite.
 
 - `pnpm typecheck` (entire workspace): passed.
 - `pnpm test -- apps/code-review/`: passed (52 files / 420 tests; this command
-  currently runs the whole workspace).
+  currently runs the whole workspace). A final repeat after install also passed
+  (61 files / 494 tests, including packed-source duplicates under .rome/artifact).
 - `pnpm exec vitest run apps/code-review/`: passed (9 files / 74 tests).
 - `pnpm build` in apps/code-review: passed.
 - Tests cover simultaneous main/lens claims, duplicate locking, scoped
