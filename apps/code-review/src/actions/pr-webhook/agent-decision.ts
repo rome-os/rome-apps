@@ -1,5 +1,5 @@
-import { defaultAgentSettings, normalizePhrase } from "../../lib/agent-settings.js";
-import { commentTriggerAccess, decidePRReviewTrigger, normalizeGitHubLogin, repoFromPayload, type GitHubWebhookPayload, type PRReviewTriggerSettings, type TriggerDecision } from "./decision.js";
+import { defaultAgentSettings } from "../../lib/agent-settings.js";
+import { commentTriggerAccess, decidePRReviewTrigger, normalizeGitHubLogin, parseCommand, repoFromPayload, type GitHubWebhookPayload, type PRReviewTriggerSettings, type TriggerDecision } from "./decision.js";
 
 export type AgentDecision = TriggerDecision | {
   kind: "assistant"; repo: string; prNumber: number; surface: "pr" | "issue";
@@ -7,9 +7,10 @@ export type AgentDecision = TriggerDecision | {
 };
 export type RoutedDecision = AgentDecision & { reviewAgentIds?: string[] };
 
-/** Exact commands are reserved, even when their agent is disabled. Legacy
- * collisions have a deterministic order: review, summary, security, design.
- * Assistant accepts only an explicit addressed phrase followed by a request. */
+/** Commands are reserved even when their agent is disabled. A comment starting
+ * with `@bot <phrase>` matches the longest phrase; text after it is a note for
+ * the agent. Equal phrases resolve in order: review, summary, security, design.
+ * The assistant needs a request after its phrase. */
 export function decideAgentTrigger(input: {
   githubEvent: string; payload: GitHubWebhookPayload;
   settings: PRReviewTriggerSettings | undefined; currentGitHubLogin: string | null;
@@ -18,15 +19,16 @@ export function decideAgentTrigger(input: {
   const { settings: s, payload: p, githubEvent: event, currentGitHubLogin: bot, lenses } = input;
   if (!s || !repoFromPayload(p)) return decidePRReviewTrigger(input);
   const a = s.agentSettings ?? defaultAgentSettings(s);
-  const body = normalizePhrase(p.comment?.body ?? "");
   const handle = normalizeGitHubLogin(bot);
-  const command = (phrase: string) => normalizePhrase(`@${handle} ${phrase}`);
   const isComment = event === "issue_comment" && p.action === "created";
   const commands = [
     ["review", s.mentionTriggerPhrase || "PTAL"], ["summary", s.summaryTriggerPhrase || "summary"],
     ["security", a.security.phrase], ["design-alternatives", a.designAlternatives.phrase],
-  ];
-  const matched = isComment && handle ? commands.find(([, phrase]) => body === command(phrase))?.[0] : undefined;
+    ["assistant", a.assistant.phrase],
+  ] as const;
+  const parsed = isComment && handle ? parseCommand(p.comment?.body ?? "", handle, commands) : null;
+  const matched = parsed?.id === "assistant" ? undefined : parsed?.id;
+  const requestNote = parsed?.note ? { requestNote: parsed.note } : {};
   // Reuse the established access checks and review-request targeting.
   const decide = (overrides: Partial<PRReviewTriggerSettings>) => decidePRReviewTrigger({ ...input, settings: { ...s, ...overrides } });
   if (matched === "summary") {
@@ -35,20 +37,17 @@ export function decideAgentTrigger(input: {
     if (access.kind === "skip") return access;
     if (!p.issue?.pull_request) return { kind: "skip", reason: "Summary is only supported on pull requests." };
     return { kind: "summary", repo: repoFromPayload(p), prNumber: access.number,
-      triggerCommentId: p.comment?.id ?? null, commentBody: p.comment?.body ?? "", actorLogin: access.actorLogin };
+      triggerCommentId: p.comment?.id ?? null, commentBody: p.comment?.body ?? "", actorLogin: access.actorLogin, ...requestNote };
   }
-  if (isComment && !matched && handle && a.assistant.enabled && a.assistant.onMention) {
-    const prefix = command(a.assistant.phrase);
-    // The bot may use the guardian's own GitHub account. Do not deny their
-    // explicit request by author identity: replies are always framed with a
-    // heading by pr-assistant and therefore cannot match this addressed prefix.
-    if (body.startsWith(prefix + " ")) {
-      const access = commentTriggerAccess(p, s, bot);
-      if (access.kind === "skip") return access;
-      return { kind: "assistant", repo: repoFromPayload(p), prNumber: access.number,
-        surface: p.issue?.pull_request ? "pr" : "issue", triggerCommentId: p.comment?.id ?? null,
-        commentBody: p.comment?.body ?? "", actorLogin: access.actorLogin };
-    }
+  // The bot may use the guardian's own GitHub account. Do not deny their
+  // explicit request by author identity: replies are always framed with a
+  // heading by pr-assistant and therefore cannot start with the command.
+  if (parsed?.id === "assistant" && parsed.note && a.assistant.enabled && a.assistant.onMention) {
+    const access = commentTriggerAccess(p, s, bot);
+    if (access.kind === "skip") return access;
+    return { kind: "assistant", repo: repoFromPayload(p), prNumber: access.number,
+      surface: p.issue?.pull_request ? "pr" : "issue", triggerCommentId: p.comment?.id ?? null,
+      commentBody: p.comment?.body ?? "", actorLogin: access.actorLogin };
   }
   const main = decide({});
   const ids: string[] = [];
@@ -62,7 +61,7 @@ export function decideAgentTrigger(input: {
       mentionTriggerPhrase: t.phrase, summaryTriggerPhrase: t.phrase });
     if (d.kind === "trigger") { ids.push(lens.id); first ??= d; }
   }
-  if (first?.kind === "trigger" && ids.length) return { ...first, reviewAgentIds: ids };
+  if (first?.kind === "trigger" && ids.length) return { ...first, ...requestNote, reviewAgentIds: ids };
   if (main.kind === "trigger" || main.kind === "summary") return { kind: "skip", reason: "No enabled agent matches this trigger." };
   return main;
 }

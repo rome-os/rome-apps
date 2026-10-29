@@ -13,7 +13,8 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 
 - Monitors GitHub repositories you add from the Rome dashboard.
 - Runs automatically when PRs open or receive new commits.
-- Supports manual runs from Rome, GitHub review requests, or a PR mention command.
+- Supports manual runs from Rome, GitHub review requests, or a PR mention command. Text after a command is passed to the agent as a note, e.g. `@bot PTAL focus on the migration`.
+- Gives the reviewer the PR's existing reviews, inline threads and comments, so it does not repeat findings that were fixed or explained in a reply. When a newer review supersedes an older one, the older review's unanswered inline findings are deleted; findings with replies are kept.
 - Posts line-level findings plus a concise review summary and verdict.
 - Lets you tune review instructions per repository, including two optional built-in parallel reviewers.
 - Lets you allow everyone except people you block (the default for newly configured repositories) or allow only selected GitHub users.

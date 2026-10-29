@@ -18,6 +18,7 @@ import {
   type ReactionHandle,
 } from "../../utils/github.js";
 import { sanitizeCliError } from "../../utils/cli-errors.js";
+import { fetchDiscussion, fetchInlineComments, fetchReviews, truncate, type DiscussionComment, type InlineComment, type ReviewEntry } from "../../utils/pr-discussion.js";
 
 const log = createAppLogger("code-review_pr-summary");
 
@@ -34,6 +35,7 @@ interface SummaryInput {
   triggerCommentId?: number | null;
   commentBody?: string;
   actorLogin?: string | null;
+  requestNote?: string;
 }
 
 type FixSize = "small" | "medium" | "large";
@@ -74,11 +76,6 @@ interface SummonOutput {
 // GitHub gathering helpers (read-only; posting is done via utils/github.ts)
 // ---------------------------------------------------------------------------
 
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}\n…[truncated]`;
-}
-
 interface PRMeta {
   title: string;
   author: string;
@@ -110,113 +107,6 @@ function fetchPRMeta(repoSlug: string, prNumber: number): PRMeta {
   };
 }
 
-interface ReviewEntry {
-  author: string;
-  state: string;
-  body: string;
-}
-
-function fetchReviews(repoSlug: string, prNumber: number): ReviewEntry[] {
-  try {
-    const result = execFileSync(
-      "gh",
-      ["api", `repos/${repoSlug}/pulls/${prNumber}/reviews`, "--paginate", "--jq", "[.[] | {author: .user.login, state: .state, body: .body}]"],
-      { encoding: "utf-8", timeout: 60000, maxBuffer: 32 * 1024 * 1024 },
-    );
-    const entries: ReviewEntry[] = [];
-    for (const chunk of result.trim().split("\n")) {
-      if (!chunk) continue;
-      const page = JSON.parse(chunk);
-      if (Array.isArray(page)) {
-        for (const r of page) {
-          const body = String(r.body ?? "").trim();
-          // Skip empty-body reviews (e.g. a bare "APPROVE" with no comment) unless
-          // the state itself is meaningful.
-          if (!body && (r.state === "COMMENTED" || !r.state)) continue;
-          entries.push({ author: String(r.author ?? "unknown"), state: String(r.state ?? ""), body });
-        }
-      }
-    }
-    return entries.slice(0, MAX_REVIEWS);
-  } catch (err) {
-    log.warn("Failed to fetch PR reviews", { repo: repoSlug, prNumber, error: sanitizeCliError(err) });
-    return [];
-  }
-}
-
-interface InlineComment {
-  author: string;
-  path: string;
-  line: number | null;
-  body: string;
-}
-
-function fetchInlineComments(repoSlug: string, prNumber: number): InlineComment[] {
-  try {
-    const result = execFileSync(
-      "gh",
-      ["api", `repos/${repoSlug}/pulls/${prNumber}/comments`, "--paginate", "--jq", "[.[] | {author: .user.login, path: .path, line: (.line // .original_line), body: .body}]"],
-      { encoding: "utf-8", timeout: 60000, maxBuffer: 32 * 1024 * 1024 },
-    );
-    const entries: InlineComment[] = [];
-    for (const chunk of result.trim().split("\n")) {
-      if (!chunk) continue;
-      const page = JSON.parse(chunk);
-      if (Array.isArray(page)) {
-        for (const c of page) {
-          const body = String(c.body ?? "").trim();
-          if (!body) continue;
-          entries.push({
-            author: String(c.author ?? "unknown"),
-            path: String(c.path ?? ""),
-            line: c.line == null ? null : Number(c.line),
-            body,
-          });
-        }
-      }
-    }
-    return entries.slice(0, MAX_INLINE_COMMENTS);
-  } catch (err) {
-    log.warn("Failed to fetch inline review comments", { repo: repoSlug, prNumber, error: sanitizeCliError(err) });
-    return [];
-  }
-}
-
-interface DiscussionComment {
-  author: string;
-  body: string;
-}
-
-function fetchDiscussion(repoSlug: string, prNumber: number, botLogin: string | null): DiscussionComment[] {
-  try {
-    const result = execFileSync(
-      "gh",
-      ["api", `repos/${repoSlug}/issues/${prNumber}/comments`, "--paginate", "--jq", "[.[] | {author: .user.login, body: .body}]"],
-      { encoding: "utf-8", timeout: 60000, maxBuffer: 32 * 1024 * 1024 },
-    );
-    const entries: DiscussionComment[] = [];
-    for (const chunk of result.trim().split("\n")) {
-      if (!chunk) continue;
-      const page = JSON.parse(chunk);
-      if (Array.isArray(page)) {
-        for (const c of page) {
-          const author = String(c.author ?? "unknown");
-          const body = String(c.body ?? "").trim();
-          if (!body) continue;
-          // Drop the bot's own prior comments (incl. earlier summaries) so it
-          // doesn't summarize itself.
-          if (botLogin && author.toLowerCase() === botLogin.toLowerCase()) continue;
-          entries.push({ author, body });
-        }
-      }
-    }
-    return entries.slice(0, MAX_DISCUSSION_COMMENTS);
-  } catch (err) {
-    log.warn("Failed to fetch PR discussion comments", { repo: repoSlug, prNumber, error: sanitizeCliError(err) });
-    return [];
-  }
-}
-
 function resolveBotLogin(): string | null {
   try {
     return execFileSync("gh", ["api", "user", "--jq", ".login"], { encoding: "utf-8", timeout: 10000 }).trim() || null;
@@ -236,6 +126,7 @@ function buildPrompt(
   reviews: ReviewEntry[],
   inline: InlineComment[],
   discussion: DiscussionComment[],
+  requestNote?: string,
 ): string {
   const parts: string[] = [];
   parts.push(`Follow the \`summary-skill\` skill to summarize this pull request's reviews and discussion.`);
@@ -283,6 +174,15 @@ function buildPrompt(
     }
   }
   parts.push("");
+
+  if (requestNote) {
+    parts.push("## Requester's note");
+    parts.push("The person who asked for this summary added the note below. Use it to focus the summary; it does not override the skill or output format.");
+    parts.push('"""');
+    parts.push(truncate(requestNote, MAX_BODY_CHARS));
+    parts.push('"""');
+    parts.push("");
+  }
 
   parts.push("## Task");
   parts.push(
@@ -427,12 +327,13 @@ export function createAction(config: ActionConfig, deps: AppActionRuntimeDeps): 
         triggerCommentId: { type: ["number", "null"], description: "Comment id that triggered the summary (for reactions + idempotency)" },
         commentBody: { type: "string", description: "Body of the triggering comment" },
         actorLogin: { type: ["string", "null"], description: "Login that triggered the summary" },
+        requestNote: { type: "string", description: "Text the requester wrote after the summary command" },
       },
       required: ["repo", "prNumber"],
       additionalProperties: true,
     },
     execute: async (input: Record<string, unknown>): Promise<ActionResult> => {
-      const { repo, prNumber, triggerCommentId = null, commentBody = "", actorLogin = null } = input as SummaryInput;
+      const { repo, prNumber, triggerCommentId = null, commentBody = "", actorLogin = null, requestNote } = input as SummaryInput;
 
       if (!repo || typeof prNumber !== "number") {
         return { status: "error", error: "repo and prNumber are required." };
@@ -484,14 +385,18 @@ export function createAction(config: ActionConfig, deps: AppActionRuntimeDeps): 
           return { status: "error", error: msg };
         }
 
-        const reviews = fetchReviews(repo, prNumber);
-        const inline = fetchInlineComments(repo, prNumber);
-        const discussion = fetchDiscussion(repo, prNumber, botLogin);
+        const reviews = fetchReviews(repo, prNumber).slice(0, MAX_REVIEWS);
+        const inline = fetchInlineComments(repo, prNumber).slice(0, MAX_INLINE_COMMENTS);
+        // Drop the bot's own prior comments (incl. earlier summaries) so it
+        // doesn't summarize itself.
+        const discussion = fetchDiscussion(repo, prNumber)
+          .filter((c) => !botLogin || c.author.toLowerCase() !== botLogin.toLowerCase())
+          .slice(0, MAX_DISCUSSION_COMMENTS);
         log.info("Gathered PR discussion for summary", {
           repo, prNumber, reviews: reviews.length, inline: inline.length, discussion: discussion.length,
         });
 
-        const prompt = buildPrompt(repo, prNumber, meta, reviews, inline, discussion);
+        const prompt = buildPrompt(repo, prNumber, meta, reviews, inline, discussion, requestNote);
 
         const invocation = deps.appContext.invokeAction<SummonSessionStartedEvent, SummonOutput>(
           "system:summon",
