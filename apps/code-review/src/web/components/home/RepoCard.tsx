@@ -1,3 +1,4 @@
+import { hasAgentTriggers } from "../../../lib/agent-settings.js";
 import type { PRReviewSettingsData, RepoStat, RepositoryData } from "@/types";
 import { formatRelative, repoOwner } from "@/lib/helpers";
 import { RepoVisibilityBadge } from "@/components/github/RepoVisibilityBadge";
@@ -14,7 +15,7 @@ type HealthTone = "live" | "warn" | "repair" | "idle";
  */
 function deriveHealth(settings: PRReviewSettingsData | null | undefined): { tone: HealthTone; label: string } {
   if (!settings) return { tone: "idle", label: "Manual" };
-  const wiringEnabled = settings.autoReviewEnabled || settings.triggerOnRequest;
+  const wiringEnabled = hasAgentTriggers(settings, settings.reviewers);
   if (!wiringEnabled) return { tone: "idle", label: "Manual" };
   if (settings.triggerWiringHealthy || settings.autoReviewHealthy) return { tone: "live", label: "Live" };
   if (settings.webhookConnected && settings.eventRoutinesReady === false) return { tone: "repair", label: "Needs repair" };
@@ -59,7 +60,7 @@ export function RepoCard({
     <button
       type="button"
       onClick={() => onOpenSettings(repo.name)}
-      title={`Trigger settings for ${repo.name}`}
+      title={`Project settings for ${repo.name}`}
       className="group flex w-full flex-col rounded-xl border bg-card p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-start justify-between gap-3">
