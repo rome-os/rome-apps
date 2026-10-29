@@ -18,7 +18,7 @@
 - `pnpm exec tsc --noEmit` and `pnpm build`.
 - `pnpm test -- apps/code-review/` from monorepo root: 55 files / 444 tests passed (the repository script runs the complete suite).
 - Added routing, ACL, phrase validation, persistence/default compatibility, independent wiring, selective queueing, and reply-only Assistant lifecycle tests.
-- Runtime installation and browser evidence: to be recorded after installation.
+- Runtime installation and browser evidence are recorded below.
 
 ## Scope / follow-up
 - Assistant answers from bounded thread/diff/project-memory context, has no tools, and cannot modify code or memory. It reports missing context rather than pretending to implement requested changes.
@@ -34,3 +34,21 @@
 - Corrected Assistant's loop guard to permit explicit requests from the connected/guardian account: Rome often posts using that same GitHub login. Structural reply framing (`### Assistant`) prevents loops without blocking the guardian. Added regression coverage.
 - Verified a real settings round-trip on the disabled Security agent: temporarily saved `security-ui-check`, reloaded and confirmed persistence, then restored `security`. No agent was enabled and no GitHub comment was posted. All previous main flags, phrases, access lists and reviewer opt-ins were retained; the first explicit save materialized the compatibility defaults into the new column.
 - Repo-card health now uses the same all-agent wiring predicate as the API, so Summary/Assistant-only configurations are not incorrectly labelled Manual.
+
+
+## Final verification (2026-10-29 UTC)
+- Final runtime code installed successfully from the specified worktree at version **0.38.0**.
+- `pnpm build` and `pnpm exec tsc --noEmit` passed after the final code change.
+- Source-only Code Review tests: `pnpm exec vitest run apps/code-review/src` — **12 files / 98 tests passed**.
+- Exact requested root command `pnpm test -- apps/code-review/` passed; after installation it discovers **67 files / 542 tests**, including the packaged source tests under `.rome/artifact` (the pre-install whole-workspace suite is 55 files / 444 tests).
+- Opened the installed app at `http://127.0.0.1:4141/apps/code-review`, then verified `rome-os/rome-apps` Project, Code Review, Security and Assistant views. Tab deep links, keyboard focus/selection, live phrase examples, duplicate validation, real save/reload/restore, unsaved memory and polling-safe drafts passed. Console: zero messages/errors.
+- Inspected screenshots at desktop 1440px, mobile 390px, and dark mode. Mobile document/app width is 375px inside a 390px viewport including scrollbar: no horizontal page overflow. Theme and temporary capture-only transition override were restored.
+- Screenshots live outside the worktree at `/home/rome/.rome/default/projects/code-review-screens/`:
+  - `project.png` (full Project area)
+  - `code-review.png`
+  - `security.png`
+  - `assistant.png`
+  - `project-mobile.png`
+  - `security-mobile.png`
+  - `security-dark.png`
+- Remaining verification limit: no real model-generated GitHub comment was sent; Assistant dispatch, idempotency, cancellation, output validation and posting are covered by mocked action tests. Assistant intentionally remains off for existing repos and is reply-only, not the retired coding/classifier workflow.
