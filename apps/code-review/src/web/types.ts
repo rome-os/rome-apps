@@ -217,10 +217,3 @@ export interface TriggerSettingsPayload {
   agentSettings?: AgentSettings;
   reviewerEnabled?: { security: boolean; "design-alternatives": boolean };
 }
-
-export interface ReviewLensData {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-}

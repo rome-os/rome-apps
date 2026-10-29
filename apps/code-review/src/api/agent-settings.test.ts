@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiHandler } from "./index.js";
 import { createScanRepository } from "../db/repositories/repo.js";
 import { decideAgentTrigger } from "../actions/pr-webhook/agent-decision.js";
-import { SUBSCRIBE_ACTION, UNSUBSCRIBE_ACTION } from "../utils/github-events.js";
+import { CREATE_ROUTINE_ACTION, DELETE_ROUTINE_ACTION, GITHUB_EVENTS, SEARCH_ROUTINE_ACTION, SUBSCRIBE_ACTION, UNSUBSCRIBE_ACTION } from "../utils/github-events.js";
 
 describe("per-agent settings API", () => {
   let sqlite: Database.Database;
@@ -41,16 +41,39 @@ describe("per-agent settings API", () => {
     }
     expect(ctx.runAction).not.toHaveBeenCalled();
   });
-  it("wires an independent reviewer without enabling main review and exposes the existing opt-in", async () => {
-    const s = settings(); s.agentSettings.reviewEnabled = false; s.agentSettings.security.onPush = true;
-    const response = await save({ repo: "o/r", autoReviewEnabled: false, manualTriggerEnabled: false,
-      agentSettings: s.agentSettings, reviewerEnabled: { security: true, "design-alternatives": false } });
+  it.each(["security", "design-alternatives"])("wires first-enabled and unwires last-disabled %s through project settings", async (id) => {
+    const s = settings(); s.agentSettings.reviewEnabled = false;
+    s.agentSettings.security.onPush = true; s.agentSettings.designAlternatives.onPush = true;
+    const db = createScanRepository(ctx.db);
+    db.upsertPRReviewSettings("o/r", { agentSettings: s.agentSettings });
+    const routines = new Map<string, any>();
+    ctx.runAction.mockImplementation(async (name: string, args: any) => {
+      if (name === SUBSCRIBE_ACTION) return { status: "ok", data: { hookId: "hook-1" } };
+      if (name === CREATE_ROUTINE_ACTION) routines.set(args.key, { id: args.key, ...args });
+      if (name === SEARCH_ROUTINE_ACTION) return { status: "ok", data: { matches: [...routines.values()].filter(r => r.actionName === args.query) } };
+      if (name === DELETE_ROUTINE_ACTION) routines.delete(args.routineId);
+      return { status: "ok", data: {} };
+    });
+    const reviewerEnabled = { security: id === "security", "design-alternatives": id === "design-alternatives" };
+    const response = await save({ repo: "o/r", reviewerEnabled });
     expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.settings).toMatchObject({ autoReviewEnabled: false, triggerOnRequest: false, triggerWiringHealthy: true,
-      agentSettings: s.agentSettings, reviewers: [{ id: "design-alternatives", enabled: false }, { id: "security", enabled: true }] });
-    expect(ctx.runAction).toHaveBeenCalledWith(SUBSCRIBE_ACTION, expect.objectContaining({ repo: "o/r" }));
+    expect((await response.json()).settings).toMatchObject({ autoReviewEnabled: false, triggerOnRequest: false,
+      githubWebhookId: "hook-1", triggerWiringHealthy: true, agentSettings: s.agentSettings,
+      reviewers: [{ id: "design-alternatives", enabled: reviewerEnabled["design-alternatives"] }, { id: "security", enabled: reviewerEnabled.security }] });
+    expect(ctx.runAction).toHaveBeenCalledWith(SUBSCRIBE_ACTION, { repo: "o/r", events: [...GITHUB_EVENTS] });
+    expect(routines.size).toBe(GITHUB_EVENTS.length);
     expect(ctx.runAction).not.toHaveBeenCalledWith(UNSUBSCRIBE_ACTION, expect.anything());
+
+    ctx.runAction.mockClear();
+    const disabled = await save({ repo: "o/r", reviewerEnabled: { security: false, "design-alternatives": false } });
+    expect(disabled.status).toBe(200);
+    expect((await disabled.json()).settings).toMatchObject({ githubWebhookId: null, triggerWiringHealthy: false });
+    expect(db.listReviewLenses("o/r").every(l => !l.enabled)).toBe(true);
+    expect(db.getPRReviewSettings("o/r")?.agentSettings).toEqual(s.agentSettings); // preferences survive
+    expect(ctx.runAction).toHaveBeenCalledWith(UNSUBSCRIBE_ACTION, { repo: "o/r" });
+    expect(ctx.runAction).not.toHaveBeenCalledWith(SUBSCRIBE_ACTION, expect.anything());
+    expect(ctx.runAction.mock.calls.filter(([name]: [string]) => name === DELETE_ROUTINE_ACTION)).toHaveLength(GITHUB_EVENTS.length);
+    expect(routines.size).toBe(0);
   });
   it("keeps Summary wired when Code Review is off, and removes wiring only after all agents are off", async () => {
     const s = settings(); s.agentSettings.reviewEnabled = false; s.agentSettings.summary.enabled = true;

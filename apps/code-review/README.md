@@ -28,7 +28,8 @@ It does not replace human review. It handles the repetitive first pass so humans
 
 ## Additional reviewers
 
-In a repository's settings, **Additional reviewers** offers two toggles, both off by default:
+In a repository's settings, the **Security** and **Design & Alternatives** agent tabs
+each have an enable switch, independent triggers and a command phrase. Both are off by default:
 
 - **Design & Alternatives** compares the approach with 2–3 feasible alternatives,
   citing inspected repo paths, and recommends the best fit. Its summary includes
@@ -38,9 +39,10 @@ In a repository's settings, **Additional reviewers** offers two toggles, both of
 - **Security** reports only exploitable issues with concrete attacker/input/gain
   paths, using the existing security checklist. No hypothetical hardening advice.
 
-Enabled reviewers run in parallel with main on PR-open, push, review-request,
-PTAL and dashboard triggers. Each has a separate GitHub review headed with its
-name, status, session and per-run cancellation. Claims and supersession are
+Reviewers can run on PR-open, push, review-request and their own commands.
+By default they retain the main reviewer's effective events and PTAL fan-out;
+explicit dashboard reviews still run main plus enabled reviewers. Each has a
+separate GitHub review headed with its name, status, session and per-run cancellation. Claims and supersession are
 reviewer-scoped; only main manages PR/comment eyes reactions. History badges
 identify each reviewer. Definitions ship in `code-review-expert/references`,
 not the DB; each queued run keeps an immutable name/instruction snapshot.
@@ -63,10 +65,11 @@ No custom name/instruction authoring or Adversarial template remains.
 
 Paths are under `/api/apps/code-review`, with guardian authentication.
 
-- `GET /review-lenses?repo=owner%2Frepo` → `{ lenses: [...] }` (the two built-ins).
-- `PATCH /review-lenses/security?repo=owner%2Frepo` with `{ "enabled": true }`.
-  The other ID is `design-alternatives`; only `enabled` is writable. POST/DELETE
-  and free-form configuration are not supported.
+- `POST /pr-review-settings` saves per-repo settings, including
+  `reviewerEnabled: { "security": true, "design-alternatives": false }`.
+  This is the single reviewer configuration write path: it subscribes the webhook
+  and ensures event routines for active agents, removes a repo's webhook when its
+  last agent is disabled, and removes shared routines when no repo needs them.
 - `POST /pr-reviews` with `{ "repo": "owner/repo", "prNumber": 123 }` or
   `{ "prUrl": "https://github.com/owner/repo/pull/123" }` queues main + enabled
   reviewers; the 202 response includes main `reviewId` and all `reviewIds`.
