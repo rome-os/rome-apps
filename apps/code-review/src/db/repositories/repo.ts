@@ -1,3 +1,4 @@
+import { defaultAgentSettings, type AgentSettings } from "../../lib/agent-settings.js";
 import { BUILT_IN_REVIEWERS } from "../../lib/reviewers.js";
 import type { AppDbContext, DrizzleDb, RomeSessionRef } from "@rome-os/app-runtime";
 import { normalizeTriggerAccessMode, type TriggerAccessMode } from "../../lib/trigger-access.js";
@@ -65,6 +66,7 @@ export interface PRReviewSettings {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
+  agentSettings: AgentSettings;
   customRules: string | null;
   projectMemory: string | null;
   webhookChannelUrl: string | null;
@@ -690,15 +692,28 @@ export class ScanRepository {
 
   // --- PR Review Settings ---
 
+  private legacyTriggers(row: any) {
+    return { ...row, autoReviewEnabled: !!row.autoReviewEnabled, triggerOnCreate: !!row.triggerOnCreate,
+      triggerOnPush: !!row.triggerOnPush, triggerOnRequest: !!row.triggerOnRequest,
+      triggerOnReviewRequest: !!row.triggerOnReviewRequest, triggerOnMention: !!row.triggerOnMention };
+  }
+
+  /** Explicit config only; NULL compatibility defaults must use post-update flags. */
+  getStoredAgentSettings(repo: string): AgentSettings | undefined {
+    const row = this.get<{ value: string | null }>(`SELECT agent_settings as value FROM "${this.t("pr_review_settings")}" WHERE repo = ?`, [repo]);
+    return row?.value ? JSON.parse(row.value) : undefined;
+  }
+
   getPRReviewSettings(repo: string): PRReviewSettings | undefined {
     const row = this.get<any>(
-      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,
+      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, agent_settings as agentSettings, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,
       [repo],
     );
     if (!row) return undefined;
     const triggerAllowlist = this.parseLoginList(row.triggerAllowlist);
     return {
       ...row,
+      agentSettings: row.agentSettings ? JSON.parse(row.agentSettings) : defaultAgentSettings(this.legacyTriggers(row)),
       autoReviewEnabled: !!row.autoReviewEnabled,
       triggerOnCreate: !!row.triggerOnCreate,
       triggerOnRequest: !!row.triggerOnRequest,
@@ -716,9 +731,13 @@ export class ScanRepository {
     };
   }
 
-  upsertPRReviewSettings(repo: string, settings: { autoReviewEnabled?: boolean; triggerOnCreate?: boolean; triggerOnRequest?: boolean; triggerOnReviewRequest?: boolean; triggerOnMention?: boolean; triggerOnPush?: boolean; triggerAccessMode?: TriggerAccessMode; triggerAllowlist?: unknown; manualTriggerAllowlist?: unknown; triggerBlocklist?: unknown; mentionTriggerPhrase?: string | null; summaryTriggerPhrase?: string | null; customRules?: string | null; projectMemory?: string | null; webhookChannelUrl?: string | null; githubWebhookId?: string | null }): PRReviewSettings {
+  upsertPRReviewSettings(repo: string, settings: { agentSettings?: AgentSettings; autoReviewEnabled?: boolean; triggerOnCreate?: boolean; triggerOnRequest?: boolean; triggerOnReviewRequest?: boolean; triggerOnMention?: boolean; triggerOnPush?: boolean; triggerAccessMode?: TriggerAccessMode; triggerAllowlist?: unknown; manualTriggerAllowlist?: unknown; triggerBlocklist?: unknown; mentionTriggerPhrase?: string | null; summaryTriggerPhrase?: string | null; customRules?: string | null; projectMemory?: string | null; webhookChannelUrl?: string | null; githubWebhookId?: string | null }): PRReviewSettings {
     const existing = this.getPRReviewSettings(repo);
     const now = new Date().toISOString();
+    // NULL remains NULL on unrelated writes; compatibility defaults continue
+    // following legacy columns until the first explicit per-agent save.
+    const rawAgentSettings = settings.agentSettings ? JSON.stringify(settings.agentSettings)
+      : this.get<{ value: string | null }>(`SELECT agent_settings as value FROM "${this.t("pr_review_settings")}" WHERE repo = ?`, [repo])?.value ?? null;
 
     if (existing) {
       const autoReview = settings.autoReviewEnabled !== undefined ? settings.autoReviewEnabled : existing.autoReviewEnabled;
@@ -740,10 +759,10 @@ export class ScanRepository {
       const webhook = settings.webhookChannelUrl !== undefined ? settings.webhookChannelUrl : existing.webhookChannelUrl;
       const webhookId = settings.githubWebhookId !== undefined ? settings.githubWebhookId : existing.githubWebhookId;
       this.run(
-        `UPDATE "${this.t("pr_review_settings")}" SET auto_review_enabled = ?, trigger_on_create = ?, trigger_on_request = ?, trigger_on_review_request = ?, trigger_on_mention = ?, trigger_on_push = ?, trigger_access_mode = ?, manual_trigger_allowlist = ?, trigger_blocklist = ?, mention_trigger_phrase = ?, summary_trigger_phrase = ?, custom_rules = ?, project_memory = ?, webhook_channel_url = ?, github_webhook_id = ?, updated_at = ? WHERE id = ?`,
-        [autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, existing.id],
+        `UPDATE "${this.t("pr_review_settings")}" SET auto_review_enabled = ?, trigger_on_create = ?, trigger_on_request = ?, trigger_on_review_request = ?, trigger_on_mention = ?, trigger_on_push = ?, trigger_access_mode = ?, manual_trigger_allowlist = ?, trigger_blocklist = ?, mention_trigger_phrase = ?, summary_trigger_phrase = ?, agent_settings = ?, custom_rules = ?, project_memory = ?, webhook_channel_url = ?, github_webhook_id = ?, updated_at = ? WHERE id = ?`,
+        [autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rawAgentSettings, rules, memory, webhook, webhookId, now, existing.id],
       );
-      return { ...existing, autoReviewEnabled: !!autoReview, triggerOnCreate: !!onCreate, triggerOnRequest: !!onRequest, triggerOnReviewRequest: !!onReviewRequest, triggerOnMention: !!onMention, triggerOnPush: !!onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules ?? null, projectMemory: memory ?? null, webhookChannelUrl: webhook ?? null, githubWebhookId: webhookId ?? null, updatedAt: now };
+      return this.getPRReviewSettings(repo)!;
     }
 
     const id = crypto.randomUUID();
@@ -766,17 +785,26 @@ export class ScanRepository {
     const webhook = settings.webhookChannelUrl ?? null;
     const webhookId = settings.githubWebhookId ?? null;
     this.run(
-      `INSERT INTO "${this.t("pr_review_settings")}" (id, repo, auto_review_enabled, trigger_on_create, trigger_on_request, trigger_on_review_request, trigger_on_mention, trigger_on_push, trigger_access_mode, manual_trigger_allowlist, trigger_blocklist, mention_trigger_phrase, summary_trigger_phrase, custom_rules, project_memory, webhook_channel_url, github_webhook_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, repo, autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rules, memory, webhook, webhookId, now, now],
+      `INSERT INTO "${this.t("pr_review_settings")}" (id, repo, auto_review_enabled, trigger_on_create, trigger_on_request, trigger_on_review_request, trigger_on_mention, trigger_on_push, trigger_access_mode, manual_trigger_allowlist, trigger_blocklist, mention_trigger_phrase, summary_trigger_phrase, agent_settings, custom_rules, project_memory, webhook_channel_url, github_webhook_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, repo, autoReview ? 1 : 0, onCreate ? 1 : 0, onRequest ? 1 : 0, onReviewRequest ? 1 : 0, onMention ? 1 : 0, onPush ? 1 : 0, triggerAccessMode, triggerAllowlistRaw, triggerBlocklistRaw, mentionPhrase, summaryPhrase, rawAgentSettings, rules, memory, webhook, webhookId, now, now],
     );
-    return { id, repo, autoReviewEnabled: autoReview, triggerOnCreate: onCreate, triggerOnRequest: onRequest, triggerOnReviewRequest: onReviewRequest, triggerOnMention: onMention, triggerOnPush: onPush, triggerAccessMode, triggerAllowlist, manualTriggerAllowlist: triggerAllowlist, triggerBlocklist, mentionTriggerPhrase: mentionPhrase, summaryTriggerPhrase: summaryPhrase, customRules: rules, projectMemory: memory, webhookChannelUrl: webhook, githubWebhookId: webhookId, createdAt: now, updatedAt: now };
+    return this.getPRReviewSettings(repo)!;
+  }
+
+  saveSettingsAndReviewers(repo: string, settings: Parameters<ScanRepository["upsertPRReviewSettings"]>[1], reviewers?: { security: boolean; "design-alternatives": boolean }): PRReviewSettings {
+    return this.driver.transaction(() => {
+      this.upsertPRReviewSettings(repo, settings);
+      if (reviewers) for (const [id, enabled] of Object.entries(reviewers)) this.setReviewLensEnabled(repo, id, enabled);
+      return this.getPRReviewSettings(repo)!;
+    })();
   }
 
   listAllPRReviewSettings(): PRReviewSettings[] {
     return this.all<any>(
-      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
+      `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, agent_settings as agentSettings, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
     ).map((r: any) => ({
       ...r,
+      agentSettings: r.agentSettings ? JSON.parse(r.agentSettings) : defaultAgentSettings(this.legacyTriggers(r)),
       autoReviewEnabled: !!r.autoReviewEnabled,
       triggerOnCreate: !!r.triggerOnCreate,
       triggerOnRequest: !!r.triggerOnRequest,

@@ -1,3 +1,4 @@
+import { defaultAgentSettings, hasAgentTriggers, phraseValidationError, validateAgentSettings, type LegacyTriggers } from "../lib/agent-settings.js";
 import type {
   RomeAppApiHandler,
   RomeAppApiRequest,
@@ -6,7 +7,7 @@ import type {
 import { createAppLogger } from "@rome-os/app-runtime";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { ScanRepository } from "../db/repositories/repo.js";
+import { createScanRepository, type ScanRepository } from "../db/repositories/repo.js";
 import { isTriggerAccessMode } from "../lib/trigger-access.js";
 import { PUBLIC_ORIGIN_SETTING, originToRemember } from "../lib/public-origin.js";
 import { sanitizeCliError } from "../utils/cli-errors.js";
@@ -349,7 +350,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
   ): Promise<{ activeRepos: number; hookUpdates: number; routinesEnsured: boolean; webhookErrors: string[] }> {
     const active = repo
       .listAllPRReviewSettings()
-      .filter((s) => (s.autoReviewEnabled || s.triggerOnRequest) && !s.webhookChannelUrl);
+      .filter((s) => hasAgentTriggers(s, repo.listReviewLenses(s.repo)) && !s.webhookChannelUrl);
 
     let hookUpdates = 0;
     const webhookErrors: string[] = [];
@@ -474,7 +475,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
     }
   }
 
-  private _augmentSettings<T extends { autoReviewEnabled: boolean; triggerOnRequest: boolean; githubWebhookId: string | null; webhookChannelUrl?: string | null }>(
+  private _augmentSettings<T extends LegacyTriggers & { repo: string; githubWebhookId: string | null; webhookChannelUrl?: string | null }>(
     settings: T,
     routineStatus: GithubRoutineStatus | null,
     guardianGithubLogin: string | null,
@@ -484,10 +485,11 @@ class GuardianApiHandler implements RomeAppApiHandler {
     // connector/Rome hook id and no legacy smee channel marker.
     const webhookConnected = !!settings.githubWebhookId && !settings.webhookChannelUrl;
     const eventRoutinesReady = routineStatus?.ready ?? null;
-    const triggerWiringEnabled = !!settings.autoReviewEnabled || !!settings.triggerOnRequest;
+    const triggerWiringEnabled = hasAgentTriggers(settings, createScanRepository(this.ctx.db).listReviewLenses(settings.repo));
     const triggerWiringHealthy = triggerWiringEnabled && webhookConnected && eventRoutinesReady === true;
     return {
       ...settings,
+      reviewers: createScanRepository(this.ctx.db).listReviewLenses(settings.repo).map(({ id, enabled }) => ({ id, enabled })),
       guardianGithubLogin,
       webhookConnected,
       eventRoutinesReady,
@@ -561,28 +563,6 @@ class GuardianApiHandler implements RomeAppApiHandler {
     ) {
       repo.removeRepository(request.path[1]);
       return json({ ok: true });
-    }
-
-    // --- Reviewer lenses (guardian-owned repo configuration) ---
-    if (request.path[0] === "review-lenses" && request.path.length <= 2) {
-      if (request.caller.kind !== "guardian") return json({ error: "forbidden" }, { status: 401 });
-      const repoName = request.query.get("repo")?.trim();
-      if (!repoName || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repoName)) {
-        return json({ error: "repo must be owner/repo" }, { status: 400 });
-      }
-      const id = request.path[1];
-      if (request.method === "GET" && !id) return json({ lenses: repo.listReviewLenses(repoName) });
-      if (id && !repo.listReviewLenses(repoName).some((lens) => lens.id === id)) {
-        return json({ error: "not_found" }, { status: 404 });
-      }
-      if (request.method === "PATCH" && id) {
-        const body = readJson(request);
-        if (typeof body.enabled !== "boolean" || Object.keys(body).some((key) => key !== "enabled")) {
-          return json({ error: "Only enabled (boolean) can be changed" }, { status: 400 });
-        }
-        return json({ lens: repo.setReviewLensEnabled(repoName, id, body.enabled) });
-      }
-      return json({ error: "method_not_allowed" }, { status: 405 });
     }
 
     // --- PR Reviews ---
@@ -706,13 +686,15 @@ class GuardianApiHandler implements RomeAppApiHandler {
 
     // Enable/update PR review settings, wiring GitHub events through the bus.
     if (request.method === "POST" && route === "pr-review-settings") {
+      if (request.caller.kind !== "guardian") return json({ error: "forbidden" }, { status: 401 });
       const body = readJson(request);
       const repoName = (body.repo || "").trim();
       if (!repoName) {
         return json({ error: "repo is required" }, { status: 400 });
       }
 
-      const enableAutoReview = !!body.autoReviewEnabled;
+      const existingSettings = repo.getPRReviewSettings(repoName);
+      const enableAutoReview = body.autoReviewEnabled === undefined ? existingSettings?.autoReviewEnabled ?? false : !!body.autoReviewEnabled;
       const triggerOnCreate = body.triggerOnCreate !== undefined ? !!body.triggerOnCreate : undefined;
       const manualTriggerEnabled =
         body.manualTriggerEnabled !== undefined
@@ -722,17 +704,44 @@ class GuardianApiHandler implements RomeAppApiHandler {
             : undefined;
       const triggerOnReviewRequest = body.triggerOnReviewRequest !== undefined ? !!body.triggerOnReviewRequest : undefined;
       const triggerOnMention = body.triggerOnMention !== undefined ? !!body.triggerOnMention : undefined;
+      if (["mentionTriggerPhrase", "summaryTriggerPhrase"].some(key => body[key] !== undefined && typeof body[key] !== "string")) {
+        return json({ error: "Trigger phrases must be strings." }, { status: 400 });
+      }
       const mentionTriggerPhrase =
         typeof body.mentionTriggerPhrase === "string"
-          ? body.mentionTriggerPhrase.trim() || "PTAL"
+          ? body.mentionTriggerPhrase.trim()
           : undefined;
       const summaryTriggerPhrase =
         typeof body.summaryTriggerPhrase === "string"
-          ? body.summaryTriggerPhrase.trim() || "summary"
+          ? body.summaryTriggerPhrase.trim()
           : undefined;
       const triggerOnPush = body.triggerOnPush !== undefined ? !!body.triggerOnPush : undefined;
-      const customRules = body.customRules ?? null;
-      const existingSettings = repo.getPRReviewSettings(repoName);
+      const customRules = body.customRules === undefined ? undefined : body.customRules ?? null;
+      if (body.agentSettings !== undefined && !validateAgentSettings(body.agentSettings)) {
+        return json({ error: "Invalid agent settings." }, { status: 400 });
+      }
+      if (body.reviewerEnabled !== undefined && (!body.reviewerEnabled || typeof body.reviewerEnabled !== "object"
+        || Object.keys(body.reviewerEnabled).length !== 2
+        || typeof body.reviewerEnabled.security !== "boolean" || typeof body.reviewerEnabled["design-alternatives"] !== "boolean")) {
+        return json({ error: "reviewerEnabled must contain the two built-in reviewer switches." }, { status: 400 });
+      }
+      const effectiveSettings = { triggerOnCreate: true, triggerOnPush: true,
+        triggerOnRequest: true, triggerOnReviewRequest: true, triggerOnMention: true, ...existingSettings,
+        autoReviewEnabled: enableAutoReview,
+        ...(triggerOnCreate !== undefined ? { triggerOnCreate } : {}),
+        ...(triggerOnPush !== undefined ? { triggerOnPush } : {}),
+        ...(manualTriggerEnabled !== undefined ? { triggerOnRequest: manualTriggerEnabled } : {}),
+        ...(triggerOnReviewRequest !== undefined ? { triggerOnReviewRequest } : {}),
+        ...(triggerOnMention !== undefined ? { triggerOnMention } : {}),
+      };
+      const agentSettings = body.agentSettings ?? repo.getStoredAgentSettings(repoName) ?? defaultAgentSettings(effectiveSettings);
+      const phraseError = phraseValidationError(mentionTriggerPhrase ?? existingSettings?.mentionTriggerPhrase ?? "PTAL",
+        summaryTriggerPhrase ?? existingSettings?.summaryTriggerPhrase ?? "summary", agentSettings);
+      // Unrelated legacy API writes may keep old collisions; editing commands
+      // or agent controls always requires a fully unambiguous configuration.
+      if (phraseError && (body.agentSettings !== undefined || body.mentionTriggerPhrase !== undefined || body.summaryTriggerPhrase !== undefined)) {
+        return json({ error: phraseError }, { status: 400 });
+      }
       const guardianGithubLogin = await this._readGitHubLogin();
       const triggerAccessMode = body.triggerAccessMode === undefined
         ? undefined
@@ -749,7 +758,9 @@ class GuardianApiHandler implements RomeAppApiHandler {
       const triggerBlocklist = body.triggerBlocklist !== undefined
         ? sanitizeGitHubLoginList(body.triggerBlocklist, guardianGithubLogin)
         : undefined;
-      const triggerWiringEnabled = enableAutoReview || !!manualTriggerEnabled;
+      const nextLenses = repo.listReviewLenses(repoName).map(l => ({ ...l,
+        enabled: body.reviewerEnabled?.[l.id] ?? l.enabled }));
+      const triggerWiringEnabled = hasAgentTriggers({ ...effectiveSettings, agentSettings }, nextLenses);
 
       if (triggerWiringEnabled) {
         // A non-null webhookChannelUrl marks a legacy smee-era setting: its
@@ -803,7 +814,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
           }, { status: 500 });
         }
 
-        const settings = repo.upsertPRReviewSettings(repoName, {
+        const settings = repo.saveSettingsAndReviewers(repoName, {
           autoReviewEnabled: enableAutoReview,
           triggerOnCreate,
           triggerOnRequest: manualTriggerEnabled,
@@ -815,10 +826,11 @@ class GuardianApiHandler implements RomeAppApiHandler {
           triggerBlocklist,
           mentionTriggerPhrase,
           summaryTriggerPhrase,
+          agentSettings: body.agentSettings,
           customRules,
           webhookChannelUrl: null,
           githubWebhookId: hookId,
-        });
+        }, body.reviewerEnabled);
 
         return json({
           settings: this._augmentSettings(settings, await this._readRoutineStatus(), guardianGithubLogin),
@@ -833,7 +845,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
         });
       }
 
-      // --- DISABLE all webhook-driven triggers for this repo ---
+      // Remove inactive repo wiring, not the saved agent trigger preferences.
       // Remove this repo's connector-managed GitHub webhook (best-effort).
       const unsubRes = await this.ctx.runAction(UNSUBSCRIBE_ACTION, { repo: repoName }).catch(
         (err): { status: "error"; error: string } => ({ status: "error", error: String(err) }),
@@ -846,8 +858,8 @@ class GuardianApiHandler implements RomeAppApiHandler {
         await this._removeLegacyWebhook(repoName, existingSettings.githubWebhookId);
       }
 
-      const settings = repo.upsertPRReviewSettings(repoName, {
-        autoReviewEnabled: false,
+      const settings = repo.saveSettingsAndReviewers(repoName, {
+        autoReviewEnabled: enableAutoReview,
         triggerOnCreate,
         triggerOnRequest: manualTriggerEnabled,
         triggerOnReviewRequest,
@@ -858,14 +870,15 @@ class GuardianApiHandler implements RomeAppApiHandler {
         triggerBlocklist,
         mentionTriggerPhrase,
         summaryTriggerPhrase,
+        agentSettings: body.agentSettings,
         customRules,
         webhookChannelUrl: null,
         githubWebhookId: null,
-      });
+      }, body.reviewerEnabled);
 
       // If no repo uses auto-review anymore, tear down the shared routines so
       // they don't fire as no-ops.
-      const stillEnabled = repo.listAllPRReviewSettings().some((s) => s.autoReviewEnabled || s.triggerOnRequest);
+      const stillEnabled = repo.listAllPRReviewSettings().some((s) => hasAgentTriggers(s, repo.listReviewLenses(s.repo)));
       if (!stillEnabled) {
         await removeGithubRoutines(this.runAction).catch((err) =>
           log.warn("Failed to remove event routines", { error: String(err) }),

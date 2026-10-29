@@ -212,3 +212,40 @@ describe("ScanRepository reviewer lenses", () => {
     expect(db.getPRReview(main.id)?.status).toBe("queued");
   });
 });
+
+describe("per-agent settings persistence", () => {
+  let sqlite: Database.Database;
+  let appDb: AppDbContext;
+  beforeEach(() => { ({ sqlite, appDb } = createTestContext()); });
+  afterEach(() => sqlite.close());
+  it("leaves existing values and opt-ins untouched and derives compatibility defaults without a backfill", () => {
+    const db = createScanRepository(appDb);
+    db.upsertPRReviewSettings("o/r", { autoReviewEnabled: true, triggerOnCreate: false, triggerOnPush: true,
+      triggerOnRequest: true, triggerOnMention: false, triggerOnReviewRequest: true,
+      mentionTriggerPhrase: "look here", summaryTriggerPhrase: "recap", customRules: "rules", projectMemory: "memory" });
+    db.setReviewLensEnabled("o/r", "security", true);
+    const s = db.getPRReviewSettings("o/r")!;
+    expect(s).toMatchObject({ mentionTriggerPhrase: "look here", summaryTriggerPhrase: "recap", customRules: "rules", projectMemory: "memory" });
+    expect(s.agentSettings).toMatchObject({ reviewEnabled: true, assistant: { enabled: false }, summary: { enabled: false },
+      security: { onCreate: false, onPush: true, onReviewRequest: true, onMention: false, withReviewCommand: true } });
+    expect(db.listReviewLenses("o/r").find(l => l.id === "security")?.enabled).toBe(true);
+    expect(sqlite.prepare('SELECT agent_settings FROM repo_guardian__pr_review_settings').get()).toEqual({ agent_settings: null });
+    db.upsertPRReviewSettings("o/r", { projectMemory: "new memory" });
+    expect(db.getPRReviewSettings("o/r")?.agentSettings).toEqual(s.agentSettings);
+  });
+  it("persists independent controls and reviewer switches atomically, with no duplicated enabled values", () => {
+    const db = createScanRepository(appDb);
+    const s = db.upsertPRReviewSettings("o/r", { autoReviewEnabled: true });
+    const agents = s.agentSettings;
+    agents.security.onPush = false; agents.summary.enabled = false; agents.assistant.phrase = "question";
+    db.saveSettingsAndReviewers("o/r", { agentSettings: agents, triggerOnMention: false }, { security: true, "design-alternatives": false });
+    const reloaded = createScanRepository(appDb);
+    expect(reloaded.getPRReviewSettings("o/r")?.agentSettings).toEqual(agents);
+    reloaded.upsertPRReviewSettings("o/r", { triggerOnCreate: false, customRules: "new rules" });
+    expect(reloaded.getPRReviewSettings("o/r")?.agentSettings.security.onCreate).toBe(true);
+    expect(reloaded.listAllPRReviewSettings()[0].agentSettings).toEqual(agents);
+    expect(reloaded.listReviewLenses("o/r").find(l => l.id === "security")?.enabled).toBe(true);
+    const raw = sqlite.prepare('SELECT agent_settings FROM repo_guardian__pr_review_settings').get() as any;
+    expect(JSON.parse(raw.agent_settings).security).not.toHaveProperty("enabled");
+  });
+});

@@ -1,3 +1,4 @@
+import type { AgentSettings } from "../lib/agent-settings.js";
 import type { RomeSessionRef } from "@rome-os/app-web-sdk";
 import type { TriggerAccessMode } from "../lib/trigger-access.js";
 
@@ -57,6 +58,8 @@ export interface PRReviewSettingsData {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
+  agentSettings: AgentSettings;
+  reviewers?: {id: string; enabled: boolean}[];
   customRules: string | null;
   projectMemory: string | null;
   webhookChannelUrl: string | null;
@@ -211,11 +214,6 @@ export interface TriggerSettingsPayload {
   triggerBlocklist: string[];
   mentionTriggerPhrase: string;
   summaryTriggerPhrase: string;
-}
-
-export interface ReviewLensData {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
+  agentSettings?: AgentSettings;
+  reviewerEnabled?: { security: boolean; "design-alternatives": boolean };
 }

@@ -32,30 +32,14 @@ describe("reviewer lens API", () => {
     } as any);
   }
 
-  it("offers exactly two opt-in built-ins and only permits toggles", async () => {
+  it.each([true, false])("rejects retired reviewer configuration routes without changing opt-ins (%s)", async (enabled) => {
+    const db = createScanRepository(ctx.db);
+    db.setReviewLensEnabled("o/r", "security", !enabled);
     const handler = createApiHandler(ctx);
-    const list = async (repo = "o/r") => (await (await request(handler, "GET", "review-lenses", undefined, repo)).json()).lenses;
-    expect((await list()).map((l: any) => [l.id, l.enabled])).toEqual([
-      ["design-alternatives", false], ["security", false],
-    ]);
-    expect((await request(handler, "PATCH", "review-lenses/security", { enabled: true })).status).toBe(200);
-    expect((await list("O/R"))[1].enabled).toBe(true);
-    expect((await list("other/repo"))[1].enabled).toBe(false);
-    expect((await request(handler, "PATCH", "review-lenses/security", { enabled: false })).status).toBe(200);
-    expect((await list())[1].enabled).toBe(false);
-    expect((await request(handler, "PATCH", "review-lenses/custom", { enabled: true })).status).toBe(404);
-    expect((await request(handler, "POST", "review-lenses", { name: "Custom", instructions: "Audit" })).status).toBe(405);
-    expect((await request(handler, "DELETE", "review-lenses/security")).status).toBe(405);
-  });
-
-  it.each([{ enabled: "false" }, {}, { enabled: true, name: "Custom" }, { enabled: true, instructions: "Override" }])("rejects non-toggle configuration", async (body) => {
-    expect((await request(createApiHandler(ctx), "PATCH", "review-lenses/security", body)).status).toBe(400);
-  });
-
-  it("requires a repo and guardian access", async () => {
-    const handler = createApiHandler(ctx);
-    expect((await request(handler, "GET", "review-lenses", undefined, "")).status).toBe(400);
-    expect((await request(handler, "GET", "review-lenses", undefined, "o/r", "visitor")).status).toBe(401);
+    expect((await request(handler, "PATCH", "review-lenses/security", { enabled })).status).toBe(404);
+    expect((await request(handler, "GET", "review-lenses")).status).toBe(404);
+    expect(db.listReviewLenses("o/r").find(l => l.id === "security")?.enabled).toBe(!enabled);
+    expect(ctx.runAction).not.toHaveBeenCalled();
   });
 
   it.each([{ repo: "o/r", prNumber: 7 }, { prUrl: "https://github.com/o/r/pull/7" }])("fans out dashboard manual triggers and keeps reviewId pointing at main", async (payload) => {

@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, AtSign, Ban, Brain, CheckCircle, Clock, Eye, ExternalLink, Github, GitPullRequest, Loader2, MessageSquare, Plug, Plus, RefreshCw, Settings, Trash2, Users, Wrench, X, XCircle, type LucideIcon } from "lucide-react";
+import { Bot, ShieldCheck, Lightbulb, FileText, ArrowLeft, ExternalLink, Github, GitPullRequest, Loader2, Plug, Plus, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
 import { RepoVisibilityBadge } from "@/components/github/RepoVisibilityBadge";
-import { ReviewerLensesSection } from "@/components/settings/ReviewerLensesSection";
+import { defaultAgentSettings, phraseValidationError, type AgentSettings } from "../../../lib/agent-settings.js";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
 import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, RepositoryData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
-import { fetchGithubUserProfile, getAppBasePath, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
-import { TRIGGER_SETTINGS_ROUTE } from "@/lib/constants";
+import { fetchGithubUserProfile, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
 
 function AddAccessUserDialog({
   open,
@@ -306,758 +304,251 @@ function TriggerUserListEditor({
   );
 }
 
-// --- Trigger Settings ---
+// Project policies are shared. Agent tabs own only their own behavior.
+const AGENT_TABS = [
+  { id: "assistant", name: "Assistant", icon: Bot, description: "Answers questions about a PR or issue and posts a reply in the comment thread." },
+  { id: "review", name: "Code Review", icon: GitPullRequest, description: "Reviews the PR diff for correctness and posts a GitHub review with inline findings." },
+  { id: "security", name: "Security", icon: ShieldCheck, description: "Checks for exploitable vulnerabilities and posts a separate GitHub review with concrete attack paths." },
+  { id: "designAlternatives", name: "Design & Alternatives", icon: Lightbulb, description: "Evaluates the approach against feasible alternatives and posts a separate GitHub review." },
+  { id: "summary", name: "Summary", icon: FileText, description: "Recaps PR reviews and discussion and posts a comment prioritizing fixes by effort and value." },
+] as const;
+type Tab = "project" | typeof AGENT_TABS[number]["id"];
 
-/** A section header with a semantic icon and an optional right-aligned action (e.g. a master switch). */
-function SectionHeader({
-  icon: Icon,
-  title,
-  description,
-  action,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description?: string;
-  action?: ReactNode;
+function SettingRow({ title, description, checked, onChange, disabled }: {
+  title: string; description?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
 }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{title}</h3>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
-        </div>
-      </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </div>
-  );
+  return <label className="flex cursor-pointer items-center justify-between gap-6 py-3">
+    <span><span className="block text-sm font-medium">{title}</span>
+      {description && <span className="mt-1 block text-sm text-muted-foreground">{description}</span>}</span>
+    <Switch aria-label={title} checked={checked} onCheckedChange={onChange} disabled={disabled} />
+  </label>;
+}
+function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return <section className="space-y-3 border-t pt-5">
+    <div><h3 className="text-sm font-semibold">{title}</h3>
+      {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}</div>
+    {children}
+  </section>;
+}
+function initialDraft(s: PRReviewSettingsData | null): TriggerSettingsPayload {
+  const legacy = {
+    autoReviewEnabled: s?.autoReviewEnabled ?? false, triggerOnCreate: s?.triggerOnCreate ?? true,
+    triggerOnPush: s?.triggerOnPush ?? true, triggerOnRequest: s?.triggerOnRequest ?? true,
+    triggerOnReviewRequest: s?.triggerOnReviewRequest ?? true, triggerOnMention: s?.triggerOnMention ?? true,
+  };
+  return {
+    autoReview: legacy.autoReviewEnabled, triggerOnCreate: legacy.triggerOnCreate,
+    triggerOnPush: legacy.triggerOnPush, manualTriggerEnabled: legacy.triggerOnRequest,
+    triggerOnReviewRequest: legacy.triggerOnReviewRequest, triggerOnMention: legacy.triggerOnMention,
+    mentionTriggerPhrase: s?.mentionTriggerPhrase ?? "PTAL", summaryTriggerPhrase: s?.summaryTriggerPhrase ?? "summary",
+    triggerAccessMode: s?.triggerAccessMode ?? "blocklist", triggerAllowlist: s?.triggerAllowlist ?? [],
+    triggerBlocklist: s?.triggerBlocklist ?? [], customRules: s?.customRules ?? "",
+    agentSettings: s?.agentSettings ?? defaultAgentSettings(legacy),
+    reviewerEnabled: { security: s?.reviewers?.find(l => l.id === "security")?.enabled ?? false,
+      "design-alternatives": s?.reviewers?.find(l => l.id === "design-alternatives")?.enabled ?? false },
+  };
 }
 
-function TriggerSettingsForm({
-  repoName,
-  repoVisibility,
-  initialAutoReview,
-  initialTriggerOnCreate,
-  initialTriggerOnRequest,
-  initialTriggerOnReviewRequest,
-  initialTriggerOnMention,
-  initialTriggerOnPush,
-  initialTriggerAccessMode,
-  initialTriggerAllowlist,
-  initialTriggerBlocklist,
-  initialMentionTriggerPhrase,
-  initialSummaryTriggerPhrase,
-  initialCustomRules,
-  initialProjectMemory,
-  guardianGithubLogin,
-  webhookInfo,
-  onSave,
-  onRepair,
-  onRemoveRepo,
-}: {
-  repoName: string;
-  repoVisibility: RepositoryData["visibility"];
-  initialAutoReview: boolean;
-  initialTriggerOnCreate: boolean;
-  initialTriggerOnRequest: boolean;
-  initialTriggerOnReviewRequest: boolean;
-  initialTriggerOnMention: boolean;
-  initialTriggerOnPush: boolean;
-  initialTriggerAccessMode: TriggerAccessMode;
-  initialTriggerAllowlist: string[];
-  initialTriggerBlocklist: string[];
-  initialMentionTriggerPhrase: string;
-  initialSummaryTriggerPhrase: string;
-  initialCustomRules: string;
-  initialProjectMemory: string | null;
-  guardianGithubLogin: string | null;
-  webhookInfo: PRReviewSettingsData | null;
-  onSave: (settings: TriggerSettingsPayload) => Promise<void>;
-  onRepair: () => Promise<void>;
-  onRemoveRepo: () => Promise<void>;
+function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, onRemove, onBack }: {
+  repo: RepositoryData; settings: PRReviewSettingsData | null; guardianLogin: string | null;
+  onSave: (s: TriggerSettingsPayload) => Promise<void>; onRepair: () => Promise<void>;
+  onRemove: () => Promise<void>; onBack: () => void;
 }) {
-  const [autoReview, setAutoReview] = useState(initialAutoReview);
-  const [triggerOnCreate, setTriggerOnCreate] = useState(initialTriggerOnCreate);
-  const [triggerOnRequest, setTriggerOnRequest] = useState(initialTriggerOnRequest);
-  const [triggerOnReviewRequest, setTriggerOnReviewRequest] = useState(initialTriggerOnReviewRequest);
-  const [triggerOnMention, setTriggerOnMention] = useState(initialTriggerOnMention);
-  const [triggerOnPush, setTriggerOnPush] = useState(initialTriggerOnPush);
-  const [triggerAccessMode, setTriggerAccessMode] = useState<TriggerAccessMode>(initialTriggerAccessMode);
-  const [triggerAllowlist, setTriggerAllowlist] = useState(
-    normalizeGithubLogins(initialTriggerAllowlist),
-  );
-  const [triggerBlocklist, setTriggerBlocklist] = useState(
-    normalizeGithubLogins(initialTriggerBlocklist),
-  );
-  const [mentionTriggerPhrase, setMentionTriggerPhrase] = useState(initialMentionTriggerPhrase || "PTAL");
-  const [summaryTriggerPhrase, setSummaryTriggerPhrase] = useState(initialSummaryTriggerPhrase || "summary");
-  const [customRules, setCustomRules] = useState(initialCustomRules);
-  const [saving, setSaving] = useState(false);
-  const [autoSaving, setAutoSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [repairing, setRepairing] = useState(false);
-  const controlsDisabled = saving || autoSaving;
-
-  const handleRepair = async () => {
-    setRepairing(true);
-    setSaveError(null);
-    try {
-      await onRepair();
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRepairing(false);
-    }
-  };
-
-  const handleRemoveRepo = async () => {
-    setRemoving(true);
-    setSaveError(null);
-    try {
-      await onRemoveRepo();
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : String(err));
-      setRemoving(false);
-      setConfirmingRemove(false);
-    }
-  };
-
-  const persistSettings = async (overrides: Partial<TriggerSettingsPayload>) => {
-    setAutoSaving(true);
-    setSaveError(null);
-    try {
-      await onSave({
-        autoReview,
-        triggerOnCreate,
-        manualTriggerEnabled: triggerOnRequest,
-        triggerOnReviewRequest,
-        triggerOnMention,
-        triggerOnPush,
-        customRules,
-        triggerAccessMode,
-        triggerAllowlist,
-        triggerBlocklist,
-        mentionTriggerPhrase,
-        summaryTriggerPhrase,
-        ...overrides,
-      });
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAutoSaving(false);
-    }
-  };
-
-  // Auto-enable auto review when any auto trigger is checked.
-  const handleAutoTriggerChange = (setter: (v: boolean) => void, value: boolean, otherAutoTrigger: boolean) => {
-    setter(value);
-    const nextAutoReview = value ? true : otherAutoTrigger;
-    if (value) {
-      setAutoReview(true);
-    } else if (!otherAutoTrigger) {
-      setAutoReview(false);
-    }
-    void persistSettings({
-      autoReview: nextAutoReview,
-      triggerOnCreate: setter === setTriggerOnCreate ? value : triggerOnCreate,
-      triggerOnPush: setter === setTriggerOnPush ? value : triggerOnPush,
-    });
-  };
-
-  const handleAutoReviewChange = (checked: boolean) => {
-    setAutoReview(checked);
-    let nextCreate = triggerOnCreate;
-    let nextPush = triggerOnPush;
-    if (checked && !triggerOnCreate && !triggerOnPush) {
-      // Enable auto triggers by default when turning on auto review.
-      nextCreate = true;
-      nextPush = true;
-    } else if (!checked) {
-      nextCreate = false;
-      nextPush = false;
-    }
-    setTriggerOnCreate(nextCreate);
-    setTriggerOnPush(nextPush);
-    void persistSettings({
-      autoReview: checked,
-      triggerOnCreate: nextCreate,
-      triggerOnPush: nextPush,
-    });
-  };
-
-  const handleManualTriggerChange = (checked: boolean) => {
-    setTriggerOnRequest(checked);
-    void persistSettings({ manualTriggerEnabled: checked });
-  };
-
-  const handleManualSubTriggerChange = (
-    setter: (v: boolean) => void,
-    value: boolean,
-    otherManualTrigger: boolean,
-  ) => {
-    setter(value);
-    const nextManualTrigger = value ? true : otherManualTrigger;
-    if (value) {
-      setTriggerOnRequest(true);
-    } else if (!otherManualTrigger) {
-      setTriggerOnRequest(false);
-    }
-    void persistSettings({
-      manualTriggerEnabled: nextManualTrigger,
-      triggerOnReviewRequest: setter === setTriggerOnReviewRequest ? value : triggerOnReviewRequest,
-      triggerOnMention: setter === setTriggerOnMention ? value : triggerOnMention,
-    });
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onSave({
-        autoReview,
-        triggerOnCreate,
-        manualTriggerEnabled: triggerOnRequest,
-        triggerOnReviewRequest,
-        triggerOnMention,
-        triggerOnPush,
-        customRules,
-        triggerAccessMode,
-        triggerAllowlist,
-        triggerBlocklist,
-        mentionTriggerPhrase,
-        summaryTriggerPhrase,
-      });
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const mentionCommand = [
-    guardianGithubLogin ? `@${guardianGithubLogin}` : "",
-    mentionTriggerPhrase || "",
-  ].filter(Boolean).join(" ");
-
-  const summaryCommand = [
-    guardianGithubLogin ? `@${guardianGithubLogin}` : "",
-    summaryTriggerPhrase || "",
-  ].filter(Boolean).join(" ");
-
-  const botHandle = guardianGithubLogin ? `@${guardianGithubLogin}` : "@the bot";
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex max-w-full items-center gap-2 rounded-full border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground">
-          <Github className="h-4 w-4 shrink-0" />
-          <span className="truncate font-medium text-foreground">{repoName}</span>
-          <RepoVisibilityBadge visibility={repoVisibility} />
-          {autoSaving && (
-            <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Saving
-            </span>
-          )}
-        </div>
-        <Button onClick={() => void handleSave()} disabled={saving || autoSaving}>
-          {saving ? (autoReview || triggerOnRequest ? "Setting up webhook..." : "Saving...") : "Save changes"}
-        </Button>
-      </div>
-      {saveError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {saveError}
-        </div>
-      )}
-
-      {/* 1 — Who can use it */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
-          icon={Users}
-          title="Who can use it"
-          description="Choose a default, then add the exceptions. Your connected account is always allowed."
-        />
-        <div className="grid gap-2 pl-9 sm:grid-cols-2" role="radiogroup" aria-label="Who can trigger the bot">
-          <label className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${triggerAccessMode === "allowlist" ? "border-primary bg-primary/5" : "bg-background/60 hover:bg-muted/40"}`}>
-            <input
-              type="radio"
-              name="trigger-access-mode"
-              value="allowlist"
-              checked={triggerAccessMode === "allowlist"}
-              disabled={controlsDisabled}
-              onChange={() => {
-                setTriggerAccessMode("allowlist");
-                void persistSettings({ triggerAccessMode: "allowlist" });
-              }}
-              className="mt-1 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="block text-sm font-medium">Selected people only</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">Start closed. Only you and people you allow can trigger the bot.</span>
-            </span>
-          </label>
-          <label className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${triggerAccessMode === "blocklist" ? "border-primary bg-primary/5" : "bg-background/60 hover:bg-muted/40"}`}>
-            <input
-              type="radio"
-              name="trigger-access-mode"
-              value="blocklist"
-              checked={triggerAccessMode === "blocklist"}
-              disabled={controlsDisabled}
-              onChange={() => {
-                setTriggerAccessMode("blocklist");
-                void persistSettings({ triggerAccessMode: "blocklist" });
-              }}
-              className="mt-1 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="flex items-center gap-1.5 text-sm font-medium"><Ban className="h-3.5 w-3.5" />Everyone except blocked</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">Start open. Any GitHub user can trigger the bot unless you block them.</span>
-            </span>
-          </label>
-        </div>
-        <div className="pl-9">
-          <TriggerUserListEditor
-            mode={triggerAccessMode}
-            guardianGithubLogin={guardianGithubLogin}
-            value={triggerAccessMode === "blocklist" ? triggerBlocklist : triggerAllowlist}
-            disabled={controlsDisabled}
-            onChange={(next) => {
-              if (triggerAccessMode === "blocklist") {
-                setTriggerBlocklist(next);
-                void persistSettings({ triggerBlocklist: next });
-              } else {
-                setTriggerAllowlist(next);
-                void persistSettings({ triggerAllowlist: next });
-              }
-            }}
-          />
-        </div>
-      </section>
-
-      {/* 2 — Code reviews */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
-          icon={GitPullRequest}
-          title="Code reviews"
-          description="The bot reviews pull requests and posts inline findings. Choose when it runs."
-        />
-        <div className="space-y-2 pl-9">
-          {/* Automatically */}
-          <div className="rounded-md border bg-background/60 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span className="text-sm font-medium">Automatically</span>
-                <p className="text-xs text-muted-foreground">Review on PR activity — no mention needed.</p>
-              </div>
-              <Switch
-                checked={autoReview}
-                disabled={controlsDisabled}
-                onCheckedChange={handleAutoReviewChange}
-                aria-label="Toggle automatic reviews"
-              />
-            </div>
-            {autoReview && (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-2.5">
-                  <span className="text-sm">When a PR is opened</span>
-                  <Switch
-                    checked={triggerOnCreate}
-                    disabled={controlsDisabled}
-                    onCheckedChange={(checked) => handleAutoTriggerChange(setTriggerOnCreate, checked, triggerOnPush)}
-                    aria-label="Toggle PR opened trigger"
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-2.5">
-                  <span className="text-sm">When new commits are pushed</span>
-                  <Switch
-                    checked={triggerOnPush}
-                    disabled={controlsDisabled}
-                    onCheckedChange={(checked) => handleAutoTriggerChange(setTriggerOnPush, checked, triggerOnCreate)}
-                    aria-label="Toggle new commits trigger"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          {/* On review request */}
-          <div className="flex items-center justify-between gap-3 rounded-md border bg-background/60 p-3">
-            <div className="min-w-0">
-              <span className="text-sm font-medium">On GitHub review request</span>
-              <p className="text-xs text-muted-foreground">When someone requests a review from {botHandle}.</p>
-            </div>
-            <Switch
-              checked={triggerOnReviewRequest}
-              disabled={controlsDisabled}
-              onCheckedChange={(checked) => handleManualSubTriggerChange(setTriggerOnReviewRequest, checked, triggerOnMention)}
-              aria-label="Toggle review request trigger"
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            You can also start a review by commenting the review phrase — set up under <span className="font-medium text-foreground">@mention assistant</span> below.
-          </p>
-          <div className="pt-1">
-            <label className="mb-1 block text-sm font-medium">Custom review rules</label>
-            <textarea
-              value={customRules}
-              onChange={(e) => setCustomRules(e.target.value)}
-              placeholder={`Extra rules the reviewer must also check, e.g.\n- Check error handling\n- Require JSDoc for new functions\n- Flag direct DOM manipulation`}
-              rows={4}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">Applied on top of the reviewer's defaults. Save with the button below.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* 3 — @mention assistant */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
-          icon={AtSign}
-          title="@mention assistant"
-          description={`Comment ${botHandle} on any PR or issue and it works out what you need. This one switch controls all of it.`}
-          action={
-            <Switch
-              checked={triggerOnMention}
-              disabled={controlsDisabled}
-              onCheckedChange={(checked) => handleManualSubTriggerChange(setTriggerOnMention, checked, triggerOnReviewRequest)}
-              aria-label="Toggle the @mention assistant"
-            />
-          }
-        />
-        {triggerOnMention ? (
-          <div className="space-y-3 pl-9">
-            <div className="rounded-md border bg-background/60 p-3">
-              <p className="mb-1.5 text-xs font-medium">What it does with your comment:</p>
-              <ul className="space-y-1.5 text-xs text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
-                  <span><span className="font-medium text-foreground">Question</span> — investigates the PR/issue and replies.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Brain className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-                  <span><span className="font-medium text-foreground">Feedback</span> — a rule to remember; saved to Project memory (below).</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                  <span><span className="font-medium text-foreground">Code task</span> — “fix / implement …”; opens a draft PR.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
-                  <span><span className="font-medium text-foreground">Review</span> — when your comment contains the review phrase below.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-500" />
-                  <span><span className="font-medium text-foreground">Summary</span> — recaps the PR's reviews &amp; discussion with a fix-size + fix-value assessment, when your comment contains the summary phrase below.</span>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">Review phrase</label>
-              <input
-                type="text"
-                value={mentionTriggerPhrase}
-                onChange={(e) => setMentionTriggerPhrase(e.target.value)}
-                placeholder="PTAL"
-                className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                e.g. <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">{mentionCommand || `${botHandle} ${mentionTriggerPhrase || "PTAL"}`}</code> runs a full review.
-              </p>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">Summary phrase</label>
-              <input
-                type="text"
-                value={summaryTriggerPhrase}
-                onChange={(e) => setSummaryTriggerPhrase(e.target.value)}
-                placeholder="summary"
-                className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                e.g. <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">{summaryCommand || `${botHandle} ${summaryTriggerPhrase || "summary"}`}</code> posts a discussion summary (PR only).
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p className="pl-9 text-xs text-muted-foreground">
-            Off — the bot ignores @mentions entirely: no questions, feedback, code tasks, or phrase reviews.
-          </p>
-        )}
-      </section>
-
-      <ReviewerLensesSection key={repoName} repoName={repoName} />
-
-      {/* Project memory — shared knowledge for every task the bot runs here */}
-      <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-        <SectionHeader
-          icon={Brain}
-          title="Project memory"
-          description="Shared knowledge the bot uses for everything it does here — reviews, questions, feedback and code tasks. It also writes here from your feedback."
-        />
-        <div className="pl-9">
-          <ProjectMemoryCard repoName={repoName} initialProjectMemory={initialProjectMemory} />
-        </div>
-      </section>
-
-      {/* 5 — Connection (read-only) */}
-      {(autoReview || triggerOnRequest || webhookInfo?.githubWebhookId || webhookInfo?.eventRoutineStatus) && (
-        <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-          <SectionHeader
-            icon={Plug}
-            title="Connection"
-            description="The GitHub webhook and event routines that deliver these triggers."
-          />
-          <div className="space-y-2 pl-9">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">GitHub webhook:</span>
-              {webhookInfo?.webhookConnected ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                  <CheckCircle className="inline w-3 h-3 mr-1" />
-                  Connected
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                  <Clock className="inline w-3 h-3 mr-1" />
-                  Not subscribed
-                </span>
-              )}
-              {webhookInfo?.githubWebhookId && (
-                <span className="text-xs font-mono text-muted-foreground">#{webhookInfo.githubWebhookId}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Event routines:</span>
-              {webhookInfo?.eventRoutinesReady === true ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                  <CheckCircle className="inline w-3 h-3 mr-1" />
-                  Ready
-                </span>
-              ) : webhookInfo?.eventRoutinesReady === false ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                  <XCircle className="inline w-3 h-3 mr-1" />
-                  Missing or disabled
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                  <Clock className="inline w-3 h-3 mr-1" />
-                  Unknown
-                </span>
-              )}
-            </div>
-            {webhookInfo?.eventRoutineStatus && !webhookInfo.eventRoutineStatus.ready && (
-              <p className="text-xs text-muted-foreground">
-                Missing: {webhookInfo.eventRoutineStatus.missing.join(", ") || "none"};
-                disabled: {webhookInfo.eventRoutineStatus.disabled.join(", ") || "none"}.
-              </p>
-            )}
-            {!webhookInfo?.webhookConnected && (autoReview || triggerOnRequest) && (
-              <p className="text-xs text-blue-800 dark:text-blue-200">
-                On save, Rome registers its own GitHub webhook on this repo. Event routines are tracked separately and must also be ready.
-              </p>
-            )}
-            {(autoReview || triggerOnRequest) &&
-              (webhookInfo?.eventRoutinesReady === false || !webhookInfo?.webhookConnected) && (
-                <div className="flex items-center gap-2 pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleRepair()}
-                    disabled={repairing || controlsDisabled}
-                  >
-                    {repairing ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <Wrench className="h-4 w-4 mr-1" />
-                    )}
-                    {repairing ? "Repairing…" : "Repair connection"}
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    Re-subscribes the webhook and (re)creates the event routines.
-                  </span>
-                </div>
-              )}
-          </div>
-        </section>
-      )}
-
-      {/* Danger zone — remove this repository */}
-      <section className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-        <SectionHeader
-          icon={Trash2}
-          title="Danger zone"
-          description="Remove this repository from Code Review. This deletes its automation settings here — it does not touch the GitHub repository."
-        />
-        <div className="pl-9">
-          {confirmingRemove ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                Remove <span className="font-medium text-foreground">{repoName}</span>?
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => void handleRemoveRepo()}
-                disabled={removing}
-              >
-                {removing ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Removing...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="mr-1 h-4 w-4" />
-                    Confirm remove
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmingRemove(false)}
-                disabled={removing}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmingRemove(true)}
-              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="mr-1 h-4 w-4" />
-              Remove repository
-            </Button>
-          )}
-        </div>
-      </section>
-
-    </div>
-  );
-}
-
-export function TriggerSettingsPage({
-  dashboard,
-  ghAuth,
-  refreshing,
-  error,
-  onBack,
-  onRefresh,
-  onSave,
-  onRepair,
-  onRemoveRepository,
-}: {
-  dashboard: DashboardData | null;
-  ghAuth: GhAuthStatus | null;
-  refreshing: boolean;
-  error: string | null;
-  onBack: () => void;
-  onRefresh: () => void;
-  onSave: (repoName: string, settings: TriggerSettingsPayload) => Promise<void>;
-  onRepair: () => Promise<void>;
-  onRemoveRepository: (id: string) => Promise<void>;
-}) {
-  const repositories = dashboard?.repositories || [];
-  const prSettings = dashboard?.prReviewSettings || [];
-  const [selectedRepoName, setSelectedRepoName] = useState(() => getTriggerSettingsRepoParam() || "");
-
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    return AGENT_TABS.some(t => t.id === requested) ? requested as Tab : "project";
+  });
   useEffect(() => {
-    if (!repositories.length) return;
-    if (selectedRepoName && repositories.some((repo) => repo.name === selectedRepoName)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState({}, "", url);
+  }, [tab]);
+  const [baseline, setBaseline] = useState(() => initialDraft(settings));
+  const [draft, setDraft] = useState(baseline);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [memoryDirty, setMemoryDirty] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
+  const needsSave = !settings || dirty;
+  const a = draft.agentSettings!;
+  const phraseError = phraseValidationError(draft.mentionTriggerPhrase, draft.summaryTriggerPhrase, a);
+  const bot = `@${guardianLogin || "bot"}`;
 
-    const fallbackRepo = repositories[0]?.name || "";
-    setSelectedRepoName(fallbackRepo);
-    const nextPath = `${getAppBasePath()}/${TRIGGER_SETTINGS_ROUTE}?repo=${encodeURIComponent(fallbackRepo)}`;
-    window.history.replaceState({}, "", nextPath);
-  }, [repositories, selectedRepoName]);
-
-  const selectedSettings = selectedRepoName
-    ? prSettings.find((settings) => settings.repo === selectedRepoName) || null
-    : null;
-  const selectedRepo = selectedRepoName
-    ? repositories.find((repo) => repo.name === selectedRepoName) || null
-    : null;
-
-  return (
-    <div className="mx-auto w-full max-w-3xl">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <div className="flex items-center gap-3">
-            <Settings className="h-7 w-7 text-primary" />
-            <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Automation</h1>
-              <p className="text-sm text-muted-foreground">
-                When and how the assistant reviews PRs and responds to @mentions.
-              </p>
+  // Polling must not remount the form or erase an unsaved draft.
+  useEffect(() => {
+    if (!dirty && !busy) { const next = initialDraft(settings); setBaseline(next); setDraft(next); }
+  }, [settings]);
+  useEffect(() => {
+    if (!dirty && !memoryDirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, memoryDirty]);
+  const leave = () => { if (!(dirty || memoryDirty) || window.confirm("Leave without saving your changes?")) onBack(); };
+  const patch = (p: Partial<TriggerSettingsPayload>) => { setDraft(d => ({ ...d, ...p })); setSaved(false); setError(null); };
+  const patchAgent = (p: Partial<AgentSettings>) => patch({ agentSettings: { ...a, ...p } });
+  const enabled = (id: Tab) => id === "review" ? a.reviewEnabled : id === "security" ? draft.reviewerEnabled!.security
+    : id === "designAlternatives" ? draft.reviewerEnabled!["design-alternatives"] : id === "project" ? true : a[id].enabled;
+  const toggleAgent = (checked: boolean) => {
+    if (tab === "review") patchAgent({ reviewEnabled: checked });
+    else if (tab === "security" || tab === "designAlternatives") patch({ reviewerEnabled: {
+      ...draft.reviewerEnabled!, [tab === "security" ? "security" : "design-alternatives"]: checked,
+    } });
+    else if (tab === "assistant" || tab === "summary") patchAgent({ [tab]: { ...a[tab], enabled: checked } });
+  };
+  const perform = async (fn: () => Promise<void>) => {
+    setBusy(true); setError(null);
+    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
+  const save = () => perform(async () => {
+    if (phraseError) throw new Error(phraseError);
+    await onSave(draft); setBaseline(draft); setSaved(true);
+  });
+  const agent = AGENT_TABS.find(t => t.id === tab);
+  const phrase = tab === "review" ? draft.mentionTriggerPhrase : tab === "summary" ? draft.summaryTriggerPhrase
+    : tab === "project" ? "" : a[tab].phrase;
+  const phraseChange = (value: string) => {
+    if (tab === "review") patch({ mentionTriggerPhrase: value });
+    else if (tab === "summary") patch({ summaryTriggerPhrase: value });
+    else if (tab !== "project") patchAgent({ [tab]: { ...a[tab], phrase: value } });
+  };
+  const navButton = (id: Tab, name: string, Icon: LucideIcon) => <button key={id} type="button"
+    id={`settings-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls="settings-panel" tabIndex={tab === id ? 0 : -1}
+    title={id === "project" ? "Project settings" : `${name} · ${enabled(id) ? "On" : "Off"}`}
+    onClick={() => setTab(id)} className={`relative flex min-w-0 min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === id ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+    <Icon className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">{name}</span>
+    {id !== "project" && <><span aria-hidden="true" className={`ml-2 h-1.5 w-1.5 shrink-0 rounded-full ${enabled(id) ? "bg-primary" : "bg-muted-foreground/40"}`} /><span className="sr-only">{enabled(id) ? "On" : "Off"}</span></>}
+  </button>;
+  return <div>
+    <Button variant="ghost" size="sm" onClick={leave} className="mb-5 -ml-2"><ArrowLeft className="h-4 w-4" />Back</Button>
+    <header className="mb-7 flex flex-wrap items-center justify-between gap-3">
+      <div><h1 className="text-xl font-semibold tracking-tight">Project settings</h1>
+        <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Github className="h-4 w-4" />
+          <a href={repo.url} target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">{repo.name}</a>
+          <RepoVisibilityBadge visibility={repo.visibility} />
+        </div></div>
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Plug className="h-3.5 w-3.5" />{settings?.webhookConnected ? "GitHub connected" : "GitHub not subscribed"}</span>
+    </header>
+    <div className="grid min-w-0 grid-cols-1 items-start gap-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-9">
+      <nav aria-label="Settings sections" role="tablist" aria-orientation="vertical" className="flex min-w-0 flex-col gap-1 md:sticky md:top-4"
+        onKeyDown={e => {
+          if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+          e.preventDefault(); const ids: Tab[] = ["project", ...AGENT_TABS.map(t => t.id)];
+          const i = ids.indexOf(tab); const next = e.key === "Home" ? 0 : e.key === "End" ? ids.length - 1
+            : (i + (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1) + ids.length) % ids.length;
+          setTab(ids[next]); (e.currentTarget.querySelector(`#settings-tab-${ids[next]}`) as HTMLButtonElement | null)?.focus();
+        }}>
+        <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">Project</p>
+        {navButton("project", "General", Settings)}
+        <p className="mt-4 px-3 pb-1 text-xs font-medium text-muted-foreground">Agents</p>
+        <div className="grid grid-cols-2 gap-1 pb-1 md:flex md:flex-col">
+          {AGENT_TABS.map(t => navButton(t.id, t.name, t.icon))}
+        </div>
+      </nav>
+      <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`} tabIndex={0} className="min-w-0 space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <div hidden={tab !== "project"} className="space-y-6">
+          <div><h2 className="text-lg font-semibold">Project</h2><p className="mt-1 text-sm text-muted-foreground">Shared access, knowledge, and connection for every agent.</p></div>
+          <Section title="Who may trigger agents" description="Applies to comments, review requests, and automatic PR events. Your connected GitHub account is always allowed.">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {([ ["allowlist", "Selected people only", "Only you and accounts you allow."], ["blocklist", "Everyone except blocked", "Anyone not on your blocklist."] ] as const).map(([mode, title, hint]) =>
+                <label key={mode} className={`flex cursor-pointer items-start gap-2.5 rounded-md border p-3 ${draft.triggerAccessMode === mode ? "border-primary bg-accent" : "hover:bg-muted"}`}>
+                  <input type="radio" name="trigger-access" checked={draft.triggerAccessMode === mode} disabled={busy} onChange={() => patch({ triggerAccessMode: mode })} className="mt-1 accent-primary" />
+                  <span><span className="block text-sm font-medium">{title}</span><span className="mt-1 block text-xs text-muted-foreground">{hint}</span></span>
+                </label>)}
             </div>
-          </div>
+            <TriggerUserListEditor mode={draft.triggerAccessMode} guardianGithubLogin={guardianLogin}
+              value={draft.triggerAccessMode === "allowlist" ? draft.triggerAllowlist : draft.triggerBlocklist} disabled={busy}
+              onChange={v => patch(draft.triggerAccessMode === "allowlist" ? { triggerAllowlist: v } : { triggerBlocklist: v })} />
+          </Section>
+          <Section title="Review guidance" description="Additional instructions shared by Code Review, Security, and Design & Alternatives.">
+            <label htmlFor="review-rules" className="sr-only">Review guidance</label>
+            <textarea id="review-rules" value={draft.customRules} disabled={busy} onChange={e => patch({ customRules: e.target.value })} rows={3} placeholder="e.g. Focus on compatibility with existing API clients."
+              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          </Section>
+          <Section title="Project memory" description="Repository knowledge shared with agents. Memory has its own save button and change history.">
+            <ProjectMemoryCard repoName={repo.name} initialProjectMemory={settings?.projectMemory ?? null} onDirtyChange={setMemoryDirty} />
+          </Section>
+          <Section title="Connection">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">GitHub webhook</dt><dd>{settings?.webhookConnected ? "Connected" : "Not subscribed"}{settings?.githubWebhookId ? ` · #${settings.githubWebhookId}` : ""}</dd>
+              <dt className="text-muted-foreground">Event routines</dt><dd>{settings?.eventRoutinesReady === true ? "Ready" : settings?.eventRoutinesReady === false ? "Missing or disabled" : "Unknown"}</dd>
+            </dl>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void perform(onRepair)}><Wrench className="h-4 w-4" />Repair connection</Button>
+          </Section>
+          <Section title="Remove repository" description="Deletes Code Review settings here, not the GitHub repository.">
+            {confirmRemove ? <div className="flex items-center gap-2"><Button variant="destructive" size="sm" disabled={busy} onClick={() => void perform(async () => {
+              if (!(dirty || memoryDirty) || window.confirm("Remove this repository and discard unsaved changes?")) await onRemove();
+            })}>Confirm remove</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemove(false)}>Cancel</Button></div>
+              : <Button variant="outline" size="sm" className="text-destructive" onClick={() => setConfirmRemove(true)}>Remove repository</Button>}
+          </Section>
         </div>
-        <Button onClick={onRefresh} disabled={refreshing} variant="outline" size="sm">
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        {agent && <>
+          <div className="flex items-start justify-between gap-5"><div>
+            <h2 className="text-lg font-semibold">{agent.name}</h2><p className="mt-1 text-sm text-muted-foreground">{agent.description}</p>
+          </div><Switch checked={enabled(tab)} aria-label={`Enable ${agent.name}`} disabled={busy} onCheckedChange={toggleAgent} /></div>
+          {!enabled(tab) && <p className="rounded-md border bg-muted p-3 text-sm text-muted-foreground">This agent is off. Configure it below; it will not run until enabled.</p>}
+          {tab === "assistant" && <p className="text-sm text-muted-foreground">Opt-in, reply-only assistant. Use an addressed request; bare mentions are ignored to prevent reply loops.</p>}
+          <fieldset disabled={busy} className="space-y-6">
+            <Section title="When it runs">
+              {tab === "review" ? <div className="divide-y">
+                <SettingRow title="When a PR is opened" checked={draft.autoReview && draft.triggerOnCreate} onChange={v => patch({ autoReview: v || (draft.autoReview && draft.triggerOnPush), triggerOnCreate: v, triggerOnPush: draft.autoReview && draft.triggerOnPush })} />
+                <SettingRow title="When new commits are pushed" checked={draft.autoReview && draft.triggerOnPush} onChange={v => patch({ autoReview: v || (draft.autoReview && draft.triggerOnCreate), triggerOnPush: v, triggerOnCreate: draft.autoReview && draft.triggerOnCreate })} />
+                <SettingRow title="When a review is requested" description={`Only requests addressed to ${bot}.`} checked={draft.manualTriggerEnabled && draft.triggerOnReviewRequest} onChange={v => patch({ manualTriggerEnabled: v || (draft.manualTriggerEnabled && draft.triggerOnMention), triggerOnReviewRequest: v, triggerOnMention: draft.manualTriggerEnabled && draft.triggerOnMention })} />
+                <SettingRow title="On a trigger comment" checked={draft.manualTriggerEnabled && draft.triggerOnMention} onChange={v => patch({ manualTriggerEnabled: v || (draft.manualTriggerEnabled && draft.triggerOnReviewRequest), triggerOnMention: v, triggerOnReviewRequest: draft.manualTriggerEnabled && draft.triggerOnReviewRequest })} />
+              </div> : tab === "security" || tab === "designAlternatives" ? <div className="divide-y">
+                <SettingRow title="When a PR is opened" checked={a[tab].onCreate} onChange={v => patchAgent({ [tab]: { ...a[tab], onCreate: v } })} />
+                <SettingRow title="When new commits are pushed" checked={a[tab].onPush} onChange={v => patchAgent({ [tab]: { ...a[tab], onPush: v } })} />
+                <SettingRow title="When a review is requested" description={`Only requests addressed to ${bot}.`} checked={a[tab].onReviewRequest} onChange={v => patchAgent({ [tab]: { ...a[tab], onReviewRequest: v } })} />
+                <SettingRow title="On its own trigger comment" checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
+                <SettingRow title="Also run with Code Review commands" description={`Run alongside Code Review for ${bot} ${draft.mentionTriggerPhrase}.`} checked={a[tab].withReviewCommand} onChange={v => patchAgent({ [tab]: { ...a[tab], withReviewCommand: v } })} />
+              </div> : (tab === "assistant" || tab === "summary") ? <div>
+                <SettingRow title="On a trigger comment" description={tab === "assistant" ? "PR and issue comments with an addressed request." : "PR comments only."} checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
+                <p className="text-sm text-muted-foreground">No automatic events. {tab === "summary" ? "Summaries are requested when you need a recap." : "The assistant responds only when asked."}</p>
+              </div> : null}
+            </Section>
+            <Section title="Trigger phrase" description={tab === "assistant" ? "Follow the phrase with your question or request." : "Write exactly this command in a PR comment. Case and extra whitespace do not matter."}>
+              <label htmlFor="agent-phrase" className="sr-only">{agent.name} trigger phrase</label>
+              <input id="agent-phrase" type="text" value={phrase} maxLength={80} onChange={e => phraseChange(e.target.value)} aria-describedby="phrase-example phrase-help" aria-invalid={!!phraseError}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+              <div id="phrase-example" aria-live="polite" className="rounded-md border bg-muted/40 px-3 py-3">
+                <p className="mb-1 text-xs text-muted-foreground">Comment to write</p>
+                <code className="break-words text-sm">{bot} {phrase.trim() || "<phrase>"}{tab === "assistant" ? " Why is this approach used?" : ""}</code>
+              </div>
+              <p id="phrase-help" className="text-xs text-muted-foreground">Each agent needs a different phrase, even when it is off.</p>
+            </Section>
+
+          </fieldset>
+        </>}
       </div>
-
-      {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive mb-5">
-          {error}
-        </div>
-      )}
-
-      {!dashboard ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Loading settings...
-          </CardContent>
-        </Card>
-      ) : repositories.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No repositories added yet. Add a repository from the dashboard first.
-          </CardContent>
-        </Card>
-      ) : (
-        <div>
-          {selectedRepoName && (
-            <TriggerSettingsForm
-              key={`${selectedRepoName}:${selectedSettings?.updatedAt || "new"}`}
-              repoName={selectedRepoName}
-              repoVisibility={selectedRepo?.visibility}
-              initialAutoReview={selectedSettings?.autoReviewEnabled ?? false}
-              initialTriggerOnCreate={selectedSettings?.triggerOnCreate ?? true}
-              initialTriggerOnRequest={selectedSettings?.triggerOnRequest ?? true}
-              initialTriggerOnReviewRequest={selectedSettings?.triggerOnReviewRequest ?? true}
-              initialTriggerOnMention={selectedSettings?.triggerOnMention ?? true}
-              initialTriggerOnPush={selectedSettings?.triggerOnPush ?? true}
-              initialTriggerAccessMode={selectedSettings?.triggerAccessMode ?? "blocklist"}
-              initialTriggerAllowlist={selectedSettings?.triggerAllowlist ?? selectedSettings?.manualTriggerAllowlist ?? []}
-              initialTriggerBlocklist={selectedSettings?.triggerBlocklist ?? []}
-              initialMentionTriggerPhrase={selectedSettings?.mentionTriggerPhrase ?? "PTAL"}
-              initialSummaryTriggerPhrase={selectedSettings?.summaryTriggerPhrase ?? "summary"}
-              initialCustomRules={selectedSettings?.customRules ?? ""}
-              initialProjectMemory={selectedSettings?.projectMemory ?? null}
-              guardianGithubLogin={selectedSettings?.guardianGithubLogin ?? ghAuth?.login ?? null}
-              webhookInfo={selectedSettings}
-              onSave={(settings) => onSave(selectedRepoName, settings)}
-              onRepair={onRepair}
-              onRemoveRepo={async () => {
-                if (selectedRepo) await onRemoveRepository(selectedRepo.id);
-              }}
-            />
-          )}
-        </div>
-      )}
     </div>
-  );
+    <footer className="sticky bottom-0 z-10 mt-8 flex flex-wrap items-center justify-between gap-3 border-t bg-background py-4">
+      <div className="min-w-0 text-sm" aria-live="polite">
+        {error ? <p role="alert" className="text-destructive">{error}</p> : needsSave && phraseError ? <p role="alert" className="text-destructive">{phraseError}</p>
+          : <span className="text-muted-foreground">{!settings ? "Save to activate these agent settings" : dirty ? "Unsaved changes across settings" : saved ? "Settings saved" : "All settings up to date"}</span>}
+      </div>
+      <div className="ml-auto flex shrink-0 gap-2"><Button variant="ghost" disabled={!dirty || busy} onClick={() => { const next = initialDraft(settings); setDraft(next); setBaseline(next); setError(null); setSaved(false); }}>Discard</Button>
+        <Button disabled={!needsSave || busy || !!phraseError} onClick={() => void save()}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? "Saving…" : !settings ? "Save to activate" : "Save changes"}</Button></div>
+    </footer>
+  </div>;
+}
+
+export function TriggerSettingsPage({ dashboard, ghAuth, error, onBack, onSave, onRepair, onRemoveRepository }: {
+  dashboard: DashboardData | null; ghAuth: GhAuthStatus | null; refreshing: boolean; error: string | null;
+  onBack: () => void; onRefresh: () => void; onSave: (repo: string, settings: TriggerSettingsPayload) => Promise<void>;
+  onRepair: () => Promise<void>; onRemoveRepository: (id: string) => Promise<void>;
+}) {
+  const repositories = dashboard?.repositories ?? [];
+  const requested = getTriggerSettingsRepoParam();
+  const repo = repositories.find(r => r.name === requested) ?? repositories[0];
+  const settings = dashboard?.prReviewSettings.find(s => s.repo === repo?.name) ?? null;
+  return <div className="mx-auto w-full max-w-5xl">
+    {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
+    {!dashboard ? <p className="py-12 text-sm text-muted-foreground">Loading settings…</p>
+      : !repo ? <p className="py-12 text-sm text-muted-foreground">No repositories yet. Add one from the dashboard first.</p>
+      : <TriggerSettingsForm key={repo.name} repo={repo} settings={settings} guardianLogin={settings?.guardianGithubLogin ?? ghAuth?.login ?? null}
+        onSave={s => onSave(repo.name, s)} onRepair={onRepair} onRemove={() => onRemoveRepository(repo.id)} onBack={onBack} />}
+  </div>;
 }

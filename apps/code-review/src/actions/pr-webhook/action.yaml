@@ -1,6 +1,6 @@
 name: code-review_pr-webhook
 type: custom
-description: Event-bus handler for GitHub PR activity. Fired by a routine bound to provider:event:github.pull_request / .issue_comment, it applies per-repo settings (auto-review flags, review-requested matching) and, for comments, an EXACT `@bot <phrase>` command match — `@bot PTAL` hands off to code-review_pr-review, `@bot summary` to code-review_pr-summary. Any comment carrying content beyond the bare command is ignored, so the bot's own output can never re-trigger it.
+description: Routes GitHub PR events and addressed comment commands using per-project access and per-agent triggers. Review, Security, Design and Summary use exact commands; the opt-in reply-only Assistant requires its phrase followed by a request; replies are framed so they cannot re-trigger.
 entry: ./index.ts
 complexity: simple
 speed: fast

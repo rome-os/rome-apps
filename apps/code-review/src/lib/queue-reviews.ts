@@ -5,12 +5,12 @@ import type { ScanRepository } from "../db/repositories/repo.js";
 export async function queueReviews(
   db: ScanRepository,
   runAction: RomeAppContext["runAction"],
-  input: Parameters<ScanRepository["createQueuedPRReview"]>[0] & { triggerCommentId?: number | null },
+  input: Parameters<ScanRepository["createQueuedPRReview"]>[0] & { triggerCommentId?: number | null; reviewAgentIds?: string[] },
 ) {
-  const { triggerCommentId, ...metadata } = input;
+  const { triggerCommentId, reviewAgentIds, ...metadata } = input;
   const reviews = [
-    db.createQueuedPRReview(metadata),
-    ...db.listReviewLenses(input.repo).filter((lens) => lens.enabled).map((lens) =>
+    ...(!reviewAgentIds || reviewAgentIds.includes("review") ? [db.createQueuedPRReview(metadata)] : []),
+    ...db.listReviewLenses(input.repo).filter((lens) => lens.enabled && (!reviewAgentIds || reviewAgentIds.includes(lens.id))).map((lens) =>
       db.createQueuedPRReview({
         ...metadata,
         lensId: lens.id,

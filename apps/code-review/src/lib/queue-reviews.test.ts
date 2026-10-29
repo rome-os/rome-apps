@@ -51,3 +51,19 @@ describe("queueReviews", () => {
     expect(runAction).toHaveBeenCalledTimes(2);
   });
 });
+
+it("queues only the independently selected reviewer, without a main review", async () => {
+  const db = {
+    listReviewLenses: () => [
+      { id: "security", name: "Security", instructions: "Audit", enabled: true },
+      { id: "design-alternatives", name: "Design", instructions: "Compare", enabled: true },
+    ],
+    createQueuedPRReview: vi.fn((metadata) => ({ id: "security-run", ...metadata })), failPRReview: vi.fn(),
+  };
+  const runAction = vi.fn().mockResolvedValue({});
+  const rows = await queueReviews(db as unknown as ScanRepository, runAction as any,
+    { repo: "o/r", prNumber: 7, reviewAgentIds: ["security"] });
+  expect(rows).toHaveLength(1);
+  expect(db.createQueuedPRReview).toHaveBeenCalledExactlyOnceWith({ repo: "o/r", prNumber: 7, lensId: "security", lensName: "Security", lensInstructions: "Audit" });
+  expect(runAction).toHaveBeenCalledTimes(1);
+});

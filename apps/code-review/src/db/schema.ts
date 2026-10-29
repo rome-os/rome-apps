@@ -50,6 +50,7 @@ export function createAppDbSchema(tablePrefix: string = "repo_guardian") {
      * mentionTriggerPhrase (PTAL) but routes to the pr-summary action.
      */
     summaryTriggerPhrase: text("summary_trigger_phrase").notNull().default("summary"),
+    agentSettings: text("agent_settings"),
     customRules: text("custom_rules"),
     /**
      * Per-repo project memory: a short knowledge cache injected into every
