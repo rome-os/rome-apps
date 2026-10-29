@@ -867,7 +867,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
         });
       }
 
-      // --- DISABLE all webhook-driven triggers for this repo ---
+      // Remove inactive repo wiring, not the saved agent trigger preferences.
       // Remove this repo's connector-managed GitHub webhook (best-effort).
       const unsubRes = await this.ctx.runAction(UNSUBSCRIBE_ACTION, { repo: repoName }).catch(
         (err): { status: "error"; error: string } => ({ status: "error", error: String(err) }),
@@ -881,7 +881,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
       }
 
       const settings = repo.saveSettingsAndReviewers(repoName, {
-        autoReviewEnabled: false,
+        autoReviewEnabled: enableAutoReview,
         triggerOnCreate,
         triggerOnRequest: manualTriggerEnabled,
         triggerOnReviewRequest,

@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiHandler } from "./index.js";
 import { createScanRepository } from "../db/repositories/repo.js";
+import { decideAgentTrigger } from "../actions/pr-webhook/agent-decision.js";
 import { SUBSCRIBE_ACTION, UNSUBSCRIBE_ACTION } from "../utils/github-events.js";
 
 describe("per-agent settings API", () => {
@@ -59,5 +60,41 @@ describe("per-agent settings API", () => {
     s.agentSettings.summary.enabled = false;
     expect((await save({ repo: "o/r", agentSettings: s.agentSettings })).status).toBe(200);
     expect(ctx.runAction).toHaveBeenCalledWith(UNSUBSCRIBE_ACTION, { repo: "o/r" });
+  });
+  it("preserves automatic triggers while the last agent is disabled, then resumes them on re-enable", async () => {
+    const db = createScanRepository(ctx.db);
+    const original = db.upsertPRReviewSettings("o/r", {
+      autoReviewEnabled: true, triggerOnCreate: true, triggerOnPush: true,
+      triggerOnRequest: true, triggerOnReviewRequest: false, triggerOnMention: true,
+      githubWebhookId: "existing-hook",
+    });
+    const agents = { ...original.agentSettings, summary: { enabled: false, onMention: true } };
+    const route = (action: string) => decideAgentTrigger({
+      githubEvent: "pull_request", currentGitHubLogin: "bot", lenses: [],
+      settings: db.getPRReviewSettings("o/r"),
+      payload: { action, repository: { full_name: "o/r" }, sender: { login: "alice" },
+        pull_request: { number: 3, user: { login: "alice" } } },
+    });
+    expect((await save({ repo: "o/r", agentSettings: { ...agents, reviewEnabled: false } })).status).toBe(200);
+    const disabled = db.getPRReviewSettings("o/r")!;
+    expect(disabled).toMatchObject({
+      autoReviewEnabled: true, triggerOnCreate: true, triggerOnPush: true,
+      triggerOnRequest: true, triggerOnReviewRequest: false, triggerOnMention: true,
+      githubWebhookId: null, webhookChannelUrl: null,
+    });
+    expect(ctx.runAction).toHaveBeenCalledWith(UNSUBSCRIBE_ACTION, { repo: "o/r" });
+    expect(ctx.runAction).not.toHaveBeenCalledWith(SUBSCRIBE_ACTION, expect.anything());
+    for (const action of ["opened", "synchronize"]) expect(route(action).kind).toBe("skip");
+
+    ctx.runAction.mockClear();
+    expect((await save({ repo: "o/r", agentSettings: { ...disabled.agentSettings, reviewEnabled: true } })).status).toBe(200);
+    expect(ctx.runAction).toHaveBeenCalledWith(SUBSCRIBE_ACTION, expect.objectContaining({ repo: "o/r" }));
+    expect(db.getPRReviewSettings("o/r")).toMatchObject({
+      autoReviewEnabled: true, triggerOnCreate: true, triggerOnPush: true,
+      triggerOnRequest: true, triggerOnReviewRequest: false, triggerOnMention: true,
+    });
+    for (const action of ["opened", "synchronize"]) {
+      expect(route(action)).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"] });
+    }
   });
 });
