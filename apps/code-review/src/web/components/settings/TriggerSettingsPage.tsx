@@ -503,7 +503,6 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
                 <SettingRow title="When new commits are pushed" checked={a[tab].onPush} onChange={v => patchAgent({ [tab]: { ...a[tab], onPush: v } })} />
                 <SettingRow title="When a review is requested" description={`Only requests addressed to ${bot}.`} checked={a[tab].onReviewRequest} onChange={v => patchAgent({ [tab]: { ...a[tab], onReviewRequest: v } })} />
                 <SettingRow title="On its own trigger comment" checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
-                <SettingRow title="Also run with Code Review commands" description={`Run alongside Code Review for ${bot} ${draft.mentionTriggerPhrase}.`} checked={a[tab].withReviewCommand} onChange={v => patchAgent({ [tab]: { ...a[tab], withReviewCommand: v } })} />
               </div> : (tab === "assistant" || tab === "summary") ? <div>
                 <SettingRow title="On a trigger comment" description={tab === "assistant" ? "PR and issue comments with an addressed request." : "PR comments only."} checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
                 <p className="text-sm text-muted-foreground">No automatic events. {tab === "summary" ? "Summaries are requested when you need a recap." : "The assistant responds only when asked."}</p>

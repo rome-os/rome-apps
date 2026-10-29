@@ -451,7 +451,7 @@ describe("pr-webhook action", () => {
 });
 
 describe("pr-webhook lens fan-out", () => {
-  it.each(["opened", "synchronize", "review_requested", "PTAL"])("fans out %s to the same shared queue helper", async (trigger) => {
+  it.each(["opened", "synchronize", "review_requested", "PTAL"])("routes %s through the shared queue helper", async (trigger) => {
     vi.clearAllMocks();
     enableAllTriggers();
     mocks.execFileSync.mockReturnValue("rome-bot");
@@ -475,13 +475,17 @@ describe("pr-webhook lens fan-out", () => {
       githubEvent: trigger === "PTAL" ? "issue_comment" : "pull_request", __triggerPayload: payload,
     });
     expect(result.status).toBe("ok");
+    if (trigger === "PTAL") {
+      // A Code Review command runs only Code Review; reviewers have their own commands.
+      expect(mocks.db.createQueuedPRReview).toHaveBeenCalledTimes(1);
+      expect(deps.appContext.runAction).toHaveBeenCalledTimes(1);
+      expect(deps.appContext.runAction.mock.calls[0][1].triggerCommentId).toBe(123);
+      return;
+    }
     expect(mocks.db.createQueuedPRReview).toHaveBeenCalledTimes(2);
     expect(mocks.db.createQueuedPRReview.mock.calls[1][0]).toMatchObject({
       lensId: "security", lensName: "Security", lensInstructions: "Audit",
     });
     expect(deps.appContext.runAction).toHaveBeenCalledTimes(2);
-    if (trigger === "PTAL") {
-      for (const call of deps.appContext.runAction.mock.calls) expect(call[1].triggerCommentId).toBe(123);
-    }
   });
 });

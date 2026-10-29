@@ -1,4 +1,4 @@
-import { defaultAgentSettings, type AgentSettings } from "../../lib/agent-settings.js";
+import { defaultAgentSettings, parseAgentSettings, type AgentSettings } from "../../lib/agent-settings.js";
 import { BUILT_IN_REVIEWERS } from "../../lib/reviewers.js";
 import type { AppDbContext, DrizzleDb, RomeSessionRef } from "@rome-os/app-runtime";
 import { normalizeTriggerAccessMode, type TriggerAccessMode } from "../../lib/trigger-access.js";
@@ -701,7 +701,7 @@ export class ScanRepository {
   /** Explicit config only; NULL compatibility defaults must use post-update flags. */
   getStoredAgentSettings(repo: string): AgentSettings | undefined {
     const row = this.get<{ value: string | null }>(`SELECT agent_settings as value FROM "${this.t("pr_review_settings")}" WHERE repo = ?`, [repo]);
-    return row?.value ? JSON.parse(row.value) : undefined;
+    return row?.value ? parseAgentSettings(row.value) : undefined;
   }
 
   getPRReviewSettings(repo: string): PRReviewSettings | undefined {
@@ -713,7 +713,7 @@ export class ScanRepository {
     const triggerAllowlist = this.parseLoginList(row.triggerAllowlist);
     return {
       ...row,
-      agentSettings: row.agentSettings ? JSON.parse(row.agentSettings) : defaultAgentSettings(this.legacyTriggers(row)),
+      agentSettings: row.agentSettings ? parseAgentSettings(row.agentSettings) : defaultAgentSettings(this.legacyTriggers(row)),
       autoReviewEnabled: !!row.autoReviewEnabled,
       triggerOnCreate: !!row.triggerOnCreate,
       triggerOnRequest: !!row.triggerOnRequest,
@@ -804,7 +804,7 @@ export class ScanRepository {
       `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, agent_settings as agentSettings, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" ORDER BY updated_at DESC`,
     ).map((r: any) => ({
       ...r,
-      agentSettings: r.agentSettings ? JSON.parse(r.agentSettings) : defaultAgentSettings(this.legacyTriggers(r)),
+      agentSettings: r.agentSettings ? parseAgentSettings(r.agentSettings) : defaultAgentSettings(this.legacyTriggers(r)),
       autoReviewEnabled: !!r.autoReviewEnabled,
       triggerOnCreate: !!r.triggerOnCreate,
       triggerOnRequest: !!r.triggerOnRequest,
