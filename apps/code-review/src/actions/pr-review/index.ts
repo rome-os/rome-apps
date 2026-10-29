@@ -17,7 +17,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { formatCliError, sanitizeCliError } from "../../utils/cli-errors.js";
 import {
-  fetchDiscussion, fetchInlineComments, fetchReviews, groupInlineThreads, truncate,
+  fetchDiscussion, fetchInlineComments, fetchReviews, recentInlineThreads, truncate,
   type DiscussionComment, type InlineComment, type ReviewEntry,
 } from "../../utils/pr-discussion.js";
 
@@ -61,7 +61,7 @@ const CONVERSATION_LIMITS = { reviews: 20, inline: 60, discussion: 30, itemChars
 function fetchPRConversation(repoSlug: string, prNumber: number): PRConversation {
   return {
     reviews: fetchReviews(repoSlug, prNumber).slice(-CONVERSATION_LIMITS.reviews),
-    inline: groupInlineThreads(fetchInlineComments(repoSlug, prNumber).slice(-CONVERSATION_LIMITS.inline)),
+    inline: recentInlineThreads(fetchInlineComments(repoSlug, prNumber), CONVERSATION_LIMITS.inline),
     discussion: fetchDiscussion(repoSlug, prNumber).slice(-CONVERSATION_LIMITS.discussion),
   };
 }

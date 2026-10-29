@@ -72,12 +72,24 @@ export function fetchDiscussion(repoSlug: string, prNumber: number): DiscussionC
   }
 }
 
-/** Order inline comments thread by thread, so each reply follows the comment it answers. */
-export function groupInlineThreads(comments: InlineComment[]): InlineComment[] {
+/** Group inline comments into threads (root first, then its replies), oldest thread first. */
+export function groupInlineThreads(comments: InlineComment[]): InlineComment[][] {
   const threads = new Map<number | string, InlineComment[]>();
   comments.forEach((c, i) => {
     const key = c.inReplyTo ?? c.id ?? `orphan-${i}`;
     threads.set(key, [...(threads.get(key) ?? []), c]);
   });
-  return [...threads.values()].flat();
+  return [...threads.values()];
+}
+
+/** The most recent whole threads that fit in `limit` comments (at least one thread). */
+export function recentInlineThreads(comments: InlineComment[], limit: number): InlineComment[] {
+  const kept: InlineComment[][] = [];
+  let count = 0;
+  for (const thread of groupInlineThreads(comments).reverse()) {
+    if (kept.length && count + thread.length > limit) break;
+    kept.unshift(thread);
+    count += thread.length;
+  }
+  return kept.flat();
 }
