@@ -172,6 +172,15 @@ export function parseCommand<T extends string>(
   return best && { id: best.id, note: best.note };
 }
 
+/** Text of a comment that starts with `@bot`, or null. `-` is not a boundary
+ * here: `@bot-other` is a different GitHub user. */
+export function mentionRequest(commentBody: string, botLogin: string | null): string | null {
+  const bot = normalizeGitHubLogin(botLogin);
+  if (!bot) return null;
+  const match = new RegExp(`^\\s*@${escapeRegExp(bot)}(?=$|[\\s:,.;!?])`, "i").exec(commentBody);
+  return match ? commentBody.slice(match[0].length).replace(new RegExp(`^${NOTE_SEPARATOR}+`), "").trim() : null;
+}
+
 /** Review/summary command for the legacy (pre-agent-settings) trigger path. */
 export function parseStrictCommand(
   commentBody: string,
@@ -284,6 +293,8 @@ export function decidePRReviewTrigger(input: {
   payload: GitHubWebhookPayload;
   settings: PRReviewTriggerSettings | undefined;
   currentGitHubLogin: string | null;
+  /** Already-routed command (e.g. a catch-all comment); skips phrase parsing. */
+  command?: { command: StrictCommand; note: string };
 }): TriggerDecision {
   const { githubEvent: event, payload, settings, currentGitHubLogin } = input;
   const action = typeof payload.action === "string" ? payload.action : "";
@@ -324,7 +335,7 @@ export function decidePRReviewTrigger(input: {
 
     // The comment must start with `@<bot> <phrase>`; trailing text is a note
     // for the agent. See parseCommand for the loop guard.
-    const parsed = parseStrictCommand(payload.comment?.body || "", botLogin, {
+    const parsed = input.command ?? parseStrictCommand(payload.comment?.body || "", botLogin, {
       reviewPhrase: settings.mentionTriggerPhrase || "PTAL",
       summaryPhrase: settings.summaryTriggerPhrase || "summary",
     });

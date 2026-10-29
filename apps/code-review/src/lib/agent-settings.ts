@@ -7,8 +7,12 @@ export interface ReviewerTriggers {
   onMention: boolean;
   phrase: string;
 }
+export const AGENT_IDS = ["assistant", "review", "security", "designAlternatives", "summary"] as const;
+export type AgentId = typeof AGENT_IDS[number];
 export interface AgentSettings {
   reviewEnabled: boolean;
+  /** The one agent that answers `@bot …` comments matching no agent's phrase. */
+  catchAll: AgentId | null;
   assistant: { enabled: boolean; onMention: boolean; phrase: string };
   summary: { enabled: boolean; onMention: boolean };
   security: ReviewerTriggers;
@@ -34,17 +38,19 @@ export function defaultAgentSettings(s: LegacyTriggers): AgentSettings {
     phrase,
   });
   return {
-    reviewEnabled: true,
+    reviewEnabled: true, catchAll: null,
     // The general mention flow was removed in v0.26. Never silently reactivate it.
     assistant: { enabled: false, onMention: true, phrase: "ask" },
     summary: { enabled: s.triggerOnRequest && s.triggerOnMention, onMention: true },
     security: reviewer("security"), designAlternatives: reviewer("design"),
   };
 }
-/** v0.38 stored a `withReviewCommand` reviewer flag; drop it so old rows validate on save. */
+/** v0.38 stored a `withReviewCommand` reviewer flag; drop it so old rows validate on save.
+ * Rows from before v0.40 have no `catchAll`; it defaults to off. */
 export function parseAgentSettings(json: string): AgentSettings {
   const a = JSON.parse(json);
   for (const k of ["security", "designAlternatives"]) if (a?.[k]) delete a[k].withReviewCommand;
+  if (a && typeof a === "object" && a.catchAll === undefined) a.catchAll = null;
   return a;
 }
 export const normalizePhrase = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -56,8 +62,8 @@ export function validateAgentSettings(value: unknown): value is AgentSettings {
   const booleans = (o: object, keys: string[]) => keys.every(k => typeof (o as any)[k] === "boolean");
   const reviewer = (o: ReviewerTriggers) => exact(o, ["onCreate", "onPush", "onReviewRequest", "onMention", "phrase"])
     && booleans(o, ["onCreate", "onPush", "onReviewRequest", "onMention"]) && typeof o.phrase === "string";
-  return exact(v, ["reviewEnabled", "assistant", "summary", "security", "designAlternatives"])
-    && typeof v.reviewEnabled === "boolean"
+  return exact(v, ["reviewEnabled", "catchAll", "assistant", "summary", "security", "designAlternatives"])
+    && typeof v.reviewEnabled === "boolean" && (v.catchAll === null || AGENT_IDS.includes(v.catchAll))
     && exact(v.assistant, ["enabled", "onMention", "phrase"]) && booleans(v.assistant, ["enabled", "onMention"]) && typeof v.assistant.phrase === "string"
     && exact(v.summary, ["enabled", "onMention"]) && booleans(v.summary, ["enabled", "onMention"])
     && reviewer(v.security) && reviewer(v.designAlternatives);
