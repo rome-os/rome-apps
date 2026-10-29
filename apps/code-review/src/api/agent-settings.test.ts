@@ -33,7 +33,7 @@ describe("per-agent settings API", () => {
   it("validates before touching webhook subscriptions or stored settings", async () => {
     const original = settings();
     const invalid = [ { mentionTriggerPhrase: " " }, { summaryTriggerPhrase: "pTaL" }, { mentionTriggerPhrase: 3 },
-      { agentSettings: {} }, { agentSettings: { ...original.agentSettings, assistant: { enabled: false, onMention: true, phrase: "summary", catchAll: false } } },
+      { agentSettings: {} }, { agentSettings: { ...original.agentSettings, assistant: { enabled: false, onMention: true, phrase: "summary" } } },
       { reviewerEnabled: { security: true } } ];
     for (const bad of invalid) {
       expect((await save({ repo: "o/r", ...bad })).status).toBe(400);

@@ -293,6 +293,8 @@ export function decidePRReviewTrigger(input: {
   payload: GitHubWebhookPayload;
   settings: PRReviewTriggerSettings | undefined;
   currentGitHubLogin: string | null;
+  /** Already-routed command (e.g. a catch-all comment); skips phrase parsing. */
+  command?: { command: StrictCommand; note: string };
 }): TriggerDecision {
   const { githubEvent: event, payload, settings, currentGitHubLogin } = input;
   const action = typeof payload.action === "string" ? payload.action : "";
@@ -333,7 +335,7 @@ export function decidePRReviewTrigger(input: {
 
     // The comment must start with `@<bot> <phrase>`; trailing text is a note
     // for the agent. See parseCommand for the loop guard.
-    const parsed = parseStrictCommand(payload.comment?.body || "", botLogin, {
+    const parsed = input.command ?? parseStrictCommand(payload.comment?.body || "", botLogin, {
       reviewPhrase: settings.mentionTriggerPhrase || "PTAL",
       summaryPhrase: settings.summaryTriggerPhrase || "summary",
     });

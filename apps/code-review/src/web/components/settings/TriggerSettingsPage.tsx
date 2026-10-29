@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
 import { RepoVisibilityBadge } from "@/components/github/RepoVisibilityBadge";
-import { defaultAgentSettings, phraseValidationError, type AgentSettings } from "../../../lib/agent-settings.js";
+import { defaultAgentSettings, phraseValidationError, type AgentId, type AgentSettings } from "../../../lib/agent-settings.js";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
 import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, RepositoryData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
 import { fetchGithubUserProfile, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
@@ -408,6 +408,10 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
     await onSave(draft); setBaseline(draft); setSaved(true);
   });
   const agent = AGENT_TABS.find(t => t.id === tab);
+  const catchAllAgent = AGENT_TABS.find(t => t.id === a.catchAll);
+  // Mirrors routing: the catch-all agent still needs to be on and accept trigger comments.
+  const answersComments = (id: AgentId) => enabled(id) && (id === "review"
+    ? draft.manualTriggerEnabled && draft.triggerOnMention : a[id].onMention);
   const phrase = tab === "review" ? draft.mentionTriggerPhrase : tab === "summary" ? draft.summaryTriggerPhrase
     : tab === "project" ? "" : a[tab].phrase;
   const phraseChange = (value: string) => {
@@ -463,6 +467,18 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
               value={draft.triggerAccessMode === "allowlist" ? draft.triggerAllowlist : draft.triggerBlocklist} disabled={busy}
               onChange={v => patch(draft.triggerAccessMode === "allowlist" ? { triggerAllowlist: v } : { triggerBlocklist: v })} />
           </Section>
+          <Section title="Catch-all agent" description={`Answers any comment that starts with ${bot} but none of the agents' trigger phrases, such as “${bot} why is this cached?”. The comment’s text is passed to that agent as the request.`}>
+            <label htmlFor="catch-all-agent" className="sr-only">Catch-all agent</label>
+            <select id="catch-all-agent" value={a.catchAll ?? ""} disabled={busy} onChange={e => patchAgent({ catchAll: (e.target.value || null) as AgentId | null })}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-72">
+              <option value="">Off — ignore unmatched comments</option>
+              {AGENT_TABS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            {catchAllAgent && !answersComments(catchAllAgent.id) && <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {catchAllAgent.name} is off or does not run on trigger comments, so unmatched comments are ignored. <button type="button" className="font-medium underline" onClick={() => setTab(catchAllAgent.id)}>Open {catchAllAgent.name}</button>
+            </p>}
+            <p className="text-xs text-muted-foreground">Other agents’ phrases are never caught, even when those agents are off.</p>
+          </Section>
           <Section title="Review guidance" description="Additional instructions shared by Code Review, Security, and Design & Alternatives.">
             <label htmlFor="review-rules" className="sr-only">Review guidance</label>
             <textarea id="review-rules" value={draft.customRules} disabled={busy} onChange={e => patch({ customRules: e.target.value })} rows={3} placeholder="e.g. Focus on compatibility with existing API clients."
@@ -505,7 +521,6 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
                 <SettingRow title="On its own trigger comment" checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
               </div> : (tab === "assistant" || tab === "summary") ? <div>
                 <SettingRow title="On a trigger comment" description={tab === "assistant" ? "PR and issue comments with an addressed request." : "PR comments only."} checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
-                {tab === "assistant" && <SettingRow title="Catch all other commands" description={`Also answer any ${bot} comment that doesn’t start with another agent’s phrase, e.g. “${bot} why is this cached?”. Another agent’s phrase is never caught, even when that agent is off.`} checked={a.assistant.catchAll} disabled={!a.assistant.onMention} onChange={v => patchAgent({ assistant: { ...a.assistant, catchAll: v } })} />}
                 <p className="text-sm text-muted-foreground">No automatic events. {tab === "summary" ? "Summaries are requested when you need a recap." : "The assistant responds only when asked."}</p>
               </div> : null}
             </Section>
@@ -518,6 +533,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
                 <code className="break-words text-sm">{bot} {phrase.trim() || "<phrase>"}{tab === "assistant" ? " Why is this approach used?" : ""}</code>
               </div>
               <p id="phrase-help" className="text-xs text-muted-foreground">Each agent needs a different phrase, even when it is off.</p>
+              {a.catchAll === tab && <p className="text-sm text-muted-foreground">This is the project’s catch-all agent: it also answers {bot} comments that match no phrase. <button type="button" className="font-medium text-foreground underline" onClick={() => setTab("project")}>Change in General</button></p>}
             </Section>
 
           </fieldset>

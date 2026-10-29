@@ -94,8 +94,8 @@ describe("per-agent routing", () => {
     s.agentSettings.assistant.onMention = false;
     expect(route(comment("@bot ask why?"), s).kind).toBe("skip");
   });
-  it("with catch-all, sends every other @bot request to the Assistant", () => {
-    const s = configured(); s.agentSettings.assistant.enabled = true; s.agentSettings.assistant.catchAll = true;
+  it("sends other @bot requests to the one chosen catch-all agent", () => {
+    const s = configured(); s.agentSettings.assistant.enabled = true; s.agentSettings.catchAll = "assistant";
     s.agentSettings.summary.enabled = false;
     for (const body of ["@bot why is this cached?", "@BOT, explain the retry", "@bot asking why?", "@bot: thoughts?"]) {
       expect(route(comment(body), s)).toMatchObject({ kind: "assistant", surface: "pr", commentBody: body });
@@ -104,22 +104,39 @@ describe("per-agent routing", () => {
     // Other agents' phrases stay reserved, even when that agent is off.
     expect(route(comment("@bot PTAL"), s)).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"] });
     expect(route(comment("@bot summary please"), s).kind).toBe("skip");
-    expect(route(comment("@bot security"), s, [])).toMatchObject({ kind: "skip" });
+    expect(route(comment("@bot security"), s, []).kind).toBe("skip");
     for (const body of ["@bot", "@bot ask", "@bot-other why?", "Hello @bot why?", "> @bot why?"]) expect(route(comment(body), s).kind).toBe("skip");
     expect(route({ ...comment("@bot why?"), action: "edited" }, s).kind).toBe("skip");
     s.triggerBlocklist = ["alice"];
     expect(route(comment("@bot why?"), s).kind).toBe("skip");
     s.triggerBlocklist = []; s.agentSettings.assistant.onMention = false;
     expect(route(comment("@bot why?"), s).kind).toBe("skip");
-    s.agentSettings.assistant.onMention = true; s.agentSettings.assistant.enabled = false;
+    s.agentSettings.catchAll = null; s.agentSettings.assistant.onMention = true;
     expect(route(comment("@bot why?"), s).kind).toBe("skip");
   });
-  it("defaults catch-all to off for settings saved before it existed", () => {
-    const stored = defaultAgentSettings(legacy) as any; delete stored.assistant.catchAll;
-    const parsed = parseAgentSettings(JSON.stringify(stored));
-    expect(parsed.assistant.catchAll).toBe(false);
-    expect(validateAgentSettings(parsed)).toBe(true);
+  it("lets any agent be the catch-all, with the comment as its note", () => {
+    const s = configured(); s.agentSettings.summary.enabled = true;
+    s.agentSettings.catchAll = "review";
+    expect(route(comment("@bot check the migration"), s)).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"], requestNote: "check the migration" });
+    s.agentSettings.catchAll = "security";
+    expect(route(comment("@bot look at auth"), s)).toMatchObject({ kind: "trigger", reviewAgentIds: ["security"], requestNote: "look at auth" });
+    expect(route(comment("@bot look at auth"), s, [{ id: "security", enabled: false }]).kind).toBe("skip");
+    s.agentSettings.catchAll = "designAlternatives";
+    expect(route(comment("@bot simpler way?"), s)).toMatchObject({ reviewAgentIds: ["design-alternatives"], requestNote: "simpler way?" });
+    s.agentSettings.catchAll = "summary";
+    expect(route(comment("@bot open items"), s)).toMatchObject({ kind: "summary", requestNote: "open items" });
+    expect(route(comment("@bot open items", "alice", false), s).kind).toBe("skip"); // summaries need a PR
+    s.agentSettings.catchAll = "review"; s.agentSettings.reviewEnabled = false;
+    expect(route(comment("@bot check it"), s).kind).toBe("skip");
+  });
+  it("validates the catch-all and defaults it to off for older settings", () => {
+    const stored = defaultAgentSettings(legacy) as any; delete stored.catchAll;
     expect(validateAgentSettings(stored)).toBe(false);
+    const parsed = parseAgentSettings(JSON.stringify(stored));
+    expect(parsed.catchAll).toBeNull();
+    expect(validateAgentSettings(parsed)).toBe(true);
+    expect(validateAgentSettings({ ...parsed, catchAll: "design-alternatives" })).toBe(false);
+    expect(validateAgentSettings({ ...parsed, catchAll: "summary" })).toBe(true);
   });
   it("does not run reviews/summaries on issues or edited comments", () => {
     for (const phrase of ["PTAL", "security", "design", "summary"]) {

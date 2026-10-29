@@ -1,17 +1,19 @@
-import { defaultAgentSettings } from "../../lib/agent-settings.js";
+import { defaultAgentSettings, type AgentId } from "../../lib/agent-settings.js";
 import { commentTriggerAccess, decidePRReviewTrigger, mentionRequest, normalizeGitHubLogin, parseCommand, repoFromPayload, type GitHubWebhookPayload, type PRReviewTriggerSettings, type TriggerDecision } from "./decision.js";
 
 export type AgentDecision = TriggerDecision | {
   kind: "assistant"; repo: string; prNumber: number; surface: "pr" | "issue";
   triggerCommentId: number | null; commentBody: string; actorLogin: string | null;
 };
+const COMMAND_IDS = { assistant: "assistant", review: "review", summary: "summary",
+  security: "security", designAlternatives: "design-alternatives" } as const satisfies Record<AgentId, string>;
 export type RoutedDecision = AgentDecision & { reviewAgentIds?: string[] };
 
 /** Commands are reserved even when their agent is disabled. A comment starting
  * with `@bot <phrase>` matches the longest phrase; text after it is a note for
  * the agent. Equal phrases resolve in order: review, summary, security, design.
- * The assistant needs a request after its phrase. With `catchAll`, it also
- * answers any other `@bot <request>` that matches no agent's phrase. */
+ * The assistant needs a request after its phrase. Any other `@bot <request>`
+ * goes to the project's catch-all agent, if one is chosen. */
 export function decideAgentTrigger(input: {
   githubEvent: string; payload: GitHubWebhookPayload;
   settings: PRReviewTriggerSettings | undefined; currentGitHubLogin: string | null;
@@ -27,11 +29,15 @@ export function decideAgentTrigger(input: {
     ["security", a.security.phrase], ["design-alternatives", a.designAlternatives.phrase],
     ["assistant", a.assistant.phrase],
   ] as const;
-  const parsed = isComment && handle ? parseCommand(p.comment?.body ?? "", handle, commands) : null;
+  const body = p.comment?.body ?? "";
+  const command = isComment && handle ? parseCommand(body, handle, commands) : null;
+  const caught = !command && a.catchAll && isComment ? mentionRequest(body, handle) : null;
+  const parsed = command ?? (caught ? { id: COMMAND_IDS[a.catchAll!], note: caught } : null);
   const matched = parsed?.id === "assistant" ? undefined : parsed?.id;
   const requestNote = parsed?.note ? { requestNote: parsed.note } : {};
   // Reuse the established access checks and review-request targeting.
-  const decide = (overrides: Partial<PRReviewTriggerSettings>) => decidePRReviewTrigger({ ...input, settings: { ...s, ...overrides } });
+  const decide = (overrides: Partial<PRReviewTriggerSettings>) => decidePRReviewTrigger({ ...input, settings: { ...s, ...overrides },
+    ...(caught ? { command: { command: "review" as const, note: caught } } : {}) });
   if (matched === "summary") {
     if (!a.summary.enabled || !a.summary.onMention) return { kind: "skip", reason: "Summary is disabled." };
     const access = commentTriggerAccess(p, s, bot);
@@ -43,8 +49,7 @@ export function decideAgentTrigger(input: {
   // The bot may use the guardian's own GitHub account. Do not deny their
   // explicit request by author identity: replies are always framed with a
   // heading by pr-assistant and therefore cannot start with the command.
-  const caught = !parsed && a.assistant.catchAll && isComment && !!mentionRequest(p.comment?.body ?? "", handle);
-  if (((parsed?.id === "assistant" && parsed.note) || caught) && a.assistant.enabled && a.assistant.onMention) {
+  if (parsed?.id === "assistant" && parsed.note && a.assistant.enabled && a.assistant.onMention) {
     const access = commentTriggerAccess(p, s, bot);
     if (access.kind === "skip") return access;
     return { kind: "assistant", repo: repoFromPayload(p), prNumber: access.number,
