@@ -505,7 +505,6 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>{catchAllAgent.name} is off or doesn’t run on trigger comments, so these comments are ignored. <button type="button" className="font-medium underline underline-offset-2" onClick={() => setTab(catchAllAgent.id)}>Turn it on</button></span>
             </div>}
-            <p className="text-xs text-muted-foreground">Agents’ own phrases always go to that agent, even when it is off.</p>
           </Section>
           <Section title="Review guidance" description="Additional instructions shared by Code Review, Security, and Design & Alternatives.">
             <label htmlFor="review-rules" className="sr-only">Review guidance</label>
