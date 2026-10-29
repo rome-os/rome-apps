@@ -45,6 +45,17 @@ export function defaultAgentSettings(s: LegacyTriggers): AgentSettings {
     security: reviewer("security"), designAlternatives: reviewer("design"),
   };
 }
+/** What a newly connected repo starts with: rome-os/rome's setup. Only the settings
+ * form for a repo with no saved row uses these; `defaultAgentSettings` keeps
+ * deriving older saved rows, so existing repos never change. */
+export const NEW_REPO_AGENT_SETTINGS: AgentSettings = {
+  reviewEnabled: true, catchAll: "assistant",
+  assistant: { enabled: true, onMention: true, phrase: "ask" },
+  summary: { enabled: true, onMention: true },
+  security: { onCreate: false, onPush: false, onReviewRequest: false, onMention: true, phrase: "security" },
+  designAlternatives: { onCreate: true, onPush: false, onReviewRequest: false, onMention: true, phrase: "design" },
+};
+export const NEW_REPO_REVIEWERS = { security: true, "design-alternatives": true } as const;
 /** v0.38 stored a `withReviewCommand` reviewer flag; drop it so old rows validate on save.
  * Rows from before v0.40 have no `catchAll`; it defaults to off. */
 export function parseAgentSettings(json: string): AgentSettings {

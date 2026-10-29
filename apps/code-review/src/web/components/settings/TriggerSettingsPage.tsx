@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { GithubUserAvatar } from "@/components/github/GithubUserAvatar";
 import { RepoVisibilityBadge } from "@/components/github/RepoVisibilityBadge";
-import { defaultAgentSettings, phraseValidationError, type AgentId, type AgentSettings } from "../../../lib/agent-settings.js";
+import { defaultAgentSettings, NEW_REPO_AGENT_SETTINGS, NEW_REPO_REVIEWERS, phraseValidationError, type AgentId, type AgentSettings } from "../../../lib/agent-settings.js";
 import { ProjectMemoryCard } from "@/components/settings/ProjectMemoryCard";
 import type { DashboardData, GhAuthStatus, GithubUserProfile, PRReviewSettingsData, RepositoryData, TriggerAccessMode, TriggerSettingsPayload } from "@/types";
 import { fetchGithubUserProfile, getTriggerSettingsRepoParam, normalizeGithubLoginInput, normalizeGithubLogins } from "@/lib/helpers";
@@ -340,7 +340,7 @@ function Section({ title, description, children }: { title: string; description?
 }
 function initialDraft(s: PRReviewSettingsData | null): TriggerSettingsPayload {
   const legacy = {
-    autoReviewEnabled: s?.autoReviewEnabled ?? false, triggerOnCreate: s?.triggerOnCreate ?? true,
+    autoReviewEnabled: s?.autoReviewEnabled ?? true, triggerOnCreate: s?.triggerOnCreate ?? true,
     triggerOnPush: s?.triggerOnPush ?? true, triggerOnRequest: s?.triggerOnRequest ?? true,
     triggerOnReviewRequest: s?.triggerOnReviewRequest ?? true, triggerOnMention: s?.triggerOnMention ?? true,
   };
@@ -351,9 +351,10 @@ function initialDraft(s: PRReviewSettingsData | null): TriggerSettingsPayload {
     mentionTriggerPhrase: s?.mentionTriggerPhrase ?? "PTAL", summaryTriggerPhrase: s?.summaryTriggerPhrase ?? "summary",
     triggerAccessMode: s?.triggerAccessMode ?? "blocklist", triggerAllowlist: s?.triggerAllowlist ?? [],
     triggerBlocklist: s?.triggerBlocklist ?? [], customRules: s?.customRules ?? "",
-    agentSettings: s?.agentSettings ?? defaultAgentSettings(legacy),
-    reviewerEnabled: { security: s?.reviewers?.find(l => l.id === "security")?.enabled ?? false,
-      "design-alternatives": s?.reviewers?.find(l => l.id === "design-alternatives")?.enabled ?? false },
+    // A repo with no saved settings starts from NEW_REPO_* (rome-os/rome's setup).
+    agentSettings: s ? s.agentSettings ?? defaultAgentSettings(legacy) : structuredClone(NEW_REPO_AGENT_SETTINGS),
+    reviewerEnabled: s ? { security: s.reviewers?.find(l => l.id === "security")?.enabled ?? false,
+      "design-alternatives": s.reviewers?.find(l => l.id === "design-alternatives")?.enabled ?? false } : { ...NEW_REPO_REVIEWERS },
   };
 }
 
