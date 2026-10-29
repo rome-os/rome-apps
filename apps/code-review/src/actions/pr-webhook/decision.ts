@@ -172,6 +172,15 @@ export function parseCommand<T extends string>(
   return best && { id: best.id, note: best.note };
 }
 
+/** Text of a comment that starts with `@bot`, or null. `-` is not a boundary
+ * here: `@bot-other` is a different GitHub user. */
+export function mentionRequest(commentBody: string, botLogin: string | null): string | null {
+  const bot = normalizeGitHubLogin(botLogin);
+  if (!bot) return null;
+  const match = new RegExp(`^\\s*@${escapeRegExp(bot)}(?=$|[\\s:,.;!?])`, "i").exec(commentBody);
+  return match ? commentBody.slice(match[0].length).replace(new RegExp(`^${NOTE_SEPARATOR}+`), "").trim() : null;
+}
+
 /** Review/summary command for the legacy (pre-agent-settings) trigger path. */
 export function parseStrictCommand(
   commentBody: string,

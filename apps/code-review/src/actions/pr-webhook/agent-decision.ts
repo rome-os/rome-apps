@@ -1,5 +1,5 @@
 import { defaultAgentSettings } from "../../lib/agent-settings.js";
-import { commentTriggerAccess, decidePRReviewTrigger, normalizeGitHubLogin, parseCommand, repoFromPayload, type GitHubWebhookPayload, type PRReviewTriggerSettings, type TriggerDecision } from "./decision.js";
+import { commentTriggerAccess, decidePRReviewTrigger, mentionRequest, normalizeGitHubLogin, parseCommand, repoFromPayload, type GitHubWebhookPayload, type PRReviewTriggerSettings, type TriggerDecision } from "./decision.js";
 
 export type AgentDecision = TriggerDecision | {
   kind: "assistant"; repo: string; prNumber: number; surface: "pr" | "issue";
@@ -10,7 +10,8 @@ export type RoutedDecision = AgentDecision & { reviewAgentIds?: string[] };
 /** Commands are reserved even when their agent is disabled. A comment starting
  * with `@bot <phrase>` matches the longest phrase; text after it is a note for
  * the agent. Equal phrases resolve in order: review, summary, security, design.
- * The assistant needs a request after its phrase. */
+ * The assistant needs a request after its phrase. With `catchAll`, it also
+ * answers any other `@bot <request>` that matches no agent's phrase. */
 export function decideAgentTrigger(input: {
   githubEvent: string; payload: GitHubWebhookPayload;
   settings: PRReviewTriggerSettings | undefined; currentGitHubLogin: string | null;
@@ -42,7 +43,8 @@ export function decideAgentTrigger(input: {
   // The bot may use the guardian's own GitHub account. Do not deny their
   // explicit request by author identity: replies are always framed with a
   // heading by pr-assistant and therefore cannot start with the command.
-  if (parsed?.id === "assistant" && parsed.note && a.assistant.enabled && a.assistant.onMention) {
+  const caught = !parsed && a.assistant.catchAll && isComment && !!mentionRequest(p.comment?.body ?? "", handle);
+  if (((parsed?.id === "assistant" && parsed.note) || caught) && a.assistant.enabled && a.assistant.onMention) {
     const access = commentTriggerAccess(p, s, bot);
     if (access.kind === "skip") return access;
     return { kind: "assistant", repo: repoFromPayload(p), prNumber: access.number,

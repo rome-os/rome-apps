@@ -9,7 +9,8 @@ export interface ReviewerTriggers {
 }
 export interface AgentSettings {
   reviewEnabled: boolean;
-  assistant: { enabled: boolean; onMention: boolean; phrase: string };
+  /** `catchAll`: also answer any `@bot …` command that matches no other agent's phrase. */
+  assistant: { enabled: boolean; onMention: boolean; phrase: string; catchAll: boolean };
   summary: { enabled: boolean; onMention: boolean };
   security: ReviewerTriggers;
   designAlternatives: ReviewerTriggers;
@@ -36,15 +37,17 @@ export function defaultAgentSettings(s: LegacyTriggers): AgentSettings {
   return {
     reviewEnabled: true,
     // The general mention flow was removed in v0.26. Never silently reactivate it.
-    assistant: { enabled: false, onMention: true, phrase: "ask" },
+    assistant: { enabled: false, onMention: true, phrase: "ask", catchAll: false },
     summary: { enabled: s.triggerOnRequest && s.triggerOnMention, onMention: true },
     security: reviewer("security"), designAlternatives: reviewer("design"),
   };
 }
-/** v0.38 stored a `withReviewCommand` reviewer flag; drop it so old rows validate on save. */
+/** v0.38 stored a `withReviewCommand` reviewer flag; drop it so old rows validate on save.
+ * Rows from before v0.40 have no assistant `catchAll`; it defaults to off. */
 export function parseAgentSettings(json: string): AgentSettings {
   const a = JSON.parse(json);
   for (const k of ["security", "designAlternatives"]) if (a?.[k]) delete a[k].withReviewCommand;
+  if (a?.assistant && a.assistant.catchAll === undefined) a.assistant.catchAll = false;
   return a;
 }
 export const normalizePhrase = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -58,7 +61,7 @@ export function validateAgentSettings(value: unknown): value is AgentSettings {
     && booleans(o, ["onCreate", "onPush", "onReviewRequest", "onMention"]) && typeof o.phrase === "string";
   return exact(v, ["reviewEnabled", "assistant", "summary", "security", "designAlternatives"])
     && typeof v.reviewEnabled === "boolean"
-    && exact(v.assistant, ["enabled", "onMention", "phrase"]) && booleans(v.assistant, ["enabled", "onMention"]) && typeof v.assistant.phrase === "string"
+    && exact(v.assistant, ["enabled", "onMention", "phrase", "catchAll"]) && booleans(v.assistant, ["enabled", "onMention", "catchAll"]) && typeof v.assistant.phrase === "string"
     && exact(v.summary, ["enabled", "onMention"]) && booleans(v.summary, ["enabled", "onMention"])
     && reviewer(v.security) && reviewer(v.designAlternatives);
 }

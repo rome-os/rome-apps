@@ -505,6 +505,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
                 <SettingRow title="On its own trigger comment" checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
               </div> : (tab === "assistant" || tab === "summary") ? <div>
                 <SettingRow title="On a trigger comment" description={tab === "assistant" ? "PR and issue comments with an addressed request." : "PR comments only."} checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />
+                {tab === "assistant" && <SettingRow title="Catch all other commands" description={`Also answer any ${bot} comment that doesn’t start with another agent’s phrase, e.g. “${bot} why is this cached?”. Another agent’s phrase is never caught, even when that agent is off.`} checked={a.assistant.catchAll} disabled={!a.assistant.onMention} onChange={v => patchAgent({ assistant: { ...a.assistant, catchAll: v } })} />}
                 <p className="text-sm text-muted-foreground">No automatic events. {tab === "summary" ? "Summaries are requested when you need a recap." : "The assistant responds only when asked."}</p>
               </div> : null}
             </Section>
