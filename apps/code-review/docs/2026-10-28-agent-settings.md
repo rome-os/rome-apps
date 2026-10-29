@@ -3,7 +3,7 @@
 ## Product
 - Separate Project policies, shared review guidance, memory and connection from five keyboard-navigable agent tabs. Each agent has an enable switch, status dot, relevant events, phrase and live comment example.
 - One explicit Save/Discard bar for settings across tabs; preserve drafts during polling, warn on page unload/back, and retain unsaved memory while changing tabs. Memory retains its separate audited save path.
-- Investigation: the old page advertised general Assistant mentions, but v0.26 removed that flow (see the superseded design doc). Restore a **reply-only, opt-in** Assistant, off by default, using `@bot ask <request>`. Bare mentions and self-authored comments remain ignored. No coding/memory-write/classifier machinery is restored.
+- Investigation: the old page advertised general Assistant mentions, but v0.26 removed that flow (see the superseded design doc). Restore a **reply-only, opt-in** Assistant, off by default, using `@bot ask <request>`. Bare mentions remain ignored. Replies are always framed with an Assistant heading, preventing a response from matching an addressed request. The connected account may be the guardian's own account, so explicit self-authored requests remain allowed by the shared ACL. No coding/memory-write/classifier machinery is restored.
 
 ## Data model and routing
 - Migration `0017_agent_settings` adds one nullable `agent_settings` text/JSON column with a strictly validated, fixed shape for the five shipped agents. No generic agent registry, new tables, or duplicated existing settings.
@@ -29,3 +29,6 @@
 - Visually inspected Project, Code Review and Security on `rome-os/rome-apps` at 1440px. No console messages/errors.
 - Live duplicate-phrase validation rejects Security = PTAL and disables Save; its comment example updates immediately.
 - Found a mobile min-content overflow in the agent rail; fixed with an explicit single minmax grid column and min-width constraints. Clarified off-state copy. Added tab deep links.
+- Keyboard arrow navigation moves both selection and focus correctly inside the shadow root. Duplicate phrase test drafts were discarded. Unsaved project memory survives switching to Assistant and back; restored without saving.
+- Mobile screenshots exposed absolute screen-reader status text escaping the horizontal rail; use a two-column mobile agent grid with positioned tab buttons instead. All five statuses remain visible without horizontal scrolling.
+- Corrected Assistant's loop guard to permit explicit requests from the connected/guardian account: Rome often posts using that same GitHub login. Structural reply framing (`### Assistant`) prevents loops without blocking the guardian. Added regression coverage.

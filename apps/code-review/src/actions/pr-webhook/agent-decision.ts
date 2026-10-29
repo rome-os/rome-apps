@@ -39,7 +39,10 @@ export function decideAgentTrigger(input: {
   }
   if (isComment && !matched && handle && a.assistant.enabled && a.assistant.onMention) {
     const prefix = command(a.assistant.phrase);
-    if (body.startsWith(prefix + " ") && normalizeGitHubLogin(p.comment?.user?.login) !== handle) {
+    // The bot may use the guardian's own GitHub account. Do not deny their
+    // explicit request by author identity: replies are always framed with a
+    // heading by pr-assistant and therefore cannot match this addressed prefix.
+    if (body.startsWith(prefix + " ")) {
       const access = commentTriggerAccess(p, s, bot);
       if (access.kind === "skip") return access;
       return { kind: "assistant", repo: repoFromPayload(p), prNumber: access.number,

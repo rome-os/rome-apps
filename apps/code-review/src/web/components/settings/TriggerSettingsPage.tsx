@@ -417,8 +417,8 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
   const navButton = (id: Tab, name: string, Icon: LucideIcon) => <button key={id} type="button"
     id={`settings-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls="settings-panel" tabIndex={tab === id ? 0 : -1}
     title={id === "project" ? "Project settings" : `${name} · ${enabled(id) ? "On" : "Off"}`}
-    onClick={() => setTab(id)} className={`flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === id ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-    <Icon className="h-4 w-4 shrink-0" /><span className="flex-1">{name}</span>
+    onClick={() => setTab(id)} className={`relative flex min-w-0 min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === id ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+    <Icon className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">{name}</span>
     {id !== "project" && <><span aria-hidden="true" className={`ml-2 h-1.5 w-1.5 shrink-0 rounded-full ${enabled(id) ? "bg-primary" : "bg-muted-foreground/40"}`} /><span className="sr-only">{enabled(id) ? "On" : "Off"}</span></>}
   </button>;
   return <div>
@@ -443,7 +443,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
         <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">Project</p>
         {navButton("project", "General", Settings)}
         <p className="mt-4 px-3 pb-1 text-xs font-medium text-muted-foreground">Agents</p>
-        <div className="flex gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-visible">
+        <div className="grid grid-cols-2 gap-1 pb-1 md:flex md:flex-col">
           {AGENT_TABS.map(t => navButton(t.id, t.name, t.icon))}
         </div>
       </nav>

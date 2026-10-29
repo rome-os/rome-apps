@@ -1,6 +1,6 @@
 name: code-review_pr-webhook
 type: custom
-description: Routes GitHub PR events and addressed comment commands using per-project access and per-agent triggers. Review, Security, Design and Summary use exact commands; the opt-in reply-only Assistant requires its phrase followed by a request and ignores self-authored comments.
+description: Routes GitHub PR events and addressed comment commands using per-project access and per-agent triggers. Review, Security, Design and Summary use exact commands; the opt-in reply-only Assistant requires its phrase followed by a request; replies are framed so they cannot re-trigger.
 entry: ./index.ts
 complexity: simple
 speed: fast

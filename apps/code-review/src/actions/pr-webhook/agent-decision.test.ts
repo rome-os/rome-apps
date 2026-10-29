@@ -79,7 +79,8 @@ describe("per-agent routing", () => {
       expect(route(payload, s).kind).toBe("skip");
       expect(route(payload, s, lenses, null).kind).toBe("skip");
     }
-    expect(route(comment("@bot ask why?", "bot"), s).kind).toBe("skip"); // no self-reply loops
+    expect(route(comment("@bot ask why?", "bot"), s).kind).toBe("assistant"); // guardian may own the bot account
+    expect(route(comment("### Assistant\n\n@bot ask why?", "bot"), s).kind).toBe("skip"); // framed replies cannot loop
   });
   it("only accepts an explicit Assistant phrase plus a request, on PRs and issues", () => {
     const s = configured(); s.agentSettings.assistant.enabled = true;
