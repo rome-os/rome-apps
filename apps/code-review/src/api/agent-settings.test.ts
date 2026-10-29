@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiHandler } from "./index.js";
 import { createScanRepository } from "../db/repositories/repo.js";
 import { decideAgentTrigger } from "../actions/pr-webhook/agent-decision.js";
+import { NEW_REPO_AGENT_SETTINGS, NEW_REPO_REVIEWERS } from "../lib/agent-settings.js";
 import { CREATE_ROUTINE_ACTION, DELETE_ROUTINE_ACTION, GITHUB_EVENTS, SEARCH_ROUTINE_ACTION, SUBSCRIBE_ACTION, UNSUBSCRIBE_ACTION } from "../utils/github-events.js";
 
 describe("per-agent settings API", () => {
@@ -30,6 +31,16 @@ describe("per-agent settings API", () => {
       body: new TextEncoder().encode(JSON.stringify(body)), headers: {} } as any);
   }
   function settings() { return createScanRepository(ctx.db).upsertPRReviewSettings("o/r", { autoReviewEnabled: false, triggerOnRequest: false }); }
+  it("saves the new-repo defaults (rome-os/rome's setup) for a repo with no settings", async () => {
+    const response = await save({ repo: "o/new", autoReviewEnabled: true, triggerOnCreate: true, manualTriggerEnabled: true,
+      triggerOnReviewRequest: true, triggerOnMention: true, triggerOnPush: true, triggerAccessMode: "blocklist",
+      triggerAllowlist: [], triggerBlocklist: [], mentionTriggerPhrase: "PTAL", summaryTriggerPhrase: "summary",
+      customRules: null, agentSettings: NEW_REPO_AGENT_SETTINGS, reviewerEnabled: NEW_REPO_REVIEWERS });
+    expect(response.status).toBe(200);
+    expect(createScanRepository(ctx.db).getPRReviewSettings("o/new")).toMatchObject({ autoReviewEnabled: true,
+      triggerAccessMode: "blocklist", triggerBlocklist: [], githubWebhookId: "hook-1", agentSettings: NEW_REPO_AGENT_SETTINGS });
+    expect(createScanRepository(ctx.db).listReviewLenses("o/new").every(l => l.enabled)).toBe(true);
+  });
   it("validates before touching webhook subscriptions or stored settings", async () => {
     const original = settings();
     const invalid = [ { mentionTriggerPhrase: " " }, { summaryTriggerPhrase: "pTaL" }, { mentionTriggerPhrase: 3 },

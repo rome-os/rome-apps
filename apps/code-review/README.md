@@ -18,6 +18,7 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 - Posts line-level findings plus a concise review summary and verdict.
 - Lets you tune review instructions per repository, including two optional built-in parallel reviewers.
 - Lets you allow everyone except people you block (the default for newly configured repositories) or allow only selected GitHub users.
+- New repositories start with auto-review on new PRs and pushes, Summary, Security and Design & Alternatives on, and the Assistant answering any unmatched `@bot` command. Saved repositories keep their settings.
 - Keeps a review history dashboard in Rome for status, results, and follow-up.
 - Groups every review run and bot conversation on a PR into one history view, so you can trace how the feedback evolved. Each GitHub review links to that history in its footer.
 
@@ -30,7 +31,8 @@ It does not replace human review. It handles the repetitive first pass so humans
 ## Additional reviewers
 
 In a repository's settings, the **Security** and **Design & Alternatives** agent tabs
-each have an enable switch, independent triggers and a command phrase. Both are off by default:
+each have an enable switch, independent triggers and a command phrase. A newly connected repository
+starts with both on (Design & Alternatives on new PRs and on command, Security on command only):
 
 - **Design & Alternatives** compares the approach with 2–3 feasible alternatives,
   citing inspected repo paths, and recommends the best fit. Its summary includes
