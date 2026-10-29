@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decidePRReviewTrigger,
+  parseCommand,
   parseStrictCommand,
   isTriggerActorAllowed,
   normalizeInput,
@@ -228,32 +229,37 @@ describe("pr-webhook decision", () => {
     });
   });
 
-  it("ignores anything that is not an EXACT command — this is the loop guard", () => {
-    // Extra content beyond the command → skipped (the core anti-storm rule).
-    expect(decide("issue_comment", commentPayload("@rome-bot summary please"))).toMatchObject({
-      kind: "skip",
-      reason: "Comment is not an exact '@bot <command>' request.",
+  it("passes text after the command as a note", () => {
+    expect(decide("issue_comment", commentPayload("@rome-bot PTAL focus on the\nmigration"))).toMatchObject({
+      kind: "trigger", triggerType: "mention", requestNote: "focus on the\nmigration",
     });
+    expect(decide("issue_comment", commentPayload("@rome-bot summary: only open items"))).toMatchObject({
+      kind: "summary", requestNote: "only open items",
+    });
+    expect(decide("issue_comment", commentPayload("@rome-bot PTAL"))).not.toHaveProperty("requestNote");
+  });
+
+  it("ignores comments that do not start with a command — this is the loop guard", () => {
     expect(decide("issue_comment", commentPayload("@rome-bot can you fix the failing CI?"))).toMatchObject({
       kind: "skip",
-      reason: "Comment is not an exact '@bot <command>' request.",
+      reason: "Comment does not start with an '@bot <command>' request.",
     });
-    // The bot's own rich summary output can never equal a bare command → no loop.
+    // The bot's own output never starts with `@bot` → no loop.
     expect(decide("issue_comment", commentPayload(
       "## 📋 Discussion Summary\n\nReviews split: @rome-bot approved. summary follows.",
     ))).toMatchObject({
       kind: "skip",
-      reason: "Comment is not an exact '@bot <command>' request.",
+      reason: "Comment does not start with an '@bot <command>' request.",
     });
     // A passing / cc mention with no command → skipped.
     expect(decide("issue_comment", commentPayload("thanks, cc @rome-bot"))).toMatchObject({
       kind: "skip",
-      reason: "Comment is not an exact '@bot <command>' request.",
+      reason: "Comment does not start with an '@bot <command>' request.",
     });
     // A comment that never names the bot → skipped.
     expect(decide("issue_comment", commentPayload("Looks good"))).toMatchObject({
       kind: "skip",
-      reason: "Comment is not an exact '@bot <command>' request.",
+      reason: "Comment does not start with an '@bot <command>' request.",
     });
   });
 
@@ -300,19 +306,27 @@ describe("pr-webhook decision", () => {
     })).toBe(true);
   });
 
-  it("parses exact commands with whitespace tolerance and rejects everything else", () => {
+  it("parses a leading command, its note, and rejects everything else", () => {
     const phrases = { reviewPhrase: "PTAL", summaryPhrase: "summary" };
-    expect(parseStrictCommand("@rome-bot PTAL", login, phrases)).toBe("review");
-    expect(parseStrictCommand("  @Rome-Bot   ptal \n", login, phrases)).toBe("review");
-    expect(parseStrictCommand("@rome-bot summary", login, phrases)).toBe("summary");
-    // Extra content of any kind → no command.
-    expect(parseStrictCommand("@rome-bot summary please", login, phrases)).toBeNull();
+    expect(parseStrictCommand("@rome-bot PTAL", login, phrases)).toEqual({ command: "review", note: "" });
+    expect(parseStrictCommand("  @Rome-Bot   ptal \n", login, phrases)).toEqual({ command: "review", note: "" });
+    expect(parseStrictCommand("@rome-bot PTAL, Focus on X", login, phrases)).toEqual({ command: "review", note: "Focus on X" });
+    expect(parseStrictCommand("@rome-bot summary please", login, phrases)).toEqual({ command: "summary", note: "please" });
+    // The phrase must end at a word boundary and the command must open the comment.
     expect(parseStrictCommand("@rome-bot summarize the world", login, phrases)).toBeNull();
-    expect(parseStrictCommand("hey @rome-bot summary", login, phrases)).toBeNull();
     expect(parseStrictCommand("@rome-bot ptable", login, phrases)).toBeNull();
+    expect(parseStrictCommand("hey @rome-bot summary", login, phrases)).toBeNull();
+    expect(parseStrictCommand("> @rome-bot PTAL", login, phrases)).toBeNull();
     expect(parseStrictCommand("no mention here summary", login, phrases)).toBeNull();
     // Review wins if both phrases are configured identically.
-    expect(parseStrictCommand("@rome-bot go", login, { reviewPhrase: "go", summaryPhrase: "go" })).toBe("review");
+    expect(parseStrictCommand("@rome-bot go", login, { reviewPhrase: "go", summaryPhrase: "go" })?.command).toBe("review");
+  });
+
+  it("matches the longest phrase when one phrase starts another", () => {
+    expect(parseCommand("@rome-bot review security now", login, [["review", "review"], ["security", "review security"]]))
+      .toEqual({ id: "security", note: "now" });
+    expect(parseCommand("@rome-bot review securely", login, [["review", "review"], ["security", "review security"]]))
+      .toEqual({ id: "review", note: "securely" });
   });
 
   it("keeps actor ACL behavior", () => {

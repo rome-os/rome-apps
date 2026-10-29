@@ -87,6 +87,8 @@ export type TriggerDecision =
       triggerCommentId?: number | null;
       triggerType: PRReviewTriggerType;
       actorLogin: string | null;
+      /** Text the requester wrote after the command phrase. */
+      requestNote?: string;
     }
   // Exact `@bot <summaryPhrase>` command on a PR comment: recap the PR's reviews
   // and discussion. Routed to the dedicated pr-summary action, parallel to (and
@@ -98,9 +100,10 @@ export type TriggerDecision =
       triggerCommentId: number | null;
       commentBody: string;
       actorLogin: string | null;
+      requestNote?: string;
     };
 
-/** The command an exact `@bot <phrase>` comment resolves to. */
+/** The command an `@bot <phrase>` comment resolves to. */
 export type StrictCommand = "review" | "summary";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -133,43 +136,54 @@ export function normalizeGitHubLogin(login: unknown): string | null {
   return normalized ? normalized : null;
 }
 
-/**
- * Collapse every run of whitespace to a single space, trim the ends, and
- * lowercase. Lets an exact-command comparison tolerate surrounding and internal
- * whitespace while rejecting any other content.
- */
-function normalizeCommentBody(body: string): string {
-  return body.replace(/\s+/g, " ").trim().toLowerCase();
-}
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Characters that may separate a command phrase from its trailing note. */
+const NOTE_SEPARATOR = "[\\s:,.;!?-]";
 
 /**
- * Strict command parser. The comment body must be EXACTLY an addressed command —
- * `@<bot> <phrase>` — with only leading / trailing / internal whitespace allowed
- * and NOTHING else (no extra words, punctuation, or quoted text). Matching is
- * case-insensitive and whitespace-flexible.
+ * Command parser. A comment is a command when it STARTS with `@<bot> <phrase>`
+ * (case-insensitive, whitespace-flexible) and the phrase ends at a word
+ * boundary. Any text after the phrase is returned as `note` — e.g.
+ * `@bot PTAL focus on the migration` → review, note "focus on the migration".
+ * When several phrases match, the longest wins; ties go to the earlier entry.
  *
- * This exactness IS the loop guard: the bot's own comments are always rich text
- * (summaries, replies, reviews), so they can never equal a bare command and thus
- * can never re-trigger the webhook. No provenance check is needed — any comment
- * carrying content beyond the command is simply ignored.
+ * Loop guard: the bot's own comments always begin with a heading or emoji
+ * (reviews, summaries, `### Assistant` replies), never with `@<bot>`, so they
+ * can never parse as a command.
  */
+export function parseCommand<T extends string>(
+  commentBody: string,
+  botLogin: string | null,
+  commands: ReadonlyArray<readonly [T, string]>,
+): { id: T; note: string } | null {
+  const bot = normalizeGitHubLogin(botLogin);
+  if (!bot) return null;
+  let best: { id: T; note: string; length: number } | null = null;
+  for (const [id, phrase] of commands) {
+    const words = phrase.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) continue;
+    const pattern = new RegExp(`^\\s*@${escapeRegExp(bot)}\\s+${words.map(escapeRegExp).join("\\s+")}(?=$|${NOTE_SEPARATOR})`, "i");
+    const match = pattern.exec(commentBody);
+    if (match && (!best || match[0].length > best.length)) {
+      const note = commentBody.slice(match[0].length).replace(new RegExp(`^${NOTE_SEPARATOR}+`), "").trim();
+      best = { id, note, length: match[0].length };
+    }
+  }
+  return best && { id: best.id, note: best.note };
+}
+
+/** Review/summary command for the legacy (pre-agent-settings) trigger path. */
 export function parseStrictCommand(
   commentBody: string,
   botLogin: string,
   phrases: { reviewPhrase: string; summaryPhrase: string },
-): StrictCommand | null {
-  const bot = normalizeGitHubLogin(botLogin);
-  if (!bot) return null;
-  const normalized = normalizeCommentBody(commentBody);
-  const target = (phrase: string) => normalizeCommentBody(`@${bot} ${phrase}`);
-
-  const reviewPhrase = phrases.reviewPhrase.trim() || "PTAL";
-  const summaryPhrase = phrases.summaryPhrase.trim() || "summary";
-
-  // Review is checked first so it wins if both phrases were configured identically.
-  if (normalized === target(reviewPhrase)) return "review";
-  if (normalized === target(summaryPhrase)) return "summary";
-  return null;
+): { command: StrictCommand; note: string } | null {
+  // Review is listed first so it wins if both phrases were configured identically.
+  const parsed = parseCommand<StrictCommand>(commentBody, botLogin, [
+    ["review", phrases.reviewPhrase.trim() || "PTAL"],
+    ["summary", phrases.summaryPhrase.trim() || "summary"],
+  ]);
+  return parsed && { command: parsed.id, note: parsed.note };
 }
 
 export function triggerActor(payload: GitHubWebhookPayload, triggerType: PRReviewTriggerType): string | null {
@@ -308,18 +322,16 @@ export function decidePRReviewTrigger(input: {
       return { kind: "skip", reason: "Could not resolve GitHub bot login for mention filtering." };
     }
 
-    // Strict command model: the body must be EXACTLY `@<bot> <phrase>` (only
-    // whitespace tolerated). Anything with extra content — a sentence, a quoted
-    // block, or the bot's own summary/review output — fails the match and is
-    // ignored. This is the loop guard: the bot can never emit a bare command, so
-    // its own comments can never re-trigger the webhook.
-    const command = parseStrictCommand(payload.comment?.body || "", botLogin, {
+    // The comment must start with `@<bot> <phrase>`; trailing text is a note
+    // for the agent. See parseCommand for the loop guard.
+    const parsed = parseStrictCommand(payload.comment?.body || "", botLogin, {
       reviewPhrase: settings.mentionTriggerPhrase || "PTAL",
       summaryPhrase: settings.summaryTriggerPhrase || "summary",
     });
-    if (!command) {
-      return { kind: "skip", reason: "Comment is not an exact '@bot <command>' request." };
+    if (!parsed) {
+      return { kind: "skip", reason: "Comment does not start with an '@bot <command>' request." };
     }
+    const { command, note } = parsed;
 
     const access = commentTriggerAccess(payload, settings, botLogin);
     if (access.kind === "skip") return access;
@@ -340,6 +352,7 @@ export function decidePRReviewTrigger(input: {
         triggerCommentId: payload.comment?.id ?? null,
         triggerType: "mention",
         actorLogin,
+        ...(note ? { requestNote: note } : {}),
       };
     }
 
@@ -351,13 +364,14 @@ export function decidePRReviewTrigger(input: {
       triggerCommentId: payload.comment?.id ?? null,
       commentBody: payload.comment?.body || "",
       actorLogin,
+      ...(note ? { requestNote: note } : {}),
     };
   }
 
   // Standalone `issues` events (opened/edited/...) are subscribed for coverage
-  // but not auto-actioned — engage the bot with an exact command on a PR comment.
+  // but not auto-actioned — engage the bot with a command on a PR comment.
   if (event === "issues") {
-    return { kind: "skip", reason: "Standalone issue events are not auto-actioned; comment an exact command on a PR to engage the bot." };
+    return { kind: "skip", reason: "Standalone issue events are not auto-actioned; comment a command on a PR to engage the bot." };
   }
 
   if (event !== "pull_request") {

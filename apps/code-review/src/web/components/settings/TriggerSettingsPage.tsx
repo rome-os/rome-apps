@@ -508,7 +508,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
                 <p className="text-sm text-muted-foreground">No automatic events. {tab === "summary" ? "Summaries are requested when you need a recap." : "The assistant responds only when asked."}</p>
               </div> : null}
             </Section>
-            <Section title="Trigger phrase" description={tab === "assistant" ? "Follow the phrase with your question or request." : "Write exactly this command in a PR comment. Case and extra whitespace do not matter."}>
+            <Section title="Trigger phrase" description={tab === "assistant" ? "Follow the phrase with your question or request." : "Start a PR comment with this command. Anything you add after it, such as “focus on the migration”, is passed to the agent as a note. Case and extra whitespace do not matter."}>
               <label htmlFor="agent-phrase" className="sr-only">{agent.name} trigger phrase</label>
               <input id="agent-phrase" type="text" value={phrase} maxLength={80} onChange={e => phraseChange(e.target.value)} aria-describedby="phrase-example phrase-help" aria-invalid={!!phraseError}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />

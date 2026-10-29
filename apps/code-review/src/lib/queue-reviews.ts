@@ -5,9 +5,9 @@ import type { ScanRepository } from "../db/repositories/repo.js";
 export async function queueReviews(
   db: ScanRepository,
   runAction: RomeAppContext["runAction"],
-  input: Parameters<ScanRepository["createQueuedPRReview"]>[0] & { triggerCommentId?: number | null; reviewAgentIds?: string[] },
+  input: Parameters<ScanRepository["createQueuedPRReview"]>[0] & { triggerCommentId?: number | null; requestNote?: string; reviewAgentIds?: string[] },
 ) {
-  const { triggerCommentId, reviewAgentIds, ...metadata } = input;
+  const { triggerCommentId, requestNote, reviewAgentIds, ...metadata } = input;
   const reviews = [
     ...(!reviewAgentIds || reviewAgentIds.includes("review") ? [db.createQueuedPRReview(metadata)] : []),
     ...db.listReviewLenses(input.repo).filter((lens) => lens.enabled && (!reviewAgentIds || reviewAgentIds.includes(lens.id))).map((lens) =>
@@ -28,6 +28,7 @@ export async function queueReviews(
           prNumber: input.prNumber,
           reviewId: review.id,
           ...(triggerCommentId ? { triggerCommentId } : {}),
+          ...(requestNote ? { requestNote } : {}),
         },
         { detached: true },
       );

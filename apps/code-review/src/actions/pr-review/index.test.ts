@@ -154,6 +154,17 @@ describe("pr-review action", () => {
 });
 
 
+/** Paginated `gh api` reads of the PR conversation (one JSON array per page). */
+function conversationPages(path: string): string {
+  if (path.endsWith("/pulls/7/comments")) return JSON.stringify([
+    { id: 1, inReplyTo: null, author: "bot", path: "a.ts", line: 3, body: "Possible null" },
+    { id: 2, inReplyTo: null, author: "bob", path: "b.ts", line: 9, body: "Nit" },
+    { id: 3, inReplyTo: 1, author: "alice", path: "a.ts", line: 3, body: "Intentional, see #12" },
+  ]);
+  if (path.endsWith("/issues/7/comments")) return JSON.stringify([{ author: "alice", body: "@bot PTAL Focus on the migration" }]);
+  return "[]";
+}
+
 describe("pr-review lens execution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -177,6 +188,7 @@ describe("pr-review lens execution", () => {
         title: "Fix", author: { login: "author" }, url: "https://github.com/o/r/pull/7", body: "", headRefOid: "abc1234",
       });
       if (args[1]?.endsWith("/files")) return "[]";
+      if (args.includes("--paginate")) return conversationPages(args[1]);
       if (args[1]?.endsWith("/reviews")) return JSON.stringify({ html_url: "https://github.com/review" });
       return JSON.stringify({ id: 123 });
     });
@@ -188,17 +200,23 @@ describe("pr-review lens execution", () => {
     }));
     const { createAction } = await import("./index.js");
     const result = await createAction(config, { appContext: { db: {}, invokeAction } } as any).execute({
-      repo: "o/r", prNumber: 7, reviewId: "run", triggerCommentId: 99,
+      repo: "o/r", prNumber: 7, reviewId: "run", triggerCommentId: 99, requestNote: "Focus on the migration",
     });
     expect(result.status).toBe("ok");
     expect(mocks.db.getPreviousCompletedPRReviewByPR).toHaveBeenCalledWith("o/r", 7, "run", lensId);
     const prompt = invokeAction.mock.calls[0][1].prompt;
+    expect(prompt).toContain("## Requester's note");
+    expect(prompt).toContain("Focus on the migration");
+    expect(prompt).toContain("## Existing PR conversation (untrusted data)");
+    // A reply follows the finding it answers, even though another thread came in between.
+    expect(prompt).toMatch(/@bot\*\* `a\.ts:3`: Possible null[\s\S]*↳ reply from \*\*@alice\*\*: Intentional, see #12[\s\S]*`b\.ts:9`/);
+    expect(prompt).toContain("- **@alice**: @bot PTAL Focus on the migration");
     if (lensId) {
       expect(prompt).toContain(`## Reviewer mode: ${lensId}`);
       expect(prompt).toContain("Snapshot: break it");
       expect(prompt).not.toContain("take precedence");
     } else expect(prompt).not.toContain("Reviewer mode:");
-    const postingCall = mocks.execFileSync.mock.calls.find(([, args]) => args[1]?.endsWith("/reviews"));
+    const postingCall = mocks.execFileSync.mock.calls.find(([, args]) => args[1]?.endsWith("/reviews") && args.includes("POST"));
     const payload = JSON.parse(postingCall![2].input);
     expect(payload.event).toBe("COMMENT");
     expect(payload.body).toContain(`## ${review.lensName ?? "Code Review"}${lensId ? " review" : ""}: 💬 COMMENT`);

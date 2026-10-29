@@ -33,6 +33,9 @@ describe("per-agent routing", () => {
     expect(route(comment("  @BOT  pTaL\n"))).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"] });
     expect(route(comment("@bot summary"))).toMatchObject({ kind: "summary" });
     expect(route(comment("@bot why?"))).toMatchObject({ kind: "skip" });
+    expect(route(comment("@bot PTAL focus on the migration"))).toMatchObject({
+      kind: "trigger", reviewAgentIds: ["review"], requestNote: "focus on the migration" });
+    expect(route(comment("@bot summary open items only"))).toMatchObject({ kind: "summary", requestNote: "open items only" });
   });
   it("routes direct reviewer commands to only that reviewer, without the main agent", () => {
     const s = configured(); s.agentSettings.reviewEnabled = false;
@@ -40,7 +43,7 @@ describe("per-agent routing", () => {
       expect(route(comment(`@bot ${phrase}`), s)).toMatchObject({ kind: "trigger", reviewAgentIds: [id] });
     }
     expect(route(comment("@bot PTAL"), s).kind).toBe("skip");
-    expect(route(comment("@bot security please"), s).kind).toBe("skip");
+    expect(route(comment("@bot security check auth"), s)).toMatchObject({ reviewAgentIds: ["security"], requestNote: "check auth" });
   });
   it("independently selects automatic and requested-review events", () => {
     const s = configured(); s.agentSettings.reviewEnabled = false;

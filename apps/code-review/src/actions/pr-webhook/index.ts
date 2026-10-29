@@ -42,6 +42,7 @@ async function queueReview(
     action: string;
     pr?: GitHubPullRequest;
     triggerCommentId?: number | null;
+    requestNote?: string;
     reviewAgentIds?: string[];
   },
 ): Promise<ActionResult> {
@@ -53,6 +54,7 @@ async function queueReview(
     prAuthor: args.pr?.user?.login || null,
     headSha: args.pr?.head?.sha || null,
     triggerCommentId: args.triggerCommentId,
+    requestNote: args.requestNote,
     reviewAgentIds: args.reviewAgentIds,
   });
 
@@ -175,6 +177,7 @@ export function createAction(
             triggerCommentId: decision.triggerCommentId,
             commentBody: decision.commentBody,
             actorLogin: decision.actorLogin,
+            ...(decision.requestNote ? { requestNote: decision.requestNote } : {}),
           },
           { detached: true },
         );
@@ -204,6 +207,7 @@ export function createAction(
         action: decision.action,
         pr: decision.pr,
         triggerCommentId: decision.triggerCommentId,
+        requestNote: decision.requestNote,
         reviewAgentIds: decision.reviewAgentIds,
       });
     },
