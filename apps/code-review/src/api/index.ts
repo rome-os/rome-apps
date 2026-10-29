@@ -734,7 +734,7 @@ class GuardianApiHandler implements RomeAppApiHandler {
         ...(triggerOnReviewRequest !== undefined ? { triggerOnReviewRequest } : {}),
         ...(triggerOnMention !== undefined ? { triggerOnMention } : {}),
       };
-      const agentSettings = body.agentSettings ?? existingSettings?.agentSettings ?? defaultAgentSettings(effectiveSettings);
+      const agentSettings = body.agentSettings ?? repo.getStoredAgentSettings(repoName) ?? defaultAgentSettings(effectiveSettings);
       const phraseError = phraseValidationError(mentionTriggerPhrase ?? existingSettings?.mentionTriggerPhrase ?? "PTAL",
         summaryTriggerPhrase ?? existingSettings?.summaryTriggerPhrase ?? "summary", agentSettings);
       // Unrelated legacy API writes may keep old collisions; editing commands

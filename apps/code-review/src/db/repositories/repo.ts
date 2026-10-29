@@ -698,6 +698,12 @@ export class ScanRepository {
       triggerOnReviewRequest: !!row.triggerOnReviewRequest, triggerOnMention: !!row.triggerOnMention };
   }
 
+  /** Explicit config only; NULL compatibility defaults must use post-update flags. */
+  getStoredAgentSettings(repo: string): AgentSettings | undefined {
+    const row = this.get<{ value: string | null }>(`SELECT agent_settings as value FROM "${this.t("pr_review_settings")}" WHERE repo = ?`, [repo]);
+    return row?.value ? JSON.parse(row.value) : undefined;
+  }
+
   getPRReviewSettings(repo: string): PRReviewSettings | undefined {
     const row = this.get<any>(
       `SELECT id, repo, auto_review_enabled as autoReviewEnabled, trigger_on_create as triggerOnCreate, trigger_on_request as triggerOnRequest, trigger_on_review_request as triggerOnReviewRequest, trigger_on_mention as triggerOnMention, trigger_on_push as triggerOnPush, trigger_access_mode as triggerAccessMode, manual_trigger_allowlist as triggerAllowlist, trigger_blocklist as triggerBlocklist, mention_trigger_phrase as mentionTriggerPhrase, summary_trigger_phrase as summaryTriggerPhrase, agent_settings as agentSettings, custom_rules as customRules, project_memory as projectMemory, webhook_channel_url as webhookChannelUrl, github_webhook_id as githubWebhookId, created_at as createdAt, updated_at as updatedAt FROM "${this.t("pr_review_settings")}" WHERE repo = ?`,

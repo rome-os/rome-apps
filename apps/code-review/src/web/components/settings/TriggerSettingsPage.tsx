@@ -371,6 +371,7 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
   const [memoryDirty, setMemoryDirty] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
+  const needsSave = !settings || dirty;
   const a = draft.agentSettings!;
   const phraseError = phraseValidationError(draft.mentionTriggerPhrase, draft.summaryTriggerPhrase, a);
   const bot = `@${guardianLogin || "bot"}`;
@@ -525,11 +526,11 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
     </div>
     <footer className="sticky bottom-0 z-10 mt-8 flex flex-wrap items-center justify-between gap-3 border-t bg-background py-4">
       <div className="min-w-0 text-sm" aria-live="polite">
-        {error ? <p role="alert" className="text-destructive">{error}</p> : dirty && phraseError ? <p role="alert" className="text-destructive">{phraseError}</p>
-          : <span className="text-muted-foreground">{dirty ? "Unsaved changes across settings" : saved ? "Settings saved" : "All settings up to date"}</span>}
+        {error ? <p role="alert" className="text-destructive">{error}</p> : needsSave && phraseError ? <p role="alert" className="text-destructive">{phraseError}</p>
+          : <span className="text-muted-foreground">{!settings ? "Save to activate these agent settings" : dirty ? "Unsaved changes across settings" : saved ? "Settings saved" : "All settings up to date"}</span>}
       </div>
       <div className="ml-auto flex shrink-0 gap-2"><Button variant="ghost" disabled={!dirty || busy} onClick={() => { const next = initialDraft(settings); setDraft(next); setBaseline(next); setError(null); setSaved(false); }}>Discard</Button>
-        <Button disabled={!dirty || busy || !!phraseError} onClick={() => void save()}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? "Saving…" : "Save changes"}</Button></div>
+        <Button disabled={!needsSave || busy || !!phraseError} onClick={() => void save()}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? "Saving…" : !settings ? "Save to activate" : "Save changes"}</Button></div>
     </footer>
   </div>;
 }

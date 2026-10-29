@@ -75,6 +75,32 @@ describe("per-agent settings API", () => {
     expect(ctx.runAction.mock.calls.filter(([name]: [string]) => name === DELETE_ROUTINE_ACTION)).toHaveLength(GITHUB_EVENTS.length);
     expect(routines.size).toBe(0);
   });
+  it.each([false, true])("uses post-update legacy defaults but preserves explicit agent config (stored=%s)", async (stored) => {
+    const db = createScanRepository(ctx.db);
+    const original = db.upsertPRReviewSettings("o/r", {
+      autoReviewEnabled: true, triggerOnRequest: true, githubWebhookId: "existing-hook",
+    });
+    db.setReviewLensEnabled("o/r", "security", true);
+    if (stored) db.upsertPRReviewSettings("o/r", { agentSettings: original.agentSettings });
+    const response = await save({ repo: "o/r", autoReviewEnabled: false, manualTriggerEnabled: false });
+    expect(response.status).toBe(200);
+    const reloaded = db.getPRReviewSettings("o/r")!;
+    expect(reloaded).toMatchObject({ autoReviewEnabled: false, triggerOnRequest: false,
+      githubWebhookId: stored ? "existing-hook" : null });
+    expect(reloaded.agentSettings.summary.enabled).toBe(stored);
+    expect(reloaded.agentSettings.security.onPush).toBe(stored);
+    expect(sqlite.prepare("SELECT agent_settings FROM repo_guardian__pr_review_settings").get()).toEqual({
+      agent_settings: stored ? JSON.stringify(original.agentSettings) : null,
+    });
+    if (stored) {
+      expect(ctx.runAction).toHaveBeenCalledWith(CREATE_ROUTINE_ACTION, expect.anything());
+      expect(ctx.runAction).not.toHaveBeenCalledWith(UNSUBSCRIBE_ACTION, expect.anything());
+    } else {
+      expect(ctx.runAction).toHaveBeenCalledWith(UNSUBSCRIBE_ACTION, { repo: "o/r" });
+      expect(ctx.runAction).not.toHaveBeenCalledWith(SUBSCRIBE_ACTION, expect.anything());
+      expect(ctx.runAction).not.toHaveBeenCalledWith(CREATE_ROUTINE_ACTION, expect.anything());
+    }
+  });
   it("keeps Summary wired when Code Review is off, and removes wiring only after all agents are off", async () => {
     const s = settings(); s.agentSettings.reviewEnabled = false; s.agentSettings.summary.enabled = true;
     expect((await save({ repo: "o/r", agentSettings: s.agentSettings })).status).toBe(200);
