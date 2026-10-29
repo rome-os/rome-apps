@@ -6,7 +6,6 @@ export interface ReviewerTriggers {
   onReviewRequest: boolean;
   onMention: boolean;
   phrase: string;
-  withReviewCommand: boolean;
 }
 export interface AgentSettings {
   reviewEnabled: boolean;
@@ -32,7 +31,7 @@ export function defaultAgentSettings(s: LegacyTriggers): AgentSettings {
     onPush: s.autoReviewEnabled && s.triggerOnPush,
     onReviewRequest: s.triggerOnRequest && s.triggerOnReviewRequest,
     onMention: s.triggerOnRequest && s.triggerOnMention,
-    phrase, withReviewCommand: true,
+    phrase,
   });
   return {
     reviewEnabled: true,
@@ -42,6 +41,12 @@ export function defaultAgentSettings(s: LegacyTriggers): AgentSettings {
     security: reviewer("security"), designAlternatives: reviewer("design"),
   };
 }
+/** v0.38 stored a `withReviewCommand` reviewer flag; drop it so old rows validate on save. */
+export function parseAgentSettings(json: string): AgentSettings {
+  const a = JSON.parse(json);
+  for (const k of ["security", "designAlternatives"]) if (a?.[k]) delete a[k].withReviewCommand;
+  return a;
+}
 export const normalizePhrase = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 export function validateAgentSettings(value: unknown): value is AgentSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -49,8 +54,8 @@ export function validateAgentSettings(value: unknown): value is AgentSettings {
   const exact = (o: unknown, keys: string[]) => !!o && typeof o === "object" && !Array.isArray(o)
     && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
   const booleans = (o: object, keys: string[]) => keys.every(k => typeof (o as any)[k] === "boolean");
-  const reviewer = (o: ReviewerTriggers) => exact(o, ["onCreate", "onPush", "onReviewRequest", "onMention", "phrase", "withReviewCommand"])
-    && booleans(o, ["onCreate", "onPush", "onReviewRequest", "onMention", "withReviewCommand"]) && typeof o.phrase === "string";
+  const reviewer = (o: ReviewerTriggers) => exact(o, ["onCreate", "onPush", "onReviewRequest", "onMention", "phrase"])
+    && booleans(o, ["onCreate", "onPush", "onReviewRequest", "onMention"]) && typeof o.phrase === "string";
   return exact(v, ["reviewEnabled", "assistant", "summary", "security", "designAlternatives"])
     && typeof v.reviewEnabled === "boolean"
     && exact(v.assistant, ["enabled", "onMention", "phrase"]) && booleans(v.assistant, ["enabled", "onMention"]) && typeof v.assistant.phrase === "string"
@@ -78,5 +83,5 @@ export function hasAgentTriggers(s: LegacyTriggers, lenses: {id: string; enabled
       || (s.triggerOnRequest && (s.triggerOnReviewRequest || s.triggerOnMention))))
     || (a.summary.enabled && a.summary.onMention) || (a.assistant.enabled && a.assistant.onMention)
     || lenses.some(l => { const t = l.id === "security" ? a.security : a.designAlternatives;
-      return l.enabled && (t.onCreate || t.onPush || t.onReviewRequest || t.onMention || (t.withReviewCommand && a.reviewEnabled && s.triggerOnRequest && s.triggerOnMention)); });
+      return l.enabled && (t.onCreate || t.onPush || t.onReviewRequest || t.onMention); });
 }

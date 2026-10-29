@@ -56,13 +56,7 @@ export function decideAgentTrigger(input: {
   let first: TriggerDecision | undefined = ids.length ? main : undefined;
   for (const lens of lenses.filter(l => l.enabled)) {
     const t = lens.id === "security" ? a.security : a.designAlternatives;
-    if (isComment && matched !== lens.id && !(matched === "review" && t.withReviewCommand && a.reviewEnabled)) continue;
-    // withReviewCommand preserves the old fan-out without conflating the
-    // reviewer's independent command switch with the main review's switch.
-    if (isComment && matched === "review") {
-      if (main.kind === "trigger" && t.withReviewCommand) { ids.push(lens.id); first ??= main; }
-      continue;
-    }
+    if (isComment && matched !== lens.id) continue;
     const d = decide({ autoReviewEnabled: true, triggerOnCreate: t.onCreate, triggerOnPush: t.onPush,
       triggerOnRequest: true, triggerOnReviewRequest: t.onReviewRequest, triggerOnMention: t.onMention,
       mentionTriggerPhrase: t.phrase, summaryTriggerPhrase: t.phrase });

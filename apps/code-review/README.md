@@ -40,8 +40,8 @@ each have an enable switch, independent triggers and a command phrase. Both are 
   paths, using the existing security checklist. No hypothetical hardening advice.
 
 Reviewers can run on PR-open, push, review-request and their own commands.
-By default they retain the main reviewer's effective events and PTAL fan-out;
-explicit dashboard reviews still run main plus enabled reviewers. Each has a
+By default they retain the main reviewer's effective events; a Code Review
+command (PTAL) runs only Code Review. Explicit dashboard reviews still run main plus enabled reviewers. Each has a
 separate GitHub review headed with its name, status, session and per-run cancellation. Claims and supersession are
 reviewer-scoped; only main manages PR/comment eyes reactions. History badges
 identify each reviewer. Definitions ship in `code-review-expert/references`,

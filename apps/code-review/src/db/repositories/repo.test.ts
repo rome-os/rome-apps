@@ -227,7 +227,7 @@ describe("per-agent settings persistence", () => {
     const s = db.getPRReviewSettings("o/r")!;
     expect(s).toMatchObject({ mentionTriggerPhrase: "look here", summaryTriggerPhrase: "recap", customRules: "rules", projectMemory: "memory" });
     expect(s.agentSettings).toMatchObject({ reviewEnabled: true, assistant: { enabled: false }, summary: { enabled: false },
-      security: { onCreate: false, onPush: true, onReviewRequest: true, onMention: false, withReviewCommand: true } });
+      security: { onCreate: false, onPush: true, onReviewRequest: true, onMention: false } });
     expect(db.listReviewLenses("o/r").find(l => l.id === "security")?.enabled).toBe(true);
     expect(sqlite.prepare('SELECT agent_settings FROM repo_guardian__pr_review_settings').get()).toEqual({ agent_settings: null });
     db.upsertPRReviewSettings("o/r", { projectMemory: "new memory" });

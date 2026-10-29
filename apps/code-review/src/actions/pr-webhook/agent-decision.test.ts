@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultAgentSettings, phraseValidationError, validateAgentSettings, hasAgentTriggers } from "../../lib/agent-settings.js";
+import { defaultAgentSettings, parseAgentSettings, phraseValidationError, validateAgentSettings, hasAgentTriggers } from "../../lib/agent-settings.js";
 import { decideAgentTrigger } from "./agent-decision.js";
 import type { PRReviewTriggerSettings, GitHubWebhookPayload } from "./decision.js";
 
@@ -29,8 +29,8 @@ describe("per-agent routing", () => {
     expect(route(event(action))).toMatchObject({ kind: "trigger", reviewAgentIds: ["review", "security", "design-alternatives"] });
     expect(route(event(action), { ...legacy, autoReviewEnabled: false, triggerOnRequest: false }).kind).toBe("skip");
   });
-  it("keeps legacy exact review fan-out and summary routing", () => {
-    expect(route(comment("  @BOT  pTaL\n"))).toMatchObject({ kind: "trigger", reviewAgentIds: ["review", "security", "design-alternatives"] });
+  it("runs only Code Review on its exact command, and routes summary", () => {
+    expect(route(comment("  @BOT  pTaL\n"))).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"] });
     expect(route(comment("@bot summary"))).toMatchObject({ kind: "summary" });
     expect(route(comment("@bot why?"))).toMatchObject({ kind: "skip" });
   });
@@ -58,10 +58,11 @@ describe("per-agent routing", () => {
     expect(route(event("opened"), s)).toMatchObject({ reviewAgentIds: ["security", "design-alternatives"] });
     expect(hasAgentTriggers(s, lenses)).toBe(true);
   });
-  it("allows opting out of main-command fan-out without disabling the own command", () => {
-    const s = configured(); s.agentSettings.security.withReviewCommand = false;
-    expect(route(comment("@bot PTAL"), s)).toMatchObject({ reviewAgentIds: ["review", "design-alternatives"] });
-    expect(route(comment("@bot security"), s)).toMatchObject({ reviewAgentIds: ["security"] });
+  it("drops the removed v0.38 reviewer flag from stored settings", () => {
+    const stored = defaultAgentSettings(legacy) as any; stored.security.withReviewCommand = true;
+    const parsed = parseAgentSettings(JSON.stringify(stored));
+    expect(validateAgentSettings(parsed)).toBe(true);
+    expect(parsed.security).not.toHaveProperty("withReviewCommand");
   });
   it("reserves disabled commands and observes enabled/mention switches", () => {
     const s = configured(); s.agentSettings.assistant.enabled = true;
@@ -71,7 +72,7 @@ describe("per-agent routing", () => {
     expect(route(comment("@bot design"), s, []) .kind).toBe("skip");
   });
   it("preserves review-first precedence for legacy collisions", () => {
-    expect(route(comment("@bot summary"), { ...legacy, mentionTriggerPhrase: "summary" })).toMatchObject({ kind: "trigger", reviewAgentIds: ["review", "security", "design-alternatives"] });
+    expect(route(comment("@bot summary"), { ...legacy, mentionTriggerPhrase: "summary" })).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"] });
   });
   it("keeps every agent behind the same ACL, including automatic triggers", () => {
     const s = configured(); s.triggerBlocklist = ["alice"]; s.agentSettings.assistant.enabled = true;
