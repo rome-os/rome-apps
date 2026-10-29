@@ -551,11 +551,17 @@ function postInlineReview(
  */
 function deleteReviewInlineComments(repoSlug: string, prNumber: number, reviewId: string): void {
   try {
+    // Keep findings someone replied to: the thread explains a decision that
+    // later reviews read as context. If replies can't be listed, delete nothing.
+    const replied = new Set(execFileSync(
+      "gh", ["api", `repos/${repoSlug}/pulls/${prNumber}/comments`, "--paginate", "--jq", ".[] | .in_reply_to_id // empty"],
+      { encoding: "utf-8", timeout: 30000, maxBuffer: 8 * 1024 * 1024 },
+    ).trim().split("\n").filter(Boolean));
     const result = execFileSync(
-      "gh", ["api", `repos/${repoSlug}/pulls/${prNumber}/reviews/${reviewId}/comments`, "--jq", ".[].id"],
+      "gh", ["api", `repos/${repoSlug}/pulls/${prNumber}/reviews/${reviewId}/comments`, "--paginate", "--jq", ".[].id"],
       { encoding: "utf-8", timeout: 15000 },
     );
-    const commentIds = result.trim().split("\n").filter(Boolean);
+    const commentIds = result.trim().split("\n").filter((id) => id && !replied.has(id));
     for (const commentId of commentIds) {
       try {
         execFileSync(
@@ -576,7 +582,7 @@ function deleteReviewInlineComments(repoSlug: string, prNumber: number, reviewId
 
 /**
  * Collapse a previous review comment by editing it to point to the new review,
- * and delete its inline comments so they don't clutter the PR.
+ * and delete its unanswered inline comments so they don't clutter the PR.
  */
 function collapsePreviousReview(
   repoSlug: string,

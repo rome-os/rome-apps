@@ -227,6 +227,32 @@ describe("pr-review lens execution", () => {
     expect(mocks.db.completePRReview).toHaveBeenCalledWith("run", expect.any(String), "https://github.com/review");
   });
 
+  it("keeps superseded findings that someone replied to, and deletes the rest", async () => {
+    const review = { id: "run", repo: "o/r", prNumber: 7, lensId: null, lensName: null, lensInstructions: null };
+    mocks.db.getPRReview.mockReturnValue(review);
+    mocks.db.claimQueuedPRReview.mockReturnValue(review);
+    mocks.db.getPreviousCompletedPRReviewByPR.mockReturnValue({ githubCommentUrl: "https://github.com/o/r/pull/7#pullrequestreview-555" });
+    mocks.execFileSync.mockImplementation((command, args) => {
+      if (command === "git") return "";
+      if (args[0] === "pr") return JSON.stringify({ title: "Fix", author: { login: "a" }, url: "u", body: "", headRefOid: "abc1234" });
+      if (args.includes(".[] | .in_reply_to_id // empty")) return "11\n";
+      if (args[1]?.endsWith("/reviews/555/comments")) return "11\n12\n";
+      if (args.includes("--paginate")) return "[]";
+      if (args[1]?.endsWith("/reviews") && args.includes("POST")) return JSON.stringify({ html_url: "https://github.com/o/r/pull/7#pullrequestreview-556" });
+      return JSON.stringify({ id: 1 });
+    });
+    const invokeAction = vi.fn(() => ({
+      events: (async function* () {})(),
+      result: Promise.resolve({ status: "ok", data: { output: { summary: "s", verdict: "APPROVE", verdict_reason: "ok", findings: [] } } }),
+    }));
+    const { createAction } = await import("./index.js");
+    await createAction(config, { appContext: { db: {}, invokeAction } } as any).execute({ repo: "o/r", prNumber: 7, reviewId: "run" });
+    const deleted = mocks.execFileSync.mock.calls
+      .filter(([, args]) => args.includes("DELETE") && args[1]?.includes("/pulls/comments/"))
+      .map(([, args]) => args[1]);
+    expect(deleted).toEqual(["repos/o/r/pulls/comments/12"]);
+  });
+
   it("does not mark the triggering comment when a lens claim is skipped", async () => {
     mocks.db.getPRReview.mockReturnValue({ id: "run", repo: "o/r", prNumber: 7, lensId: "lens" });
     mocks.db.claimQueuedPRReview.mockReturnValue(null);
