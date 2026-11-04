@@ -12,7 +12,7 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 ## What it does
 
 - Monitors GitHub repositories you add from the Rome dashboard.
-- Runs automatically when PRs open or receive new commits.
+- Runs automatically when PRs open or receive new commits. Draft PRs are not reviewed automatically; marking a draft ready for review runs the review a newly opened PR would get. A review request, a PR command or a manual run still reviews a draft.
 - Supports manual runs from Rome, GitHub review requests, or a PR mention command. Text after a command is passed to the agent as a note, e.g. `@bot PTAL focus on the migration`.
 - Gives the reviewer the PR's existing reviews, inline threads and comments, so it does not repeat findings that were fixed or explained in a reply. When a newer review supersedes an older one, the older review's unanswered inline findings are deleted; findings with replies are kept.
 - Posts line-level findings plus a concise review summary and verdict.
@@ -42,7 +42,7 @@ starts with both on (Design & Alternatives on new PRs and on command, Security o
 - **Security** reports only exploitable issues with concrete attacker/input/gain
   paths, using the existing security checklist. No hypothetical hardening advice.
 
-Reviewers can run on PR-open, push, review-request and their own commands.
+Reviewers can run on PR-open (including a draft marked ready for review), push, review-request and their own commands. Like the main reviewer, they skip drafts on open and push.
 By default they retain the main reviewer's effective events; a Code Review
 command (PTAL) runs only Code Review. Explicit dashboard reviews still run main plus enabled reviewers. Each has a
 separate GitHub review headed with its name, status, session and per-run cancellation. Claims and supersession are

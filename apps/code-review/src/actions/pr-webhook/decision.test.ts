@@ -58,6 +58,11 @@ function prPayload(action: string, actor = login): GitHubWebhookPayload {
   };
 }
 
+function draftPayload(action: string, actor = login): GitHubWebhookPayload {
+  const payload = prPayload(action, actor);
+  return { ...payload, pull_request: { ...payload.pull_request!, draft: true } };
+}
+
 function commentPayload(body: string, actor = login): GitHubWebhookPayload {
   return {
     action: "created",
@@ -304,6 +309,61 @@ describe("pr-webhook decision", () => {
       payload: commentPayload("@rome-bot PTAL"),
       settings: settings(),
     })).toBe(true);
+  });
+
+  describe("draft pull requests", () => {
+    const draftReason = "PR #42 is a draft; automatic reviews start when it is marked ready for review.";
+
+    it("skips a draft PR when it is opened", () => {
+      expect(decide("pull_request", draftPayload("opened"))).toEqual({ kind: "skip", reason: draftReason, repo, prNumber: 42 });
+    });
+
+    it("skips a draft PR when new commits are pushed", () => {
+      expect(decide("pull_request", draftPayload("synchronize"))).toEqual({ kind: "skip", reason: draftReason, repo, prNumber: 42 });
+    });
+
+    it("reviews a PR marked ready for review like a newly opened PR", () => {
+      expect(decide("pull_request", prPayload("ready_for_review"))).toMatchObject({
+        kind: "trigger",
+        triggerType: "pr_ready_for_review",
+        action: "ready_for_review",
+        repo,
+        prNumber: 42,
+        actorLogin: login,
+      });
+      expect(decide("pull_request", prPayload("ready_for_review"), { triggerOnCreate: false })).toMatchObject({
+        kind: "skip",
+        reason: `Trigger on create is disabled for ${repo}.`,
+      });
+      expect(decide("pull_request", prPayload("ready_for_review"), { autoReviewEnabled: false })).toMatchObject({
+        kind: "skip",
+        reason: `Auto trigger is disabled for ${repo}.`,
+      });
+      expect(decide("pull_request", prPayload("ready_for_review", "random-user"), { triggerAllowlist: ["trusted-user"] })).toMatchObject({
+        kind: "skip",
+        reason: "PR opener is not in the review trigger allowlist.",
+      });
+    });
+
+    it("still reviews a draft PR on an explicit review request or command", () => {
+      expect(decide("pull_request", { ...draftPayload("review_requested"), requested_reviewer: { login } })).toMatchObject({
+        kind: "trigger",
+        triggerType: "review_requested",
+        prNumber: 42,
+      });
+      // Comment events carry no draft flag: a command reviews any PR.
+      expect(decide("issue_comment", commentPayload("@rome-bot PTAL"))).toMatchObject({
+        kind: "trigger",
+        triggerType: "mention",
+        prNumber: 43,
+      });
+    });
+
+    it("needs the bot login for ready_for_review but not for draft auto events", () => {
+      expect(triggerMayNeedCurrentGitHubLogin({ githubEvent: "pull_request", payload: prPayload("ready_for_review"), settings: settings() })).toBe(true);
+      expect(triggerMayNeedCurrentGitHubLogin({ githubEvent: "pull_request", payload: draftPayload("opened"), settings: settings() })).toBe(false);
+      expect(triggerMayNeedCurrentGitHubLogin({ githubEvent: "pull_request", payload: draftPayload("synchronize"), settings: settings() })).toBe(false);
+    });
   });
 
   it("parses a leading command, its note, and rejects everything else", () => {
