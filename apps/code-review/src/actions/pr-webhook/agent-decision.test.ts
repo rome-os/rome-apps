@@ -74,6 +74,20 @@ describe("per-agent routing", () => {
     expect(route(comment("@bot security"), s).kind).toBe("skip");
     expect(route(comment("@bot design"), s, []) .kind).toBe("skip");
   });
+  it("applies the draft rule to every reviewer", () => {
+    const draft = (action: string) => { const p = event(action); return { ...p, pull_request: { ...p.pull_request!, draft: true } }; };
+    for (const s of [legacy, configured()]) {
+      for (const action of ["opened", "synchronize"]) {
+        expect(route(draft(action), s)).toMatchObject({ kind: "skip", reason: expect.stringContaining("is a draft") });
+      }
+      expect(route(event("ready_for_review"), s)).toMatchObject({
+        kind: "trigger", triggerType: "pr_ready_for_review", reviewAgentIds: ["review", "security", "design-alternatives"] });
+      expect(route(draft("review_requested"), s)).toMatchObject({ kind: "trigger", reviewAgentIds: ["review", "security", "design-alternatives"] });
+    }
+    // Reviewers follow their own "on create" switch for ready_for_review.
+    const s = configured(); s.agentSettings.security.onCreate = false;
+    expect(route(event("ready_for_review"), s)).toMatchObject({ reviewAgentIds: ["review", "design-alternatives"] });
+  });
   it("preserves review-first precedence for legacy collisions", () => {
     expect(route(comment("@bot summary"), { ...legacy, mentionTriggerPhrase: "summary" })).toMatchObject({ kind: "trigger", reviewAgentIds: ["review"] });
   });

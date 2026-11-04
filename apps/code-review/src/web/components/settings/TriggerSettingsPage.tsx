@@ -540,12 +540,12 @@ function TriggerSettingsForm({ repo, settings, guardianLogin, onSave, onRepair, 
           <fieldset disabled={busy} className="space-y-6">
             <Section title="When it runs">
               {tab === "review" ? <div className="divide-y">
-                <SettingRow title="When a PR is opened" checked={draft.autoReview && draft.triggerOnCreate} onChange={v => patch({ autoReview: v || (draft.autoReview && draft.triggerOnPush), triggerOnCreate: v, triggerOnPush: draft.autoReview && draft.triggerOnPush })} />
+                <SettingRow title="When a PR is opened or marked ready for review" checked={draft.autoReview && draft.triggerOnCreate} onChange={v => patch({ autoReview: v || (draft.autoReview && draft.triggerOnPush), triggerOnCreate: v, triggerOnPush: draft.autoReview && draft.triggerOnPush })} />
                 <SettingRow title="When new commits are pushed" checked={draft.autoReview && draft.triggerOnPush} onChange={v => patch({ autoReview: v || (draft.autoReview && draft.triggerOnCreate), triggerOnPush: v, triggerOnCreate: draft.autoReview && draft.triggerOnCreate })} />
                 <SettingRow title="When a review is requested" description={`Only requests addressed to ${bot}.`} checked={draft.manualTriggerEnabled && draft.triggerOnReviewRequest} onChange={v => patch({ manualTriggerEnabled: v || (draft.manualTriggerEnabled && draft.triggerOnMention), triggerOnReviewRequest: v, triggerOnMention: draft.manualTriggerEnabled && draft.triggerOnMention })} />
                 <SettingRow title="On a trigger comment" checked={draft.manualTriggerEnabled && draft.triggerOnMention} onChange={v => patch({ manualTriggerEnabled: v || (draft.manualTriggerEnabled && draft.triggerOnReviewRequest), triggerOnMention: v, triggerOnReviewRequest: draft.manualTriggerEnabled && draft.triggerOnReviewRequest })} />
               </div> : tab === "security" || tab === "designAlternatives" ? <div className="divide-y">
-                <SettingRow title="When a PR is opened" checked={a[tab].onCreate} onChange={v => patchAgent({ [tab]: { ...a[tab], onCreate: v } })} />
+                <SettingRow title="When a PR is opened or marked ready for review" checked={a[tab].onCreate} onChange={v => patchAgent({ [tab]: { ...a[tab], onCreate: v } })} />
                 <SettingRow title="When new commits are pushed" checked={a[tab].onPush} onChange={v => patchAgent({ [tab]: { ...a[tab], onPush: v } })} />
                 <SettingRow title="When a review is requested" description={`Only requests addressed to ${bot}.`} checked={a[tab].onReviewRequest} onChange={v => patchAgent({ [tab]: { ...a[tab], onReviewRequest: v } })} />
                 <SettingRow title="On its own trigger comment" checked={a[tab].onMention} onChange={v => patchAgent({ [tab]: { ...a[tab], onMention: v } })} />

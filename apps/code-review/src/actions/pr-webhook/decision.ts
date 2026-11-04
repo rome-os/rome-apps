@@ -8,6 +8,7 @@ export interface GitHubPullRequest {
   number: number;
   title?: string;
   html_url?: string;
+  draft?: boolean;
   user?: GitHubUser;
   head?: { sha?: string };
   base?: { repo?: { full_name?: string } };
@@ -65,7 +66,7 @@ export interface TriggerAccessPolicy {
   blocklist?: string[];
 }
 
-export type PRReviewTriggerType = "pr_opened" | "pr_synchronize" | "review_requested" | "mention";
+export type PRReviewTriggerType = "pr_opened" | "pr_ready_for_review" | "pr_synchronize" | "review_requested" | "mention";
 
 export type TriggerDecision =
   | {
@@ -199,7 +200,9 @@ export function triggerActor(payload: GitHubWebhookPayload, triggerType: PRRevie
   if (triggerType === "mention") {
     return normalizeGitHubLogin(payload.comment?.user?.login);
   }
-  if (triggerType === "pr_opened") {
+  // Marking a draft ready gets the review a newly opened PR would get, so the
+  // same author-based access rule applies.
+  if (triggerType === "pr_opened" || triggerType === "pr_ready_for_review") {
     return normalizeGitHubLogin(payload.pull_request?.user?.login);
   }
   // Synchronize and review-request events must identify the person who caused
@@ -282,7 +285,9 @@ export function triggerMayNeedCurrentGitHubLogin(input: {
   }
 
   if (event !== "pull_request" || !payload.pull_request) return false;
-  if (action === "opened") return !!settings.autoReviewEnabled && !!settings.triggerOnCreate;
+  // Drafts are never auto-reviewed, so they need no login lookup.
+  if ((action === "opened" || action === "synchronize") && payload.pull_request.draft === true) return false;
+  if (action === "opened" || action === "ready_for_review") return !!settings.autoReviewEnabled && !!settings.triggerOnCreate;
   if (action === "synchronize") return !!settings.autoReviewEnabled && !!settings.triggerOnPush;
   if (action === "review_requested") return !!settings.triggerOnRequest && !!settings.triggerOnReviewRequest;
   return false;
@@ -394,7 +399,20 @@ export function decidePRReviewTrigger(input: {
     return { kind: "error", error: "Missing pull_request in webhook payload." };
   }
 
-  if (action === "opened") {
+  // Draft PRs are work in progress: only an explicit request (review request,
+  // `@bot` command, dashboard run) reviews them. Marking the PR ready for
+  // review triggers the automatic review a new PR would get.
+  if ((action === "opened" || action === "synchronize") && pr.draft === true) {
+    return {
+      kind: "skip",
+      reason: `PR #${pr.number} is a draft; automatic reviews start when it is marked ready for review.`,
+      repo: repoSlug,
+      prNumber: pr.number,
+    };
+  }
+
+  if (action === "opened" || action === "ready_for_review") {
+    const triggerType = action === "opened" ? "pr_opened" : "pr_ready_for_review";
     if (!settings.autoReviewEnabled) {
       return { kind: "skip", reason: `Auto trigger is disabled for ${repoSlug}.` };
     }
@@ -404,11 +422,11 @@ export function decidePRReviewTrigger(input: {
     if (!currentGitHubLogin) {
       return { kind: "skip", reason: "Could not resolve GitHub bot login for PR opener filtering." };
     }
-    const actorLogin = triggerActor(payload, "pr_opened");
+    const actorLogin = triggerActor(payload, triggerType);
     if (!isTriggerActorAllowed(actorLogin, currentGitHubLogin, triggerAccessPolicy(settings))) {
       return { kind: "skip", reason: actorDeniedReason("PR opener", actorLogin, settings) };
     }
-    return { kind: "trigger", repo: repoSlug, prNumber: pr.number, action, pr, triggerType: "pr_opened", actorLogin };
+    return { kind: "trigger", repo: repoSlug, prNumber: pr.number, action, pr, triggerType, actorLogin };
   }
 
   if (action === "synchronize") {
