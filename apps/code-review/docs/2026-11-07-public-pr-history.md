@@ -14,6 +14,8 @@
   bodies, historical titles/requesters, errors, prompts, project memory, session
   references, or task tokens. Completed local review text is not necessarily what
   was published to GitHub; full text is available via the GitHub links instead.
+- Public visibility subprocesses share a 30/minute, two-concurrent budget;
+  saturation returns 429 before spawning GitHub. Guardian reads bypass it.
 - Guardian history remains unchanged. Public UI omits Back, Re-review, run/task
   details and session links; it neither loads guardian APIs nor reads/writes the
   guardian dashboard cache. Avatars do not require the private profile endpoint.
@@ -34,7 +36,10 @@ page public or inventing a manifest field. No app-wide sharing setting is change
 
 - App typecheck: passed.
 - App production build: passed.
-- App tests: 15 files, 143 tests passed, including 30 new access/projection cases.
+- Workspace typecheck and full suite: passed (489 tests before review fixes).
+- Built handler smoke with real GitHub and an in-memory DB: public 200,
+  unknown repo 404, dashboard 403. No installation needed for that test.
+- App tests: 16 files, 148 tests passed, including 35 new access/projection cases.
 - Tests exercise anonymous + visitor callers (including forged identity headers),
   case-insensitive history matching, unknown/private/internal/error visibility,
   public-to-private transitions, invalid inputs, guardian payload preservation,

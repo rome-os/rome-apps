@@ -22,11 +22,13 @@ import {
   type RunAction,
 } from "../utils/github-events.js";
 
+import { createPublicHistoryBudget } from "../lib/public-history-budget.js";
 import { publicPRHistory } from "../lib/public-pr-history.js";
 import { queueReviews } from "../lib/queue-reviews.js";
 
 const log = createAppLogger("code-review_api");
 const execFileAsync = promisify(execFile);
+const acquirePublicHistoryBudget = createPublicHistoryBudget();
 
 /**
  * Process-lifetime guard for the boot self-heal reconcile.
@@ -523,8 +525,20 @@ class GuardianApiHandler implements RomeAppApiHandler {
       }
       // Authorization must not reuse a cached public result after a repository
       // turns private. Reuse the dashboard helper, but refresh for public reads.
-      if (!isGuardian && await readRepoVisibility(repoName, true) !== "public") {
-        return json({ error: "not_found" }, { status: 404, headers: { "cache-control": "no-store" } });
+      if (!isGuardian) {
+        const release = acquirePublicHistoryBudget();
+        if (!release) {
+          return json({ error: "too_many_requests" }, {
+            status: 429, headers: { "retry-after": "60", "cache-control": "no-store" },
+          });
+        }
+        try {
+          if (await readRepoVisibility(repoName, true) !== "public") {
+            return json({ error: "not_found" }, { status: 404, headers: { "cache-control": "no-store" } });
+          }
+        } finally {
+          release();
+        }
       }
       const repo = await loadScanRepository(this.ctx);
       const reviews = repo.listPRReviewsForPR(repoName, prNumber);

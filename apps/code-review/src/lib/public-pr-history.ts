@@ -76,7 +76,7 @@ export function publicPRHistory(repo: string, number: number, reviews: PRReview[
         number,
         headSha: null,
         triggerCommentId: null,
-        intent: ["general", "update-memory", "code-task", "none"].includes(t.intent) ? t.intent : "general",
+        intent: ["general", "summary", "update-memory", "code-task", "none"].includes(t.intent) ? t.intent : "general",
         commentBody: null,
         status: TASK_STATUSES.has(t.status) ? t.status : "unknown",
         stageHistory: null,

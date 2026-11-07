@@ -91,6 +91,22 @@ describe("PR history access boundary", () => {
     expect(mocks.gh).toHaveBeenCalledTimes(3);
   });
 
+  it("rejects excess concurrent lookups before starting another GitHub subprocess", async () => {
+    const pending: ((value: { stdout: string }) => void)[] = [];
+    mocks.gh.mockImplementation(() => new Promise(resolve => pending.push(resolve)));
+    const a = request();
+    const b = request();
+    const res = await request();
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("60");
+    expect(mocks.gh).toHaveBeenCalledTimes(2);
+    for (const resolve of pending) resolve({ stdout: "public" });
+    expect((await a).status).toBe(200);
+    expect((await b).status).toBe(200);
+    mocks.gh.mockResolvedValue({ stdout: "public" });
+    expect((await request()).status).toBe(200);
+  });
+
   it("preserves full guardian access without a GitHub visibility lookup", async () => {
     const { review, task } = seed();
     mocks.gh.mockRejectedValue(new Error("offline"));

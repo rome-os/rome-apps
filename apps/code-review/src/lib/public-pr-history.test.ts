@@ -34,6 +34,11 @@ describe("public history projection", () => {
     expect(JSON.stringify(data)).not.toMatch(/private|secret/);
   });
 
+  it("preserves the standard summary intent without exposing result bodies", () => {
+    const data = publicPRHistory("o/r", 1, [], [{ ...task, intent: "summary", resultRef: JSON.stringify({ body: "private summary" }) }]);
+    expect(data.tasks[0]).toMatchObject({ intent: "summary", resultRef: null });
+  });
+
   it("omits malformed result JSON and unknown/custom status and intent strings", () => {
     const data = publicPRHistory("o/r", 1, [{ ...review, status: "private error" }], [{ ...task, resultRef: "{bad", status: "private error", intent: "private intent" }]);
     expect(data.reviews[0].status).toBe("unknown");
