@@ -233,6 +233,14 @@ function ReviewEntry({
           {r.reviewComment ? (
             <Collapsible expanded={expanded} onToggle={onToggle} label="Show full review">
               <MarkdownBlock className="sd-compact">{r.reviewComment}</MarkdownBlock>
+              {r.findings?.map((finding) => (
+                <div key={finding.url} className="mt-4 border-t pt-3">
+                  <a href={finding.url} target="_blank" rel="noreferrer" className="break-all font-mono text-xs text-primary hover:underline">
+                    {finding.path}{finding.line != null ? `:${finding.line}` : ""}
+                  </a>
+                  <MarkdownBlock className="sd-compact">{finding.body}</MarkdownBlock>
+                </div>
+              ))}
             </Collapsible>
           ) : (
             <p className="py-1 text-sm text-muted-foreground">
@@ -530,10 +538,6 @@ export function PRHistoryPage({
             dismiss
           </button>
         </div>
-      )}
-
-      {!isGuardian && history && (
-        <p className="mb-4 text-sm text-muted-foreground">Full reviews and replies are available on GitHub.</p>
       )}
 
       {/* ---------- Toolbar ---------- */}

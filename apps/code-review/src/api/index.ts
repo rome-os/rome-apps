@@ -23,12 +23,27 @@ import {
 } from "../utils/github-events.js";
 
 import { createPublicHistoryBudget } from "../lib/public-history-budget.js";
+import { readPublishedPRHistory } from "../lib/published-pr-history.js";
 import { publicPRHistory } from "../lib/public-pr-history.js";
 import { queueReviews } from "../lib/queue-reviews.js";
 
 const log = createAppLogger("code-review_api");
 const execFileAsync = promisify(execFile);
 const acquirePublicHistoryBudget = createPublicHistoryBudget();
+class PublicHistoryBudgetExceeded extends Error {}
+
+async function readPublicHistoryPage(endpoint: string): Promise<string> {
+  const release = acquirePublicHistoryBudget();
+  if (!release) throw new PublicHistoryBudgetExceeded();
+  try {
+    const { stdout } = await execFileAsync("gh", ["api", endpoint], {
+      encoding: "utf-8", timeout: 10000, maxBuffer: 4 * 1024 * 1024,
+    });
+    return stdout;
+  } finally {
+    release();
+  }
+}
 
 /**
  * Process-lifetime guard for the boot self-heal reconcile.
@@ -547,7 +562,14 @@ class GuardianApiHandler implements RomeAppApiHandler {
         const reviews = repo.listPRReviewsForPR(repoName, prNumber);
         const tasks = repo.listMentionTasksForPR(repoName, prNumber);
         if (!isGuardian) {
-          return json(publicPRHistory(repoName, prNumber, reviews, tasks), {
+          const metadata = publicPRHistory(repoName, prNumber, reviews, tasks);
+          const hasPublishedReference = metadata.reviews.some(r => r.status === "completed" && r.githubCommentUrl)
+            || metadata.tasks.some(t => t.status === "completed" && t.resultRef);
+          const history = hasPublishedReference
+            ? publicPRHistory(repoName, prNumber, reviews, tasks,
+                await readPublishedPRHistory(repoName, prNumber, readPublicHistoryPage))
+            : metadata;
+          return json(history, {
             headers: { "cache-control": "no-store" },
           });
         }
@@ -563,6 +585,11 @@ class GuardianApiHandler implements RomeAppApiHandler {
         }, { headers: { "cache-control": "no-store" } });
       } catch (error) {
         if (isGuardian) throw error;
+        if (error instanceof PublicHistoryBudgetExceeded) {
+          return json({ error: "too_many_requests" }, {
+            status: 429, headers: { "retry-after": "60", "cache-control": "no-store" },
+          });
+        }
         // Core's generic dispatch error includes exception messages. Keep DB or
         // module-loader details out of the public response as well as row data.
         log.error("Public PR history read failed");

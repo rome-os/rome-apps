@@ -1,4 +1,5 @@
 import type { MentionTask, PRReview } from "../db/repositories/repo.js";
+import type { PublishedPRHistory } from "./published-pr-history.js";
 
 /** Only link to this PR, never to a private result repo or an internal URL. */
 function githubResultUrl(value: unknown, prUrl: string): string | null {
@@ -23,13 +24,16 @@ const TASK_STATUSES = new Set(["queued", "running", "posting", "completed", "fai
 const LENSES: Record<string, string> = { security: "Security", "design-alternatives": "Design & Alternatives" };
 
 /**
- * Public history is run metadata, not a dump of agent output. Even a completed
- * review's local text can contain unposted findings/raw output; task results can
- * contain private memory summaries and errors. Link to GitHub for the published
- * text instead. Explicit projections keep future DB columns private by default.
+ * GitHub is authoritative for text: local completed output may include raw agent
+ * output or unposted findings; memory-task bodies include unpublished memory.
+ * Match only validated same-PR result links to PR-scoped GitHub collections.
+ * Explicit projections keep future DB/provider fields private by default.
  * Task ids are bearer capabilities in the submit flow: use page-local ids.
  */
-export function publicPRHistory(repo: string, number: number, reviews: PRReview[], tasks: MentionTask[]) {
+export function publicPRHistory(
+  repo: string, number: number, reviews: PRReview[], tasks: MentionTask[],
+  published: PublishedPRHistory = { reviews: [], inline: [], comments: [] },
+) {
   const url = `https://github.com/${repo}/pull/${number}`;
   return {
     repo,
@@ -39,9 +43,21 @@ export function publicPRHistory(repo: string, number: number, reviews: PRReview[
     url,
     reviews: reviews.map((r, i) => {
       const githubCommentUrl = githubResultUrl(r.githubCommentUrl, url);
-      const verdict = r.status === "completed" && githubCommentUrl
-        ? r.reviewComment?.match(/Verdict:?\**\s*\**\s*(APPROVE|REQUEST[_ ]CHANGES|COMMENT)\b/i)?.[1]
-        : null;
+      const postedReview = r.status === "completed" && githubCommentUrl
+        ? published.reviews.find(p => ["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"].includes(p.state) && githubResultUrl(p.html_url, url) === githubCommentUrl)
+        : undefined;
+      // Older versions posted plain issue comments instead of PR reviews.
+      const postedComment = r.status === "completed" && githubCommentUrl
+        ? published.comments.find(p => githubResultUrl(p.html_url, url) === githubCommentUrl)
+        : undefined;
+      const findings = postedReview ? published.inline
+        .filter(p => p.pull_request_review_id === postedReview.id && githubResultUrl(p.html_url, url))
+        .map(p => ({
+          path: typeof p.path === "string" ? p.path : "",
+          line: Number.isSafeInteger(p.line) ? p.line : Number.isSafeInteger(p.original_line) ? p.original_line : null,
+          body: typeof p.body === "string" ? p.body : "",
+          url: githubResultUrl(p.html_url, url)!,
+        })) : [];
       const lensId = r.lensId && Object.hasOwn(LENSES, r.lensId) ? r.lensId : null;
       return {
         id: `review-${i + 1}`,
@@ -56,7 +72,8 @@ export function publicPRHistory(repo: string, number: number, reviews: PRReview[
         lensInstructions: null,
         status: REVIEW_STATUSES.has(r.status) ? r.status : "unknown",
         stageHistory: null,
-        reviewComment: verdict ? `Verdict: ${verdict.toUpperCase().replace(" ", "_")}` : null,
+        reviewComment: typeof (postedReview ?? postedComment)?.body === "string" ? (postedReview ?? postedComment)!.body : null,
+        findings,
         githubCommentUrl,
         romeSession: null,
         startedAt: r.startedAt,
@@ -69,6 +86,12 @@ export function publicPRHistory(repo: string, number: number, reviews: PRReview[
         const result = JSON.parse(t.resultRef ?? "null");
         resultUrl = githubResultUrl(result?.url ?? result?.replyUrl ?? result?.prUrl, url);
       } catch { /* Malformed/legacy results stay private. */ }
+      const postedReply = t.status === "completed" && resultUrl
+        ? published.comments.find(p => githubResultUrl(p.html_url, url) === resultUrl)
+          ?? published.inline.find(p => githubResultUrl(p.html_url, url) === resultUrl
+            && published.reviews.some(r => r.id === p.pull_request_review_id
+              && ["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"].includes(r.state)))
+        : undefined;
       return {
         id: `mention-${i + 1}`,
         repo,
@@ -80,7 +103,10 @@ export function publicPRHistory(repo: string, number: number, reviews: PRReview[
         commentBody: null,
         status: TASK_STATUSES.has(t.status) ? t.status : "unknown",
         stageHistory: null,
-        resultRef: resultUrl ? JSON.stringify({ url: resultUrl }) : null,
+        resultRef: resultUrl ? JSON.stringify({
+          url: resultUrl,
+          body: typeof postedReply?.body === "string" ? postedReply.body : null,
+        }) : null,
         romeSession: null,
         actorLogin: null,
         createdAt: t.createdAt,
