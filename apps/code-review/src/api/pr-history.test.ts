@@ -39,7 +39,7 @@ describe("PR history access boundary", () => {
   afterEach(() => sqlite.close());
 
   const request = (kind = "anonymous", method = "GET", path = "pr-history", query = { repo: "Rome-OS/Rome", number: "1804" }) =>
-    handler.handle({ method, path: path.split("/"), query: new URLSearchParams(query), caller: { kind },
+    handler.handle({ method, path: path ? path.split("/") : [], query: new URLSearchParams(query), caller: { kind },
       headers: { "x-rome-user-id": "guardian", "x-rome-visitor-email": "owner@example.com" } } as any);
 
   function seed() {
@@ -136,14 +136,26 @@ describe("PR history access boundary", () => {
 
   it.each(["anonymous", "visitor"])("structurally denies all other routes and methods to %s", async kind => {
     ctx.db = null;
-    for (const [method, path] of [
-      ["GET", "dashboard"], ["GET", "repositories"], ["POST", "repositories"], ["DELETE", "repositories/id"],
-      ["GET", "activity"], ["GET", "gh-auth-status"], ["GET", "github-users/owner"],
-      ["GET", "pr-review-settings"], ["POST", "pr-review-settings"], ["GET", "project-memory"], ["POST", "project-memory"],
-      ["GET", "pr-reviews"], ["GET", "pr-reviews/id"], ["POST", "pr-reviews"], ["POST", "pr-reviews/id/cancel"],
-      ["GET", "mention-tasks/id"], ["POST", "connection/repair"], ["GET", "future-route"],
-      ["POST", "pr-history"], ["DELETE", "pr-history"], ["HEAD", "pr-history"], ["GET", "pr-history/extra"],
-    ]) expect((await request(kind, method, path)).status, `${method} ${path}`).toBe(403);
+    // Inventory of every handler branch, including parameterized routes, root,
+    // retired/unknown routes and likely webhook paths. Every method is denied:
+    // adding a method or a future route cannot accidentally make it public.
+    const privatePaths = [
+      "", "dashboard", "repositories", "repositories/id", "activity", "gh-auth-status", "github-users/owner",
+      "pr-review-settings", "pr-review-settings/rome-os%2Frome", "project-memory",
+      "pr-reviews", "pr-reviews/id", "pr-reviews/id/cancel", "mention-tasks", "mention-tasks/id",
+      "connection/repair", "review-lenses", "webhook", "webhook/github", "pr-webhook", "future-route",
+      "pr-history/extra", "pr-history%2Fextra", "pr-history/../dashboard", "PR-history",
+    ];
+    for (const path of privatePaths) {
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]) {
+        const res = await request(kind, method, path);
+        expect(res.status, `${method} ${path}`).toBe(403);
+        expect(await res.json()).toEqual({ error: "forbidden" });
+      }
+    }
+    for (const method of ["POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]) {
+      expect((await request(kind, method, "pr-history")).status, `${method} pr-history`).toBe(403);
+    }
     expect(mocks.gh).not.toHaveBeenCalled();
     expect(ctx.runAction).not.toHaveBeenCalled();
   });

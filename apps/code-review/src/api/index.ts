@@ -493,7 +493,9 @@ class GuardianApiHandler implements RomeAppApiHandler {
     const route = request.path.join("/");
 
     const isGuardian = request.caller.kind === "guardian";
-    // One exact read is public. Keep this guard ahead of all other dispatch,
+    // Public app access opens both API transports at the edge. Trust only the
+    // host-supplied caller (never identity headers). One exact read is public.
+    // Keep this guard ahead of all other dispatch,
     // DB reads, CLI calls and reconciliation, including future endpoints.
     if (!isGuardian && !(request.method === "GET" && route === "pr-history")) {
       return json({ error: "forbidden" }, { status: 403 });

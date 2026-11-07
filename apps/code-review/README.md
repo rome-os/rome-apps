@@ -22,6 +22,16 @@ Every pull request deserves a fast first pass. Code Review watches your GitHub r
 - Keeps a review history dashboard in Rome for status, results, and follow-up.
 - Groups every review run and bot conversation on a PR into one history view, so you can trace how the feedback evolved. Each GitHub review links to that history in its footer.
 
+## Sharing PR history
+
+After installing **0.43.0 or later**, the owner can select **Apps → Code Review →
+Access → Public** once. Public GitHub repositories' PR-history links then work
+without login; dashboard, settings, review controls and all other data APIs stay
+owner-only. Private/internal/unknown repos are not exposed. Rome has no manifest
+field for default sharing, so new installations remain Private until this step.
+**Do not enable Public on 0.42.0**: that version has no app-level route gate.
+See [the access-boundary and deployment notes](docs/2026-11-07-public-pr-history.md).
+
 ## Best fit
 
 Use Code Review when review turnaround is a bottleneck, when a repo needs a reliable baseline quality gate, or when you want an always-available reviewer for side projects, prototypes, and small teams.
