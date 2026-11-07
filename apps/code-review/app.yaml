@@ -13,6 +13,9 @@ web:
   manifest: web/manifest.json
   displayName: Code Review
   navLabel: Code Review
+  # Requires https://github.com/rome-os/rome/pull/1808 (platform first).
+  publicPaths:
+    - /pr/*
 
 api:
   entry: api/index

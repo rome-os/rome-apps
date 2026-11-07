@@ -21,17 +21,17 @@
   details and session links; it neither loads guardian APIs nor reads/writes the
   guardian dashboard cache. Avatars do not require the private profile endpoint.
 
-## Platform prerequisite (not silently worked around)
+## Platform dependency and merge order
 
-The deployed Rome manifest schema has `api.noAuth`, but no per-page public-route
-field. `noAuth` opens only `/api/app-api/...`, not `/api/apps/.../manifest`.
-`packages/web/src/lib/auth-routing.ts` permits anonymous app pages only when the
-app is in the app-wide public access setting. The example public apps use that
-setting, not a manifest page declaration. Thus this app change alone does **not**
-make `/apps/code-review/pr/rome-os/rome/1804` login-free with the app kept private.
-A route-scoped public page/manifest/bootstrap contract in Rome is required to
-complete the exact page URL requirement. Do not work around it by making every
-page public or inventing a manifest field. No app-wide sharing setting is changed.
+- `web.publicPaths: ["/pr/*"]` declares only the PR-history page namespace.
+  Rome admits those pages and their path-specific rendering manifests without
+  opening any dashboard-side data API. Public history data still uses only
+  `api.noAuth: ["/pr-history"]` and the visibility/redaction boundary above.
+- Merge and deploy https://github.com/rome-os/rome/pull/1808 first, then merge/publish
+  this app PR. Current deployed Rome uses a strict schema and rejects the new
+  field. This PR remains draft until the platform support merges.
+- Do not install this manifest on the current live runtime. No app-wide
+  sharing setting changes are needed.
 
 ## Validation
 
@@ -57,3 +57,18 @@ page public or inventing a manifest field. No app-wide sharing setting is change
   for the history page 401 (confirms the platform prerequisite).
 - Restored installed hash:
   `e6233cde6a95d2ed12495220869d8ba6b98aece4ad92df3647e33ad450fe6cfe`.
+
+## Companion platform verification
+
+- The platform worktree declares `web.publicPaths` using the existing exact and
+  prefix pattern contract. Caddy gates app documents and the manifest GET/HEAD
+  is admitted only for a matching requested page. Dashboard-side data APIs stay
+  closed. The caller stays anonymous and app-wide access stays private.
+- Local Chrome plus real Caddy, changed core, this app bundle and an in-memory
+  DB: the exact history path loads anonymously, redirects to standalone, and
+  shows sanitized history without guardian controls or page errors. Sibling
+  settings pages, dashboard-side data and manifest POST return 401.
+- Checked desktop 1280×900, phone 390×844 and narrow 320×800 with no horizontal
+  overflow. No new live install or sharing change was used for this check.
+- Merge order: platform #1808, then app #39. Keep #39 draft while the strict
+  deployed runtime cannot accept this manifest.
