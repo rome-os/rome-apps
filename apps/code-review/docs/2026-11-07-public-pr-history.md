@@ -66,8 +66,10 @@
   closed. The caller stays anonymous and app-wide access stays private.
 - Local Chrome plus real Caddy, changed core, this app bundle and an in-memory
   DB: the exact history path loads anonymously, redirects to standalone, and
-  shows sanitized history without guardian controls or page errors. Sibling
-  settings pages, dashboard-side data and manifest POST return 401.
+  shows sanitized history without guardian controls or page errors. The verify probe denies sibling
+  pages with 401. Caddy returns only the generic public shell for sign-in on
+  denied documents. Private rendering manifests, dashboard-side data and
+  manifest POST still return 401.
 - Checked desktop 1280×900, phone 390×844 and narrow 320×800 with no horizontal
   overflow. No new live install or sharing change was used for this check.
 - Merge order: platform #1808, then app #39. Keep #39 draft while the strict
