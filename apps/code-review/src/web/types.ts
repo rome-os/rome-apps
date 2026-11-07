@@ -28,6 +28,8 @@ export interface PRReviewData {
   stageHistory: string | null;
   reviewComment: string | null;
   githubCommentUrl: string | null;
+  /** Verified published inline comments; body includes GitHub's severity label. */
+  findings?: { path: string; line?: number | null; body: string; url: string }[];
   /** Opaque durable Rome session of the summoned review agent, when available. */
   romeSession: RomeSessionRef | null;
   startedAt: string;

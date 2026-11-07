@@ -1,7 +1,8 @@
 import "./styles.css";
 import "streamdown/styles.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchAppApi, getBootstrap, type RomeAppBootstrap } from "@rome-os/app-web-sdk";
+import { fetchAppApi, getBootstrap, useCaller, type RomeAppBootstrap } from "@rome-os/app-web-sdk";
+import { PrivatePage } from "./components/PrivatePage";
 import { HomeDashboard } from "@/components/home/HomeDashboard";
 import { ReviewDetailPage } from "@/components/reviews/ReviewDetailPage";
 import { MentionTaskDetailPage } from "@/components/reviews/MentionTaskDetailPage";
@@ -18,10 +19,11 @@ export default function App({
   bootstrap: RomeAppBootstrap;
 }) {
   const appVersion = _bootstrap.version;
+  const isGuardian = useCaller()?.kind === "guardian";
   // Seed the first screen synchronously from a version-matched cache so a
   // returning visit paints real content instantly (stale-while-revalidate); a
   // cold/invalidated cache leaves everything null → the skeleton shows.
-  const [initialCache] = useState(() => readHomeCache(appVersion));
+  const [initialCache] = useState(() => isGuardian ? readHomeCache(appVersion) : null);
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(() => initialCache?.dashboard ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -165,9 +167,8 @@ export default function App({
     setLoadingPRHistory(true);
     setError(null);
     try {
-      const apiBase = getBootstrap().apiBase;
-      const response = await fetch(
-        `${apiBase}/pr-history?repo=${encodeURIComponent(pr.repo)}&number=${pr.number}`,
+      const response = await fetchAppApi(
+        `pr-history?repo=${encodeURIComponent(pr.repo)}&number=${pr.number}`,
         { signal: controller.signal },
       );
       if (!response.ok) throw new Error(`Failed to load PR history (HTTP ${response.status})`);
@@ -386,6 +387,7 @@ export default function App({
   }, [loadDashboard]);
 
   useEffect(() => {
+    if (!isGuardian) return;
     void loadDashboard();
     void checkGhAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,7 +397,7 @@ export default function App({
   // version-keyed cache whenever it changes, so the next visit paints instantly.
   // Only the default first-screen state is cached — not paged/filtered views.
   useEffect(() => {
-    if (!dashboard) return;
+    if (!isGuardian || !dashboard) return;
     if (activityFilter !== "all" || activityPage !== 1) return;
     writeHomeCache(appVersion, {
       dashboard,
@@ -430,7 +432,7 @@ export default function App({
   }, []);
 
   useEffect(() => {
-    if (!routeReviewId) {
+    if (!isGuardian || !routeReviewId) {
       setSelectedReview(null);
       return;
     }
@@ -438,7 +440,7 @@ export default function App({
   }, [routeReviewId, loadReviewDetail]);
 
   useEffect(() => {
-    if (!routeMentionTaskId) {
+    if (!isGuardian || !routeMentionTaskId) {
       setSelectedTask(null);
       return;
     }
@@ -531,7 +533,9 @@ export default function App({
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
-      {routeIsTriggerSettings ? (
+      {!isGuardian && !routePR ? (
+        <PrivatePage />
+      ) : routeIsTriggerSettings ? (
         <TriggerSettingsPage
           dashboard={dashboard}
           ghAuth={ghAuth}
@@ -548,6 +552,7 @@ export default function App({
         />
       ) : routePR ? (
         <PRHistoryPage
+          isGuardian={isGuardian}
           repo={routePR.repo}
           prNumber={routePR.number}
           history={prHistory}
