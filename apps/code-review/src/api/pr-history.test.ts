@@ -91,6 +91,14 @@ describe("PR history access boundary", () => {
     expect(mocks.gh).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps internal database/module errors out of the public response", async () => {
+    ctx.db = null;
+    const res = await request();
+    expect(res.status).toBe(500);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({ error: "history_unavailable" });
+  });
+
   it("rejects excess concurrent lookups before starting another GitHub subprocess", async () => {
     const pending: ((value: { stdout: string }) => void)[] = [];
     mocks.gh.mockImplementation(() => new Promise(resolve => pending.push(resolve)));

@@ -12,7 +12,8 @@
 - Public responses are explicit metadata projections with page-local IDs, fixed
   statuses/lens labels/verdicts and same-PR GitHub links. No stored review/reply
   bodies, historical titles/requesters, errors, prompts, project memory, session
-  references, or task tokens. Completed local review text is not necessarily what
+  references, or task tokens. Unexpected public read errors return a generic
+  message rather than the platform dispatcher's exception details. Completed local review text is not necessarily what
   was published to GitHub; full text is available via the GitHub links instead.
 - Public visibility subprocesses share a 30/minute, two-concurrent budget;
   saturation returns 429 before spawning GitHub. Guardian reads bypass it.
@@ -36,10 +37,12 @@ page public or inventing a manifest field. No app-wide sharing setting is change
 
 - App typecheck: passed.
 - App production build: passed.
-- Workspace typecheck and full suite: passed (489 tests before review fixes).
+- Workspace typecheck: passed. Full source suite: 59 files, 495 tests passed
+  (`pnpm exec vitest run --exclude '**/.rome/**'`; exclude the generated
+  install artifact so its bundled tests are not counted a second time).
 - Built handler smoke with real GitHub and an in-memory DB: public 200,
   unknown repo 404, dashboard 403. No installation needed for that test.
-- App tests: 16 files, 148 tests passed, including 35 new access/projection cases.
+- App tests: 16 files, 149 tests passed, including 36 new access/projection cases.
 - Tests exercise anonymous + visitor callers (including forged identity headers),
   case-insensitive history matching, unknown/private/internal/error visibility,
   public-to-private transitions, invalid inputs, guardian payload preservation,

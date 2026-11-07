@@ -540,24 +540,34 @@ class GuardianApiHandler implements RomeAppApiHandler {
           release();
         }
       }
-      const repo = await loadScanRepository(this.ctx);
-      const reviews = repo.listPRReviewsForPR(repoName, prNumber);
-      const tasks = repo.listMentionTasksForPR(repoName, prNumber);
-      if (!isGuardian) {
-        return json(publicPRHistory(repoName, prNumber, reviews, tasks), {
-          headers: { "cache-control": "no-store" },
+      try {
+        const repo = await loadScanRepository(this.ctx);
+        const reviews = repo.listPRReviewsForPR(repoName, prNumber);
+        const tasks = repo.listMentionTasksForPR(repoName, prNumber);
+        if (!isGuardian) {
+          return json(publicPRHistory(repoName, prNumber, reviews, tasks), {
+            headers: { "cache-control": "no-store" },
+          });
+        }
+        const latest = reviews.filter((r) => !r.lensId).at(-1) ?? reviews.at(-1);
+        return json({
+          repo: repoName,
+          number: prNumber,
+          title: latest?.prTitle ?? null,
+          author: latest?.prAuthor ?? null,
+          url: latest?.prUrl ?? `https://github.com/${repoName}/pull/${prNumber}`,
+          reviews,
+          tasks,
+        }, { headers: { "cache-control": "no-store" } });
+      } catch (error) {
+        if (isGuardian) throw error;
+        // Core's generic dispatch error includes exception messages. Keep DB or
+        // module-loader details out of the public response as well as row data.
+        log.error("Public PR history read failed");
+        return json({ error: "history_unavailable" }, {
+          status: 500, headers: { "cache-control": "no-store" },
         });
       }
-      const latest = reviews.filter((r) => !r.lensId).at(-1) ?? reviews.at(-1);
-      return json({
-        repo: repoName,
-        number: prNumber,
-        title: latest?.prTitle ?? null,
-        author: latest?.prAuthor ?? null,
-        url: latest?.prUrl ?? `https://github.com/${repoName}/pull/${prNumber}`,
-        reviews,
-        tasks,
-      }, { headers: { "cache-control": "no-store" } });
     }
 
     // --- GitHub CLI auth status ---
