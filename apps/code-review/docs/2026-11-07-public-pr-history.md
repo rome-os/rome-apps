@@ -44,3 +44,13 @@ page public or inventing a manifest field. No app-wide sharing setting is change
   case-insensitive history matching, unknown/private/internal/error visibility,
   public-to-private transitions, invalid inputs, guardian payload preservation,
   all other route/method rejection, capability redaction and unsafe result links.
+- Bot review: Design & Alternatives approved; main review found no P0/P1.
+  Addressed its P2 lookup-budget and P3 summary-intent findings with tests.
+- Briefly installed committed branch `2767dc5` for transport verification, then
+  restored the exact Store 0.42.0 build/hash recorded below. No publish or
+  access-setting change occurred.
+- Anonymous HTTPS probes: public history 200 with five projected runs, unknown
+  repo 404, dashboard API 401, dashboard-side history API 401, and app manifest
+  for the history page 401 (confirms the platform prerequisite).
+- Restored installed hash:
+  `e6233cde6a95d2ed12495220869d8ba6b98aece4ad92df3647e33ad450fe6cfe`.
