@@ -22,6 +22,7 @@ import {
   type RunAction,
 } from "../utils/github-events.js";
 
+import { publicPRHistory } from "../lib/public-pr-history.js";
 import { queueReviews } from "../lib/queue-reviews.js";
 
 const log = createAppLogger("code-review_api");
@@ -32,7 +33,7 @@ const execFileAsync = promisify(execFile);
  *
  * `createApiHandler` builds a fresh `GuardianApiHandler` on EVERY request to
  * `/api/apps/code-review/*` (the core dispatcher has no handler cache). The
- * constructor's self-heal must therefore NOT run per-request: a dashboard tab
+ * guardian-request self-heal must therefore NOT run per-request: a dashboard tab
  * polling every ~12s would otherwise fire a full webhook re-subscribe of every
  * active repo on each poll — an unbounded storm of `connector_github_subscribe`
  * + `search_routine` calls that hammers the GitHub API (risking secondary rate
@@ -246,11 +247,11 @@ function parseRepoVisibility(value: unknown): RepoVisibility | null {
   return value === "public" || value === "private" || value === "internal" ? value : null;
 }
 
-async function readRepoVisibility(repoName: string): Promise<RepoVisibility | null> {
+async function readRepoVisibility(repoName: string, refresh = false): Promise<RepoVisibility | null> {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repoName)) return null;
   const key = repoName.toLowerCase();
   const cached = repoVisibilityCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.visibility;
+  if (!refresh && cached && cached.expiresAt > Date.now()) return cached.visibility;
   let visibility: RepoVisibility | null = null;
   try {
     const { stdout } = await execFileAsync("gh", ["api", `repos/${repoName}`, "--jq", ".visibility"], {
@@ -283,19 +284,6 @@ class GuardianApiHandler implements RomeAppApiHandler {
 
   constructor(private readonly ctx: RomeAppContext) {
     this.runAction = (name, args) => this.ctx.runAction(name, args);
-    // Self-heal the connection on boot. Beyond re-creating manually deleted
-    // routines, this also converges both layers after an app upgrade adds a new
-    // GitHub event to GITHUB_EVENTS (e.g. `issues`): it re-subscribes the
-    // webhook so GitHub delivers the new event, and creates/enables the matching
-    // event-bus routine. Best-effort and fire-and-forget — errors are logged.
-    //
-    // Guarded to run at most ONCE per process (per app version): handlers are
-    // rebuilt per request, so an unguarded reconcile here becomes a subscription
-    // storm under dashboard polling. See `reconcileOnce`.
-    const key = `${this.ctx.app.id}@${this.ctx.app.version}`;
-    if (!reconcileOnce.has(key)) {
-      reconcileOnce.set(key, this._ensureRoutinesIfNeeded());
-    }
   }
 
   /**
@@ -501,6 +489,62 @@ class GuardianApiHandler implements RomeAppApiHandler {
 
   async handle(request: RomeAppApiRequest): Promise<Response> {
     const route = request.path.join("/");
+
+    const isGuardian = request.caller.kind === "guardian";
+    // One exact read is public. Keep this guard ahead of all other dispatch,
+    // DB reads, CLI calls and reconciliation, including future endpoints.
+    if (!isGuardian && !(request.method === "GET" && route === "pr-history")) {
+      return json({ error: "forbidden" }, { status: 403 });
+    }
+
+    if (isGuardian) {
+      // Self-heal on the first guardian request. Beyond re-creating deleted
+      // routines, this also converges both layers after an app upgrade adds a new
+      // GitHub event to GITHUB_EVENTS (e.g. `issues`): it re-subscribes the
+      // webhook so GitHub delivers the new event, and creates/enables the matching
+      // event-bus routine. Best-effort and fire-and-forget — errors are logged.
+      //
+      // Guarded to run at most ONCE per process (per app version): handlers are
+      // rebuilt per request, so an unguarded reconcile here becomes a subscription
+      // storm under dashboard polling. See `reconcileOnce`.
+      const key = `${this.ctx.app.id}@${this.ctx.app.version}`;
+      if (!reconcileOnce.has(key)) {
+        reconcileOnce.set(key, this._ensureRoutinesIfNeeded());
+      }
+    }
+
+    // --- PR history: every review run and mention task for one repo + PR pair ---
+    if (request.method === "GET" && route === "pr-history") {
+      const repoName = (request.query.get("repo") || "").trim();
+      const number = request.query.get("number") || "";
+      const prNumber = /^\d+$/.test(number) ? Number(number) : NaN;
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repoName) || !Number.isSafeInteger(prNumber) || prNumber <= 0) {
+        return json({ error: "repo (owner/name) and a positive PR number are required" }, { status: 400 });
+      }
+      // Authorization must not reuse a cached public result after a repository
+      // turns private. Reuse the dashboard helper, but refresh for public reads.
+      if (!isGuardian && await readRepoVisibility(repoName, true) !== "public") {
+        return json({ error: "not_found" }, { status: 404, headers: { "cache-control": "no-store" } });
+      }
+      const repo = await loadScanRepository(this.ctx);
+      const reviews = repo.listPRReviewsForPR(repoName, prNumber);
+      const tasks = repo.listMentionTasksForPR(repoName, prNumber);
+      if (!isGuardian) {
+        return json(publicPRHistory(repoName, prNumber, reviews, tasks), {
+          headers: { "cache-control": "no-store" },
+        });
+      }
+      const latest = reviews.filter((r) => !r.lensId).at(-1) ?? reviews.at(-1);
+      return json({
+        repo: repoName,
+        number: prNumber,
+        title: latest?.prTitle ?? null,
+        author: latest?.prAuthor ?? null,
+        url: latest?.prUrl ?? `https://github.com/${repoName}/pull/${prNumber}`,
+        reviews,
+        tasks,
+      }, { headers: { "cache-control": "no-store" } });
+    }
 
     // --- GitHub CLI auth status ---
     // Lightweight check the UI calls on load to decide whether to surface a
@@ -941,27 +985,6 @@ class GuardianApiHandler implements RomeAppApiHandler {
       const task = repo.getMentionTask(request.path[1]);
       if (!task) return json({ error: "not_found" }, { status: 404 });
       return json({ task });
-    }
-
-    // --- PR history: every review run and mention task for one repo + PR pair ---
-    if (request.method === "GET" && route === "pr-history") {
-      const repoName = (request.query.get("repo") || "").trim();
-      const prNumber = parseInt(request.query.get("number") || "", 10);
-      if (!/^[\w.-]+\/[\w.-]+$/.test(repoName) || !Number.isInteger(prNumber) || prNumber <= 0) {
-        return json({ error: "repo (owner/name) and a positive PR number are required" }, { status: 400 });
-      }
-      const reviews = repo.listPRReviewsForPR(repoName, prNumber);
-      const tasks = repo.listMentionTasksForPR(repoName, prNumber);
-      const latest = reviews.filter((r) => !r.lensId).at(-1) ?? reviews.at(-1);
-      return json({
-        repo: repoName,
-        number: prNumber,
-        title: latest?.prTitle ?? null,
-        author: latest?.prAuthor ?? null,
-        url: latest?.prUrl ?? `https://github.com/${repoName}/pull/${prNumber}`,
-        reviews,
-        tasks,
-      });
     }
 
     // --- Unified activity feed (PR reviews + new-flow mention tasks) ---

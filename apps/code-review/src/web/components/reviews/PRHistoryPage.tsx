@@ -185,12 +185,14 @@ function ReviewEntry({
   onToggle,
   isLatest,
   onOpenReview,
+  isGuardian,
 }: {
   entry: Extract<Entry, { kind: "review" }>;
   expanded: boolean;
   onToggle: () => void;
   isLatest: boolean;
   onOpenReview: (id: string) => void;
+  isGuardian: boolean;
 }) {
   const r = entry.review;
   const active = ACTIVE_REVIEW_STATUSES.has(r.status);
@@ -244,17 +246,17 @@ function ReviewEntry({
         </div>
 
         <div className="flex flex-wrap items-center gap-1 border-t px-2 py-1.5">
-          <ActionChip onClick={() => onOpenReview(r.id)}>
+          {isGuardian && <ActionChip onClick={() => onOpenReview(r.id)}>
             <History className="h-3.5 w-3.5" />
             Run details
-          </ActionChip>
+          </ActionChip>}
           {r.githubCommentUrl && (
             <LinkChip href={r.githubCommentUrl}>
               <MessageSquare className="h-3.5 w-3.5" />
               On GitHub
             </LinkChip>
           )}
-          {r.romeSession && (
+          {isGuardian && r.romeSession && (
             <ActionChip onClick={() => navigateRome({ path: "session", session: r.romeSession! })}>
               <Bot className="h-3.5 w-3.5" />
               Agent session
@@ -271,11 +273,13 @@ function MentionEntry({
   expanded,
   onToggle,
   onOpenTask,
+  isGuardian,
 }: {
   entry: Extract<Entry, { kind: "mention" }>;
   expanded: boolean;
   onToggle: () => void;
   onOpenTask: (id: string) => void;
+  isGuardian: boolean;
 }) {
   const t = entry.task;
   const meta = INTENT_META[t.intent] ?? { label: t.intent, Icon: MessageSquare };
@@ -334,17 +338,17 @@ function MentionEntry({
         </div>
 
         <div className="flex flex-wrap items-center gap-1 border-t px-2 py-1.5">
-          <ActionChip onClick={() => onOpenTask(t.id)}>
+          {isGuardian && <ActionChip onClick={() => onOpenTask(t.id)}>
             <History className="h-3.5 w-3.5" />
             Task details
-          </ActionChip>
+          </ActionChip>}
           {result.url && (
             <LinkChip href={result.url}>
               <MessageSquare className="h-3.5 w-3.5" />
               On GitHub
             </LinkChip>
           )}
-          {t.romeSession && (
+          {isGuardian && t.romeSession && (
             <ActionChip onClick={() => navigateRome({ path: "session", session: t.romeSession! })}>
               <Bot className="h-3.5 w-3.5" />
               Agent session
@@ -383,6 +387,7 @@ function HistorySkeleton() {
 }
 
 export function PRHistoryPage({
+  isGuardian,
   repo,
   prNumber,
   history,
@@ -396,6 +401,7 @@ export function PRHistoryPage({
   onOpenReview,
   onOpenTask,
 }: {
+  isGuardian: boolean;
   repo: string;
   prNumber: number;
   history: PRHistoryData | null;
@@ -468,10 +474,10 @@ export function PRHistoryPage({
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
+      {isGuardian && <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
         <ArrowLeft className="mr-1 h-4 w-4" />
         Back
-      </Button>
+      </Button>}
 
       {/* ---------- PR header ---------- */}
       <Card className="mb-6 gap-0 overflow-hidden p-0">
@@ -502,10 +508,10 @@ export function PRHistoryPage({
             <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading} aria-label="Refresh">
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </Button>
-            <Button size="sm" onClick={() => onTriggerReview(prUrl)} disabled={triggeringReview || reviewActive}>
+            {isGuardian && <Button size="sm" onClick={() => onTriggerReview(prUrl)} disabled={triggeringReview || reviewActive}>
               <Eye className="mr-1 h-3.5 w-3.5" />
               {triggeringReview ? "Starting…" : reviewActive ? "Reviewing…" : "Re-review"}
-            </Button>
+            </Button>}
           </div>
         </div>
 
@@ -524,6 +530,10 @@ export function PRHistoryPage({
             dismiss
           </button>
         </div>
+      )}
+
+      {!isGuardian && history && (
+        <p className="mb-4 text-sm text-muted-foreground">Full reviews and replies are available on GitHub.</p>
       )}
 
       {/* ---------- Toolbar ---------- */}
@@ -569,7 +579,7 @@ export function PRHistoryPage({
           <History className="h-9 w-9 text-muted-foreground/40" />
           <p className="mt-3 text-sm font-medium">No history for this PR yet</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Reviews and bot conversations on {repo}#{prNumber} will appear here. Start one with Re-review.
+            Reviews and bot conversations on {repo}#{prNumber} will appear here.{isGuardian && " Start one with Re-review."}
           </p>
         </Card>
       ) : visible.length === 0 ? (
@@ -580,6 +590,7 @@ export function PRHistoryPage({
             entry.kind === "review" ? (
               <ReviewEntry
                 key={entryKey(entry)}
+                isGuardian={isGuardian}
                 entry={entry}
                 isLatest={entry.review.id === latestReviewId}
                 expanded={expanded.has(entryKey(entry))}
@@ -589,6 +600,7 @@ export function PRHistoryPage({
             ) : (
               <MentionEntry
                 key={entryKey(entry)}
+                isGuardian={isGuardian}
                 entry={entry}
                 expanded={expanded.has(entryKey(entry))}
                 onToggle={() => toggle(entryKey(entry))}

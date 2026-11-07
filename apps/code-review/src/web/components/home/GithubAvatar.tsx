@@ -1,3 +1,4 @@
+import { useCaller } from "@rome-os/app-web-sdk";
 import { useEffect, useState } from "react";
 import { fetchGithubUserProfile, peekGithubAvatarUrl, withAvatarSize } from "@/lib/helpers";
 
@@ -53,6 +54,7 @@ export function GithubAvatar({
   rounded?: string;
   className?: string;
 }) {
+  const isGuardian = useCaller()?.kind === "guardian";
   const clean = (login || "").trim();
   const [src, setSrc] = useState<string | null>(() => (clean ? peekGithubAvatarUrl(clean, AVATAR_CDN_SIZE) : null));
   const [failed, setFailed] = useState(false);
@@ -62,6 +64,10 @@ export function GithubAvatar({
     setFailed(false);
     const seeded = clean ? peekGithubAvatarUrl(clean, AVATAR_CDN_SIZE) : null;
     setSrc(seeded);
+    if (!isGuardian) {
+      setSrc(clean ? `https://github.com/${encodeURIComponent(clean)}.png?size=${AVATAR_CDN_SIZE}` : null);
+      return;
+    }
     if (!clean || seeded) return; // nothing to resolve, or already cached
     fetchGithubUserProfile(clean)
       .then((profile) => {
@@ -74,7 +80,7 @@ export function GithubAvatar({
     return () => {
       cancelled = true;
     };
-  }, [clean]);
+  }, [clean, isGuardian]);
 
   const showImg = !!src && !failed;
 

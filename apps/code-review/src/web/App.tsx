@@ -18,10 +18,11 @@ export default function App({
   bootstrap: RomeAppBootstrap;
 }) {
   const appVersion = _bootstrap.version;
+  const isGuardian = _bootstrap.caller?.kind === "guardian";
   // Seed the first screen synchronously from a version-matched cache so a
   // returning visit paints real content instantly (stale-while-revalidate); a
   // cold/invalidated cache leaves everything null → the skeleton shows.
-  const [initialCache] = useState(() => readHomeCache(appVersion));
+  const [initialCache] = useState(() => isGuardian ? readHomeCache(appVersion) : null);
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(() => initialCache?.dashboard ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +166,8 @@ export default function App({
     setLoadingPRHistory(true);
     setError(null);
     try {
-      const apiBase = getBootstrap().apiBase;
+      // noAuth applies to the public API transport, not /api/apps.
+      const apiBase = `/api/app-api/${encodeURIComponent(_bootstrap.appId)}`;
       const response = await fetch(
         `${apiBase}/pr-history?repo=${encodeURIComponent(pr.repo)}&number=${pr.number}`,
         { signal: controller.signal },
@@ -181,7 +183,7 @@ export default function App({
         setLoadingPRHistory(false);
       }
     }
-  }, [cancelPRHistoryLoad]);
+  }, [cancelPRHistoryLoad, _bootstrap.appId]);
 
   const goToActivityPage = useCallback(
     (page: number) => {
@@ -386,6 +388,7 @@ export default function App({
   }, [loadDashboard]);
 
   useEffect(() => {
+    if (!isGuardian) return;
     void loadDashboard();
     void checkGhAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,7 +398,7 @@ export default function App({
   // version-keyed cache whenever it changes, so the next visit paints instantly.
   // Only the default first-screen state is cached — not paged/filtered views.
   useEffect(() => {
-    if (!dashboard) return;
+    if (!isGuardian || !dashboard) return;
     if (activityFilter !== "all" || activityPage !== 1) return;
     writeHomeCache(appVersion, {
       dashboard,
@@ -430,7 +433,7 @@ export default function App({
   }, []);
 
   useEffect(() => {
-    if (!routeReviewId) {
+    if (!isGuardian || !routeReviewId) {
       setSelectedReview(null);
       return;
     }
@@ -438,7 +441,7 @@ export default function App({
   }, [routeReviewId, loadReviewDetail]);
 
   useEffect(() => {
-    if (!routeMentionTaskId) {
+    if (!isGuardian || !routeMentionTaskId) {
       setSelectedTask(null);
       return;
     }
@@ -531,7 +534,9 @@ export default function App({
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
-      {routeIsTriggerSettings ? (
+      {!isGuardian && !routePR ? (
+        <p className="text-sm text-muted-foreground">Guardian access required.</p>
+      ) : routeIsTriggerSettings ? (
         <TriggerSettingsPage
           dashboard={dashboard}
           ghAuth={ghAuth}
@@ -548,6 +553,7 @@ export default function App({
         />
       ) : routePR ? (
         <PRHistoryPage
+          isGuardian={isGuardian}
           repo={routePR.repo}
           prNumber={routePR.number}
           history={prHistory}
