@@ -721,6 +721,23 @@ test(
         await bounds();
         await revisionAlignment(v, true);
         await shot("revision-committed");
+        // Method controls must leave single-commit mode, rather than changing
+        // a selected radio while keeping an unrelated first-parent diff.
+        await v
+          .getByRole("menuitemradio", { name: "两点比较", exact: true })
+          .click();
+        await v.waitForFunction(
+          () =>
+            new URLSearchParams(location.hash.slice(1)).get("mode") === "ref",
+        );
+        const methodState = new URLSearchParams(
+          (await v.evaluate(() => location.hash)).slice(1),
+        );
+        assert.equal(methodState.get("dots"), "two");
+        assert.ok(
+          !methodState.get("toRef"),
+          "commit mode must not invent a pinned target",
+        );
         await v.getByRole("menuitem", { name: "已提交", exact: true }).click();
         const input = v.getByRole("textbox", { name: "选择提交", exact: true });
         await input.fill(initial);

@@ -404,7 +404,9 @@ export function ComparisonMenu({
         data-review-segments="method"
         className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
         value={state.dots === "two" ? "two" : "three"}
-        onValueChange={(dots) => change({ dots })}
+        onValueChange={(dots) =>
+          change(state.mode === "ref" ? { dots } : { mode: "ref", dots })
+        }
       >
         <DropdownMenuRadioItem
           value="three"

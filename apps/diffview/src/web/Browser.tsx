@@ -1789,7 +1789,7 @@ function Browser() {
             (state.mode === "unpushed" && tracking.isPending) ||
             (items.length > 0 && revealed === 0) ? (
               loadingSkeleton
-            ) : !repos.data?.repos.length ? (
+            ) : !state.repo ? (
               <div className="p-12 text-center text-sm text-muted-foreground">
                 {t.noRepo}
               </div>

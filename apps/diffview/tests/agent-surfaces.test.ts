@@ -332,3 +332,37 @@ test("overview stays bounded for a large textual diff; files API honors explicit
   assert.equal(data.files[0].deleted, 25000);
   assert.ok(data.page);
 });
+
+test("unmerged numstat records count each conflicted path once", async () => {
+  const conflicted = join(ROOT, "conflicted overview");
+  await mkdir(conflicted, { recursive: true });
+  const cg = (...args: string[]) =>
+    execFileSync("git", args, { cwd: conflicted, stdio: "pipe" })
+      .toString()
+      .trim();
+  cg("init", "-b", "main");
+  cg("config", "user.name", "Fixture");
+  cg("config", "user.email", "fixture@example.invalid");
+  const path = "conflicted\tline\nname.txt";
+  await writeFile(join(conflicted, path), "base\n");
+  cg("add", ".");
+  cg("commit", "-m", "base");
+  cg("checkout", "-b", "side");
+  await writeFile(join(conflicted, path), "side\n");
+  cg("commit", "-am", "side");
+  cg("checkout", "main");
+  await writeFile(join(conflicted, path), "main\n");
+  cg("commit", "-am", "main");
+  assert.throws(() => cg("merge", "side"));
+  const index = await readFile(join(conflicted, ".git", "index"));
+  const head = cg("rev-parse", "HEAD");
+  const summary = await inspectView(
+    parseView({ repo: conflicted, kind: "workspace", filter: "unstaged" }),
+  );
+  assert.equal(summary.conflicts, 1);
+  assert.equal(summary.unstaged?.files, 1);
+  assert.equal(summary.totals.files, 1);
+  assert.ok(summary.totals.added > 0);
+  assert.deepEqual(await readFile(join(conflicted, ".git", "index")), index);
+  assert.equal(cg("rev-parse", "HEAD"), head);
+});

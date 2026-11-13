@@ -19,7 +19,7 @@ test(
       oldProfile = process.env.ROME_PROFILE;
     process.env.HOME = home;
     process.env.ROME_PROFILE = "test";
-    const { ROOT } = await import("../dist/lib/git.js");
+    const { ROOT, cached, scanRepos } = await import("../dist/lib/git.js");
     const { selectionStore } = await import("../dist/lib/selectionStore.js");
     const { createViewAction } = await import("../dist/lib/agentAction.js");
     const { createApiHandler } = await import("../dist/api/index.js");
@@ -41,8 +41,9 @@ test(
       ctx = { db },
       store = selectionStore(db);
     const a = join(ROOT, "default", "repo a"),
-      b = join(ROOT, "other", "repo b");
-    for (const repo of [a, b]) {
+      b = join(ROOT, "other", "repo b"),
+      deep = join(ROOT, "a", "b", "c", "repo");
+    const prepareRepo = async (repo) => {
       await mkdir(repo, { recursive: true });
       const g = (...args) =>
         execFileSync("git", args, { cwd: repo, stdio: "pipe" })
@@ -57,7 +58,8 @@ test(
       await writeFile(join(repo, "file.txt"), "new\n");
       g("commit", "-am", "next");
       await writeFile(join(repo, "file.txt"), "working\n");
-    }
+    };
+    await prepareRepo(deep);
     const select = createViewAction("select", {}, { appContext: ctx }),
       card = createViewAction("card", {}, { appContext: ctx });
     setCurrentActionContextResolver(() => ({
@@ -124,21 +126,25 @@ test(
         }
         if (u.pathname === "/host") {
           res.setHeader("Content-Type", "text/html");
-          res.end(
-            `<iframe style="width:447px;height:720px" src="/panel?chat=${u.searchParams.get("chat") || "one"}"></iframe>`,
-          );
+          // The response is static: never interpolate query text into HTML/JS.
+          res.end(`<!doctype html><body><script>
+            const f=document.createElement('iframe');
+            f.style.cssText='width:447px;height:720px';
+            f.src='/panel?chat='+(new URLSearchParams(location.search).get('chat')==='two'?'two':'one');
+            document.body.append(f);
+          </script></body>`);
           return;
         }
         if (["/panel", "/card"].includes(u.pathname)) {
-          const chat = u.searchParams.get("chat") || "one",
-            id = u.searchParams.get("id");
           res.setHeader("Content-Type", "text/html");
           res.end(`<!doctype html><html lang="zh-CN" data-theme="ember"><head><link rel="stylesheet" href="/theme.css"></head><body style="margin:0"><div id="root"></div><script type="module">
-   const bootstrap={appId:'diffview',routeBase:'/',routePath:'',assetBase:'',apiBase:'/api/apps/diffview',globalParams:{chatSessionId:${JSON.stringify(chat)}},shell:{locale:'zh-CN',theme:'light',themeName:'ember',mode:'embedded'}};
+   const params=new URLSearchParams(location.search), chat=params.get('chat')==='two'?'two':'one', id=params.get('id');
+   const bootstrap={appId:'diffview',routeBase:'/',routePath:'',assetBase:'',apiBase:'/api/apps/diffview',globalParams:{chatSessionId:chat},shell:{locale:'zh-CN',theme:'light',themeName:'ember',mode:'embedded'}};
    window.__ROME_APP_BOOTSTRAP__=bootstrap;
    const m=await(await fetch('/manifest.json')).json();for(const f of m.styles){const l=document.createElement('link');l.rel='stylesheet';l.href='/'+f;document.head.append(l)}
    window.app=await import('/'+m.entry);window.addEventListener('rome:host-navigate',e=>window.lastNavigation=e.detail);
-   ${id ? `await app.mountComponent(document.getElementById('root'),'comparison-card',{bootstrap,props:{cardId:${JSON.stringify(id)}},host:{resolved:false,submit(){throw Error('must not suspend')},dismiss(){throw Error('must not suspend')}}});` : `await app.mount(document.getElementById('root'),bootstrap);`}
+   if(id) await app.mountComponent(document.getElementById('root'),'comparison-card',{bootstrap,props:{cardId:id},host:{resolved:false,submit(){throw Error('must not suspend')},dismiss(){throw Error('must not suspend')}}});
+   else await app.mount(document.getElementById('root'),bootstrap);
    </script></body></html>`);
           return;
         }
@@ -161,7 +167,7 @@ test(
         );
         res.end(await readFile(file));
       } catch (e) {
-        res.writeHead(500).end(String(e));
+        res.writeHead(500, { "Content-Type": "text/plain" }).end(String(e));
       }
     });
     const browser = await chromium.launch({
@@ -193,6 +199,43 @@ test(
       }
     };
     try {
+      const xss =
+        '</script><script>window.harnessXssSentinel=1</script><iframe src="';
+      for (const route of ["/host?chat=", "/panel?chat=", "/card?id="]) {
+        const html = await (
+          await fetch(origin + route + encodeURIComponent(xss))
+        ).text();
+        assert.ok(
+          !html.includes("harnessXssSentinel"),
+          "fixture responses must not reflect request parameters into HTML",
+        );
+      }
+      // The ONLY repository is below discovery's bounded depth. A valid
+      // explicit selection must render even when the picker inventory is empty.
+      const inventory = await (
+        await fetch(origin + "/api/apps/diffview/repos")
+      ).json();
+      assert.equal(inventory.repos.length, 0);
+      assert.equal((await select.execute({ repo: deep })).status, "ok");
+      const lonely = await context.newPage();
+      await lonely.goto(origin + "/host?chat=one");
+      await until(
+        () => hasRepo(lonely, deep),
+        "restore deep repository outside discovery",
+      );
+      await frame(lonely).locator("diffs-container").first().waitFor();
+      assert.equal(
+        await frame(lonely)
+          .getByText("项目目录中没有找到 Git 仓库。", { exact: true })
+          .count(),
+        0,
+      );
+      await lonely.close();
+      store.write("one", {});
+      for (const repo of [a, b]) await prepareRepo(repo);
+      // Drop the old empty inventory using the cache's zero-TTL/single-flight
+      // contract; production discovery still keeps its original bounded scan.
+      await cached("repos", () => scanRepos(), 0);
       const one = await context.newPage(),
         two = await context.newPage();
       await one.goto(origin + "/host?chat=one");
@@ -228,6 +271,29 @@ test(
         "pinned target",
       );
       assert.ok(await hasRepo(two, a));
+      const pinnedView = frame(reopened);
+      const pinned = new URLSearchParams(
+        (await pinnedView.evaluate(() => location.hash)).slice(1),
+      ).get("toRef");
+      await pinnedView
+        .getByRole("button", { name: "比较版本", exact: true })
+        .click();
+      await pinnedView.getByRole("menuitem", { name: /^分支/ }).click();
+      await pinnedView
+        .locator('[data-review-segments="method"] [role="menuitemradio"]')
+        .first()
+        .click();
+      await pinnedView.getByRole("menu").press("Escape");
+      const method = new URLSearchParams(
+        (await pinnedView.evaluate(() => location.hash)).slice(1),
+      );
+      assert.equal(method.get("mode"), "ref");
+      assert.equal(method.get("dots"), "three");
+      assert.equal(
+        method.get("toRef"),
+        pinned,
+        "method switch preserves a two-ref pinned target",
+      );
       delay = true;
       await until(() => !!release, "capture old poll");
       const view = frame(reopened);
@@ -438,7 +504,11 @@ test(
       await wp
         .getByTestId("comparison-card")
         .screenshot({ path: "/tmp/diffview-compact-card.large.png" });
-      await wp.goto(origin + "/card?id=00000000-0000-4000-8000-000000000003");
+      await wp.goto(origin + "/card?id=" + encodeURIComponent(xss));
+      assert.equal(
+        await wp.evaluate(() => window.harnessXssSentinel),
+        undefined,
+      );
       await wp.getByRole("alert").waitFor();
       assert.equal(
         await wp.getByRole("button", { name: "在 Diffview 打开" }).count(),

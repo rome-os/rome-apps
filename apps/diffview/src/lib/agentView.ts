@@ -6,6 +6,7 @@ import {
   comparison,
   fingerprintInfo,
   GitError,
+  parseNumstat,
   type Mode,
 } from "./git.js";
 import {
@@ -139,15 +140,13 @@ export async function resolveView(input: ViewInput, root?: string) {
 }
 function numstat(raw: string): Counts {
   const out = { files: 0, added: 0, deleted: 0, binary: 0 };
-  const records = raw.split("\0");
-  for (let i = 0; i < records.length; i++) {
-    const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(records[i]);
-    if (!match) continue;
+  // Unmerged output can contain more than one record for one pathname.
+  // Reuse the shared path-keyed parser, including -z rename handling.
+  for (const file of parseNumstat(raw).values()) {
     out.files++;
-    out.binary += Number(match[1] === "-");
-    out.added += Number(match[1]) || 0;
-    out.deleted += Number(match[2]) || 0;
-    if (!match[3]) i += 2; // -z rename: old and new path follow separately.
+    out.binary += Number(file.binary);
+    out.added += file.added;
+    out.deleted += file.deleted;
   }
   return out;
 }
