@@ -1,0 +1,11 @@
+name: show_card
+type: custom
+description: >
+  Show a non-blocking Diffview message card for workspace status or two arbitrary refs. Does not switch or focus the sidebar until the guardian clicks Open. Call select_view separately to also switch. Returns sampled metadata, not a workspace snapshot.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write
+requiresApproval: false
+cancellable: false

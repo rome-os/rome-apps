@@ -332,6 +332,8 @@ export interface Mode {
   filter?: string;
   base?: string;
   ref?: string;
+  /** Explicit historical target; absent retains the original HEAD/worktree model. */
+  toRef?: string;
   dots?: string;
   target?: string;
   pr?: string;
@@ -651,6 +653,7 @@ export async function comparison(
   head?: string,
   refresh = false,
 ): Promise<ResolvedComparison> {
+  if (m.toRef && (m.mode !== "ref" || m.target !== "head")) throw new GitError("invalid_mode");
   if (m.mode === "commit") {
     const to = await sha(repo, m.commit || "");
     const parents = (await git(repo, ["rev-list", "--parents", "-n", "1", to]))
@@ -716,7 +719,7 @@ export async function comparison(
         : m.ref || (await defaultBase(repo)),
     ),
   );
-  const to = head || (await sha(repo, "HEAD"));
+  const to = m.toRef ? await sha(repo, m.toRef) : head || (await sha(repo, "HEAD"));
   if (m.mode === "ref" && m.target === "worktree" && m.dots !== "two") {
     const merge = (await git(repo, ["merge-base", from, to])).trim();
     return { from, to, args: [merge] };

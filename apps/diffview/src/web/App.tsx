@@ -1,3 +1,4 @@
+import "./ComparisonCard";
 import "./styles.css";
 import { lazy, Suspense } from "react";
 const Browser = lazy(() => import("./Browser"));

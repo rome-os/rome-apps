@@ -8,6 +8,7 @@ export interface RawMode {
   filter?: string;
   base?: string;
   ref?: string;
+  toRef?: string;
   target?: string;
   dots?: string;
   pr?: string;
@@ -18,6 +19,7 @@ export interface NormalizedMode {
   filter: "all" | "staged" | "unstaged";
   /** Empty means "the repository's default branch". */
   ref: string;
+  toRef?: string;
   /** What the base is compared with: the working tree (includes uncommitted work) or HEAD. */
   target: "worktree" | "head";
   /** `three` = from the merge base (only this branch's changes); `two` = both tips directly. */
@@ -60,6 +62,9 @@ export function normalizeMode(raw: RawMode): NormalizedMode {
     ),
     filter,
     ref: raw.ref ?? "",
+    ...(raw.mode === "ref" && raw.target === "head" && raw.toRef
+      ? { toRef: raw.toRef }
+      : {}),
     target: pick(raw.target, ["worktree", "head"] as const, "worktree"),
     dots: pick(raw.dots, ["three", "two"] as const, "three"),
     pr,

@@ -368,11 +368,16 @@ export function ComparisonMenu({
           <span className="min-w-0 truncate">&nbsp;{selectedBranch}</span>
         )}
       </DropdownMenuLabel>
+      {state.toRef && (
+        <DropdownMenuLabel className="truncate" title={state.toRef}>
+          {state.toRef}
+        </DropdownMenuLabel>
+      )}
       <DropdownMenuRadioGroup
         aria-label={t.secTarget}
         data-review-segments="target"
         className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
-        value={state.target === "head" ? "head" : "worktree"}
+        value={state.toRef || (state.target === "head" ? "head" : "worktree")}
         onValueChange={(target) => change({ mode: "ref", target })}
       >
         <DropdownMenuRadioItem
@@ -399,7 +404,7 @@ export function ComparisonMenu({
         data-review-segments="method"
         className="mx-1 mb-1 grid grid-cols-2 rounded-[var(--control-r-md)] bg-muted p-1"
         value={state.dots === "two" ? "two" : "three"}
-        onValueChange={(dots) => change({ mode: "ref", dots })}
+        onValueChange={(dots) => change({ dots })}
       >
         <DropdownMenuRadioItem
           value="three"

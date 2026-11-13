@@ -1,3 +1,4 @@
+import { handleAgentApi } from "./agent.js";
 import { dictionary } from "../shared/dictionary.js";
 import { createHash } from "node:crypto";
 import type { RomeAppApiHandler, RomeAppContext } from "@rome-os/app-runtime";
@@ -103,7 +104,9 @@ async function buildView(
     m.mode === "ref"
       ? {
           ref: m.ref || m.base!,
-          same: !!info.head && resolved.from === info.head,
+          same: m.toRef
+            ? resolved.from === resolved.to
+            : !!info.head && resolved.from === info.head,
         }
       : undefined;
   const common = { info, head, compare, comparison: resolved };
@@ -215,7 +218,11 @@ export function createApiHandler(_ctx: RomeAppContext): RomeAppApiHandler {
         cacheMisses: 0,
       };
       const started = performance.now();
-      const res = await traceStore.run(trace, () => inner.handle(request));
+      const res = await traceStore.run(
+        trace,
+        async () =>
+          (await handleAgentApi(_ctx, request)) ?? inner.handle(request),
+      );
       // Server-Timing separates our work from the platform's request path in DevTools and the browser.
       res.headers.set(
         "Server-Timing",
@@ -296,6 +303,7 @@ function createInnerHandler(): RomeAppApiHandler {
           pr: q.get("pr") || "",
           commit: q.get("commit") || "",
           ref: q.get("ref") || "",
+          toRef: q.get("toRef") || "",
           dots: q.get("dots") || "three",
           target: q.get("target") || "worktree",
         };

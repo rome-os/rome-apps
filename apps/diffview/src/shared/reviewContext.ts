@@ -57,14 +57,14 @@ export function newestMatchingPr(
  * a pair of effects or leak a stale `pr` URL parameter into another mode.
  */
 export function deriveReviewContext(
-  mode: Pick<NormalizedMode, "mode" | "pr">,
+  mode: Pick<NormalizedMode, "mode" | "pr" | "toRef">,
   checkedOutBranch: string | undefined,
   openPrs: PullRequestInfo[],
   resolvedPr?: PullRequestInfo,
   associatedBranchPr?: PullRequestInfo,
   branchRepositoryId?: string,
 ): ReviewContext {
-  if (mode.mode === "commit") return { driver: "none" };
+  if (mode.mode === "commit" || mode.toRef) return { driver: "none" };
 
   if (mode.mode === "pr") {
     const number = Number(mode.pr);
