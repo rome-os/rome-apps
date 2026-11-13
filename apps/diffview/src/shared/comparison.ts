@@ -16,6 +16,7 @@ export function comparisonIdentity(m: Mode) {
       return {
         mode: m.mode,
         ref: m.ref || "",
+        ...(m.toRef ? { toRef: m.toRef } : {}),
         dots: m.dots || "three",
         target: m.target || "worktree",
       };

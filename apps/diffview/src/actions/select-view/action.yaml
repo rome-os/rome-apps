@@ -1,0 +1,11 @@
+name: select_view
+type: custom
+description: >
+  Set only the current trusted chat Diffview repository/comparison. Works across project directories within projects. Does not checkout, change cwd, move the chat, or focus a panel. Existing panels poll the persisted selection; later panels restore it.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: write
+requiresApproval: false
+cancellable: false

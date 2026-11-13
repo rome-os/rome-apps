@@ -1,3 +1,4 @@
+import { useConversationSelection } from "./useConversationSelection";
 import { dictionary } from "../shared/dictionary";
 import {
   invalidateConversationInventory,
@@ -102,6 +103,7 @@ function readState(): State {
       filter: get("filter"),
       base: get("base"),
       ref: get("ref"),
+      toRef: get("toRef"),
       target: get("target"),
       dots: get("dots"),
       pr: get("pr"),
@@ -113,6 +115,7 @@ function readState(): State {
       filter: n.filter,
       base: n.base,
       ref: n.ref,
+      toRef: n.toRef,
       pr: n.pr,
       commit: n.commit,
       dots: n.dots,
@@ -296,11 +299,12 @@ function Browser() {
       // Saved before the branch/ref merge? Same migration as for links.
       const migrated = saved && {
         ...saved,
-        ...(({ mode, filter, ref, target, dots, commit }) => ({
+        ...(({ mode, filter, ref, toRef, target, dots, commit }) => ({
           mode,
           commit,
           filter,
           ref,
+          toRef,
           target,
           dots,
         }))(normalizeMode(saved)),
@@ -312,8 +316,25 @@ function Browser() {
     }
     setRestoredId(scopeId);
   }, [scopeReady, scopeId, restoredId]);
-  const change = (patch: Partial<State>) =>
-    setState((prev) => ({ ...prev, ...patch }));
+  const selection = useConversationSelection(chatId, ready, (incoming) => {
+    setState((prev) => ({ ...prev, ...DEFAULT_CHAT_STATE, ...incoming }));
+  });
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const change = (patch: Partial<State>) => {
+    // A new comparison chosen manually exits an explicit two-ref card target.
+    const next = {
+      ...stateRef.current,
+      ...(["mode", "repo", "target", "pr", "commit"].some((k) => k in patch)
+        ? { toRef: "" }
+        : {}),
+      ...patch,
+    };
+    stateRef.current = next;
+    setState(next);
+    if (ready && Object.keys(patch).some((k) => k !== "unified"))
+      selection.choose(pickChatState(next));
+  };
   useEffect(() => {
     if (ready) saveChatState(scopeId, pickChatState(state), localStorage);
   }, [ready, scopeId, state]);
@@ -384,13 +405,14 @@ function Browser() {
   });
   useEffect(() => {
     if (!ready || !repos.data?.defaultRepo) return;
-    if (!state.repo || !repos.data.repos.some((r) => r.path === state.repo))
-      change({
+    if (!state.repo)
+      setState((prev) => ({
+        ...prev,
         repo: repos.data.defaultRepo,
         base:
           repos.data.repos.find((r) => r.path === repos.data.defaultRepo)
             ?.base || "",
-      });
+      }));
   }, [ready, repos.data, state.repo]);
   // Local refs must remain usable even when GitHub is slow, offline, or unauthenticated.
   const revisions = useQuery({
@@ -1090,7 +1112,16 @@ function Browser() {
     setNonce((n) => n + 1);
   };
   const prState = refs.data?.prState;
-  const selectedRepo = repos.data?.repos.find((r) => r.path === state.repo);
+  const selectedRepo =
+    repos.data?.repos.find((r) => r.path === state.repo) ||
+    (state.repo
+      ? {
+          path: state.repo,
+          name: state.repo.split("/").at(-1) || state.repo,
+          branch: tracking.data?.branch || "",
+          base: "",
+        }
+      : undefined);
   const defaultBaseName = selectedRepo?.base || data.data?.compare?.ref || "";
   const listedPrInfo = refs.data?.prs?.find(
     (pr) => String(pr.number) === state.pr,
@@ -1245,6 +1276,7 @@ function Browser() {
       repo,
       base: repos.data?.repos.find((r) => r.path === repo)?.base || "",
       ref: "",
+      toRef: "",
       pr: "",
       commit: "",
     });
@@ -1708,6 +1740,13 @@ function Browser() {
           {t.copied}
         </div>
       )}
+      {selection.error && (
+        <p className="px-3 py-1 text-xs text-destructive" role="alert">
+          {host.zh
+            ? "会话浏览目标同步失败；请重新选择以重试。"
+            : "View sync failed. Select again to retry."}
+        </p>
+      )}
       <div className="relative flex min-h-0 flex-1">
         <section
           aria-label={t.files}
@@ -1750,7 +1789,7 @@ function Browser() {
             (state.mode === "unpushed" && tracking.isPending) ||
             (items.length > 0 && revealed === 0) ? (
               loadingSkeleton
-            ) : !repos.data?.repos.length ? (
+            ) : !state.repo ? (
               <div className="p-12 text-center text-sm text-muted-foreground">
                 {t.noRepo}
               </div>

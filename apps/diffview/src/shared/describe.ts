@@ -22,6 +22,8 @@ export interface DescribeLabels {
   hintTwoWorktree: string;
   hintTwoHead: string;
   hintPr: string;
+  two?: string;
+  three?: string;
 }
 export interface PrInfo {
   number: number;
@@ -50,7 +52,7 @@ export interface Description {
 export function describeComparison(
   m: Pick<
     NormalizedMode,
-    "mode" | "filter" | "ref" | "target" | "dots" | "pr" | "commit"
+    "mode" | "filter" | "ref" | "toRef" | "target" | "dots" | "pr" | "commit"
   >,
   ctx: { defaultBase: string; pr?: PrInfo; upstream?: string },
   l: DescribeLabels,
@@ -100,7 +102,7 @@ export function describeComparison(
     };
   }
   const from = m.ref || ctx.defaultBase || l.head;
-  const to = m.target === "worktree" ? l.worktree : l.head;
+  const to = m.toRef || (m.target === "worktree" ? l.worktree : l.head);
   const hint =
     m.dots === "two"
       ? m.target === "worktree"
@@ -113,7 +115,7 @@ export function describeComparison(
     from,
     to,
     twoDot: m.dots === "two",
-    tooltip: `${from} → ${to} · ${hint}`,
+    tooltip: `${from} → ${to} · ${m.toRef ? (m.dots === "two" ? l.two || l.hintTwoHead : l.three || l.hintThreeHead) : hint}`,
   };
 }
 
@@ -139,7 +141,10 @@ export type EmptyAction = "target-worktree" | "filter-all" | "open-menu" | null;
  * base resolves to the very commit HEAD is on (nothing to compare, not a failed lookup).
  */
 export function describeEmpty(
-  m: Pick<NormalizedMode, "mode" | "filter" | "target" | "pr" | "commit">,
+  m: Pick<
+    NormalizedMode,
+    "mode" | "filter" | "target" | "pr" | "commit" | "toRef"
+  >,
   ctx: {
     hideViewed: boolean;
     same: boolean;
@@ -182,6 +187,7 @@ export function describeEmpty(
       ? { kind: "no-difference", action: null }
       : { kind: "pr-not-found", action: "open-menu" };
   }
+  if (m.toRef) return { kind: "no-difference", action: null };
   if (ctx.same)
     return m.target === "head"
       ? { kind: "same-as-base", action: "target-worktree" }

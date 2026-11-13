@@ -171,17 +171,20 @@ importers:
         specifier: 1.6.1
         version: 1.6.1(@shikijs/themes@4.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@rome-os/app-runtime':
-        specifier: ^0.8.2
-        version: 0.8.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
+        specifier: ^0.11.3
+        version: 0.11.3(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
       '@rome-os/app-web-sdk':
-        specifier: ^0.3.7
-        version: 0.3.7(@rome-os/ui@0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)))(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))(typescript@5.9.3)
+        specifier: ^0.4.0
+        version: 0.4.0(@rome-os/ui@0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)))(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))(typescript@5.9.3)
       '@rome-os/ui':
         specifier: ^0.3.6
         version: 0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))
       '@tanstack/react-query':
         specifier: ^5.62.0
         version: 5.104.5(@types/react@19.2.14)(react@19.2.6)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.6)
@@ -198,6 +201,9 @@ importers:
       '@playwright/test':
         specifier: ^1.64.1
         version: 1.64.1
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
@@ -207,6 +213,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.1.0
         version: 19.2.3(@types/react@19.2.14)
+      better-sqlite3:
+        specifier: ^12.9.0
+        version: 12.9.0
       prettier:
         specifier: ^3.9.10
         version: 3.9.10
@@ -2807,6 +2816,9 @@ packages:
   '@rolldown/pluginutils@1.0.0-rc.17':
     resolution: {integrity: sha512-n8iosDOt6Ig1UhJ2AYqoIhHWh/isz0xpicHTzpKBeotdVsTEcxsSA/i3EVM7gQAj0rU27OLAxCjzlj15IWY7bg==}
 
+  '@rome-os/app-runtime@0.11.3':
+    resolution: {integrity: sha512-ClDTJmV6Vj45MDc6+OPXMX02G6BgqDE/kC5KfaNZ6AHQbR6PjJce1qPKFg7Ij+0WkX5QzR+INhc1ff0fk3Tz5Q==}
+
   '@rome-os/app-runtime@0.3.0':
     resolution: {integrity: sha512-CFccG6Pik56It7ioYrzFNCXEUayyIJjCxwZ1+CSML8+Jf1ThZcAW8QPRWhGJxBETqGi5TS/O8LxqBmV3MJYhqA==}
 
@@ -2859,6 +2871,15 @@ packages:
 
   '@rome-os/app-web-sdk@0.3.7':
     resolution: {integrity: sha512-3IqXGiVByte5AAPQDZ/Nh8l4cGpQC+A1VdTklnZnR3n8iXe5maVjmDEvyk4mwqq+86ddBguhlxQa9idcCPG0ng==}
+    hasBin: true
+    peerDependencies:
+      '@rome-os/ui': ^0.3.0
+    peerDependenciesMeta:
+      '@rome-os/ui':
+        optional: true
+
+  '@rome-os/app-web-sdk@0.4.0':
+    resolution: {integrity: sha512-dlm+14+3k7TK1BHoIA4AUT7zzrwyrknA0c54ausKnQUnUceYGMJ96ZGYpqsY6rQEH0TIarugl5nXB7eyVloj2A==}
     hasBin: true
     peerDependencies:
       '@rome-os/ui': ^0.3.0
@@ -7831,6 +7852,44 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.0-rc.17': {}
 
+  '@rome-os/app-runtime@0.11.3(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)':
+    dependencies:
+      drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
+      ws: 8.20.0
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bufferutil
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+      - utf-8-validate
+
   '@rome-os/app-runtime@0.3.0(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)':
     dependencies:
       drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
@@ -8164,6 +8223,28 @@ snapshots:
       - typescript
 
   '@rome-os/app-web-sdk@0.3.7(@rome-os/ui@0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)))(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))(typescript@5.9.3)':
+    dependencies:
+      '@rsbuild/plugin-react': 2.0.0(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))
+      '@rslib/core': 1.0.1(typescript@5.9.3)
+      '@tailwindcss/postcss': 4.2.4
+      lucide-react: 0.468.0(react@19.2.6)
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+      tailwindcss: 4.2.4
+      tar: 7.5.16
+      tw-animate-css: 1.4.0
+      yaml: 2.8.3
+    optionalDependencies:
+      '@rome-os/ui': 0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))
+    transitivePeerDependencies:
+      - '@microsoft/api-extractor'
+      - '@module-federation/runtime-tools'
+      - '@rsbuild/core'
+      - '@rspack/core'
+      - core-js
+      - typescript
+
+  '@rome-os/app-web-sdk@0.4.0(@rome-os/ui@0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)))(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))(typescript@5.9.3)':
     dependencies:
       '@rsbuild/plugin-react': 2.0.0(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))
       '@rslib/core': 1.0.1(typescript@5.9.3)

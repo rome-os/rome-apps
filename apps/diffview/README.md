@@ -10,3 +10,11 @@ Review Git changes without leaving Rome — and without changing your files.
 - Follow Rome’s language and light or dark appearance automatically.
 
 Built for focused, read-only code review. No staging, reverting, commits or comments. Pull request browsing uses your existing GitHub CLI setup; it never manages your credentials.
+
+## Agent actions
+
+- `diffview:select_view` selects the current conversation's repository/comparison, without changing Git state or stealing focus.
+- `diffview:inspect` returns a bounded structured workspace or two-ref summary.
+- `diffview:show_card` sends a non-blocking comparison card. It does not select or focus the sidebar until the card is opened.
+
+See [the action contract and comparison semantics](docs/agent-surfaces.md).

@@ -103,7 +103,13 @@ for (const sidebar of [false, true]) {
           window.__app = await import("/index.js");
           await window.__app.mount(document.getElementById("app"), {});
         });
-        await page.waitForTimeout(3000);
+        // Wait for the real highlight result, not a fixed sleep. A busy machine can
+        // initialize both workers within three seconds but finish highlighting later.
+        await target.waitForFunction(
+          () => window.__probe.active === 2 && window.__probe.replies > 2,
+          undefined,
+          { timeout: 60000 },
+        );
         // Window messages from the host/SDK must never enter the diff worker protocol.
         await target.evaluate(() =>
           window.postMessage({ type: "host-probe" }, "*"),

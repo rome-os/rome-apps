@@ -1,0 +1,11 @@
+name: inspect
+type: custom
+description: >
+  Read a bounded structured Git workspace or two-ref overview without UI or changing the selected repository. Historical refs are resolved to fixed SHAs. Workspace statistics are sampled, not an immutable snapshot; untracked contents are not read.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only
+requiresApproval: false
+cancellable: false
