@@ -1,50 +1,34 @@
-# Database (optional)
+# TikHub app database
 
-This app ships with a Drizzle/SQLite database layer that is **disabled by default**.
-The `db:` section in `app.yaml` is commented out, so the runtime won't allocate a
-DB connection for this app until you opt in.
+Persistence is **enabled and required** by this app's existing `db:` manifest block.
+The runtime owns the app connection and applies the migrations on installation.
+Do not disable the schema or manually copy settings while moving the source tree.
 
-## Enable the DB
+## App-owned tables
 
-1. Uncomment the `db:` block in `app.yaml`:
-   ```yaml
-   db:
-     migrations: db/migrations
-     tablePrefix: tikhub
-   ```
-2. Edit `src/db/schema.ts` to define your tables.
-3. Generate migrations from the schema:
-   ```bash
-   pnpm db:generate
-   ```
-   This writes SQL files into `src/db/migrations/` (and a `meta/` snapshot).
-   Migrations are applied automatically the next time the app boots.
-4. Wire the repository into your action / API handler. Example:
-   ```ts
-   import { createHelloRepository } from "../db/repositories/hello.js";
-   const repo = createHelloRepository(runtime.appContext.db);
-   await repo.recordGreeting("hello");
-   ```
+- `tikhub__settings`: the app's API Key, base URL and request tuning. The Key is
+  stored as plaintext locally; masked output is not encryption. Use the app's
+  Settings UI rather than reading or migrating credential values through an agent.
+- `tikhub__cache`: cached public OpenAPI and pricing documents, plus bounded
+  request-slot/concurrency coordination state.
+- `tikhub__calls`: data-call attempts and local rejection/preview records,
+  structured errors, bounded redacted previews and estimated/unknown fees.
+  Anonymous metadata, account and usage queries are not included in this ledger.
 
-Re-run `pnpm db:generate` whenever you change `schema.ts` to produce a new
-migration file. Never hand-edit existing migration SQL — add a new one.
+These are instance-level app tables, not a multi-user credential or quota store.
 
-## Disable / remove the DB
+## Existing migrations
 
-If your app doesn't need persistence, delete the DB scaffolding:
+- `0000_mature_gabe_jones.sql`: initial settings/cache/call schema and indexes.
+- `0001_fat_wallop.sql`: adds `error_json` for language-neutral error rendering.
 
-- Delete this directory: `src/db/`
-- Delete `drizzle.config.ts` at the app root
-- Remove the commented `db:` block from `app.yaml`
-- Remove `drizzle-orm` and `drizzle-kit` from `package.json` (and the
-  `db:generate` script)
-- Remove any imports of `../db/repositories/...` from actions / API handlers
+The import does not add another migration or rewrite existing data. Legacy call
+previews are safely projected on read; that is not physical erasure of old rows.
 
-## Files in this directory
+## Development
 
-- `schema.ts` — Drizzle table definitions; `tablePrefix` keeps app tables
-  namespaced inside the shared SQLite file.
-- `repositories/hello.ts` — Example repository wrapping `schema.ts`. Copy this
-  pattern for your own tables.
-- `migrations/` — Generated SQL migrations. Don't edit by hand; regenerate via
-  `pnpm db:generate`.
+Edit `schema.ts`, then run `pnpm db:generate` for a future schema change. Review
+generated SQL and add a new migration; never rewrite an already-applied migration.
+Run migrations only through the supported app lifecycle, not by editing a live
+database. Offline tests create an isolated Node SQLite database using this schema;
+they never inspect production settings, account data or credentials.
