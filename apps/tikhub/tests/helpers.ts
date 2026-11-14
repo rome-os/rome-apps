@@ -22,7 +22,7 @@ export function memoryRepos(): Repositories & { rows: Map<string, CallRow> } {
       get: (k: string) => cache.get(k) ?? null,
       fetchedAt: (k: string) => cache.get(k)?.fetchedAt ?? null,
       set: (k: string, v: string) => void cache.set(k, { value: v, fetchedAt: new Date() }),
-      reserveRequestSlot: () => Date.now(), // Boundary stub; real SQLite coordination is tested separately.
+      tryAcquireRequestSlot: () => 0, // Boundary stub; real SQLite coordination is tested separately.
       acquireRequestLease: () => ({ key: "synthetic-lease", owner: "synthetic-owner" }),
       releaseRequestLease: () => {},
     },

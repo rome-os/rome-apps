@@ -415,8 +415,6 @@ const PUBLIC_READS = new Set([
   "get /api/v1/tikhub/user/get_all_endpoints_info",
   "get /api/v1/tikhub/user/get_endpoint_info",
   "get /api/v1/tikhub/user/get_tiered_discount_info",
-  "get /api/v1/tikhub/user/get_user_daily_usage",
-  "get /api/v1/tikhub/user/get_user_info",
   "get /api/v1/tiktok/analytics/fetch_comment_keywords",
   "get /api/v1/tiktok/analytics/fetch_creator_info_and_milestones",
   "get /api/v1/tiktok/analytics/fetch_video_metrics",

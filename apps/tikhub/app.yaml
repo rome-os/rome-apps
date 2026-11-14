@@ -1,7 +1,7 @@
 formatVersion: 2
 id: tikhub
 name: TikHub
-version: 0.1.4
+version: 0.1.5
 description: >-
   TikHub.io social-media data API for Rome. Search TikHub's OpenAPI catalog
   (Douyin, TikTok, Xiaohongshu, Bilibili, Weibo, Kuaishou, Instagram, YouTube,

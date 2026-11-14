@@ -29,6 +29,6 @@ Actions reject visitor/group/unattributed contexts. If the host or a delegation 
 ## Shortcuts
 
 - `tikhub:tikhub_parse_video`: one Douyin/TikTok share link, currently about $0.001, not a free preview.
-- `tikhub:tikhub_account`: balance/status/usage metadata, currently zero-price; returns only necessary account fields and local aggregate estimates.
+- `tikhub:tikhub_account`: balance/status/usage metadata, currently zero-price; user/key metadata is projected to necessary fields, daily usage is size-bounded, and local spend is estimated. Account-info and daily-usage paths are refused by generic `tikhub_call`; always use this dedicated action.
 
 Use `https://api.tikhub.io`. The `.dev` host is legacy compatibility, not the recommended mainland-China route.

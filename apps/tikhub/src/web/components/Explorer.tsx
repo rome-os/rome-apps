@@ -6,12 +6,12 @@ import { Button } from "@rome-os/ui/button";
 import { Input } from "@rome-os/ui/input";
 import { List, ListRow, ListRowContent, ListRowDescription, ListRowTitle } from "@rome-os/ui/list-row";
 import { Skeleton } from "@rome-os/ui/skeleton";
-import { api, endpointRoute, formatUsd, type CatalogInfo, type SearchResponse } from "../api";
+import { api, endpointRoute, formatUsd, type CatalogInfo } from "../api";
 import { useI18n } from "../i18n";
 import { ErrorAlert, MethodBadge } from "./common";
+import { useEndpointSearch } from "../hooks/useEndpointSearch";
 import { PlatformPicker } from "./PlatformPicker";
 
-const PAGE = 50;
 export const DEFAULT_PLATFORM = "douyin";
 
 /**
@@ -24,13 +24,12 @@ export function Explorer({ platform: routePlatform }: { platform?: string }) {
   const [catalog, setCatalog] = useState<CatalogInfo | null>(null);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [result, setResult] = useState<SearchResponse | null>(null);
-  const [limit, setLimit] = useState(PAGE);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<CatalogInfo>("catalog").then(setCatalog, (e: Error) => setError(e.message));
+    let cancelled = false;
+    api<CatalogInfo>("catalog").then(value => { if (!cancelled) setCatalog(value); }, (e: Error) => { if (!cancelled) setCatalogError(e.message); });
+    return () => { cancelled = true; };
   }, []);
 
   const platforms = useMemo(() => catalog?.platforms.filter((p) => p.operations > 0) ?? [], [catalog]);
@@ -44,29 +43,8 @@ export function Explorer({ platform: routePlatform }: { platform?: string }) {
     return () => clearTimeout(t);
   }, [query]);
 
-  useEffect(() => setLimit(PAGE), [debounced, platform]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const params = new URLSearchParams({ limit: String(limit), platform });
-    if (debounced) params.set("q", debounced);
-    api<SearchResponse>(`endpoints?${params.toString()}`)
-      .then((r) => {
-        if (!cancelled) {
-          setResult(r);
-          setError(null);
-        }
-      })
-      .catch((e: Error) => !cancelled && setError(e.message))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [debounced, platform, limit]);
-
-  // A result from the previous platform must not be shown under the new one.
-  const shown = result && result.platform === platform ? result : null;
+  const { result: shown, loading, error: searchError, hasMore, loadMore } = useEndpointSearch(platform, debounced);
+  const error = searchError ?? catalogError;
 
   return (
     <div className="flex flex-col gap-4">
@@ -131,8 +109,8 @@ export function Explorer({ platform: routePlatform }: { platform?: string }) {
               </ul>
             </List>
           )}
-          {shown.total > shown.items.length ? (
-            <Button variant="outline" onClick={() => setLimit((l) => l + PAGE)} disabled={loading} className="self-center">
+          {hasMore ? (
+            <Button variant="outline" onClick={loadMore} disabled={loading} className="self-center">
               {t("explorer.loadMore", { n: shown.total - shown.items.length })}
             </Button>
           ) : null}

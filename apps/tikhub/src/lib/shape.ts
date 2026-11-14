@@ -167,8 +167,9 @@ function safeLength(value: unknown): number {
   }
 }
 
-/** Short preview string persisted in the call log. */
+/** Persist valid, compact JSON within the DB read budget, including strings.
+ * Never slice serialized JSON: old malformed rows remain withheld at read time. */
 export function previewText(value: unknown, maxChars = 16_000): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 1) ?? "";
-  return text.length > maxChars ? `${text.slice(0, maxChars)}\n…(truncated, ${text.length} chars total)` : text;
+  const budget = Number.isFinite(maxChars) ? Math.max(32, Math.min(16_000, Math.floor(maxChars))) : 16_000;
+  return JSON.stringify(truncateForAgent(value ?? null, budget).value);
 }

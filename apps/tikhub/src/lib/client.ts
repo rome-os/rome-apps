@@ -18,7 +18,7 @@ export interface ClientOptions {
   qps: number;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
-  acquireSlot?: () => Promise<void>;
+  dispatch?: (send: () => Promise<Response>) => Promise<Response>;
   beginRequest?: () => () => void;
 }
 
@@ -190,15 +190,22 @@ export async function tikhubRequest(opts: ClientOptions, spec: RequestSpec): Pro
   const started = Date.now();
   const secrets = opts.apiKey ? [opts.apiKey] : [];
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (opts.acquireSlot) await opts.acquireSlot();
-    else await acquireSlot(opts.qps, sleep);
+    // Capacity is claimed before queueing; release spans headers AND body.
     const release = opts.beginRequest?.();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let sent = false;
     let waitMs: number | null = null;
     let response: TikHubResponse;
     try {
-      const res = await fetchImpl(url, { method, headers, body: bodyText, signal: controller.signal, redirect: "manual" });
+      const send = () => {
+        const controller = new AbortController();
+        timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+        sent = true;
+        return fetchImpl(url, { method, headers, body: bodyText, signal: controller.signal, redirect: "manual" });
+      };
+      let res: Response;
+      if (opts.dispatch) res = await opts.dispatch(send);
+      else { await acquireSlot(opts.qps, sleep); res = await send(); }
       if (res.status >= 300 && res.status < 400) {
         await res.body?.cancel();
         const error = msg("net.redirect");
@@ -227,6 +234,9 @@ export async function tikhubRequest(opts: ClientOptions, spec: RequestSpec): Pro
       if (Number.isFinite(requestedWait) && requestedWait > 30_000) return response;
       waitMs = Number.isFinite(requestedWait) && requestedWait > 0 ? requestedWait : 1000 * 2 ** (attempt - 1);
     } catch (err) {
+      // Admission failed before fetch: caller records a local failure, not a
+      // sent/unknown paid outcome. Never replay a request whose send began.
+      if (!sent) throw err;
       const error = err instanceof ResponseLimitError ? msg("net.tooLarge") : msg("net.unknown");
       response = { ok: false, httpStatus: 0, attempts: attempt, durationMs: Date.now() - started, url: scrubText(url, secrets), payload: null, bytes: 0, error, errorMessage: render(error, "en"), requestId: null, outcomeUnknown: !retrySafe };
       if (!retrySafe || err instanceof ResponseLimitError || attempt >= maxAttempts) return response;

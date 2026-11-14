@@ -4,6 +4,7 @@
  */
 import { createAppLogger, type AppDbContext } from "@rome-os/app-runtime";
 import { createRepositories, type CallListFilter, type Repositories } from "../db/repositories/index.js";
+import { DispatchQueueError, dispatchWhenReady, MAX_QUEUE_MS, systemDispatchClock, type DispatchClock } from "./dispatch.js";
 import { pickSlash } from "./i18n.js";
 import { AppError, legacyTextToMsg, msg, parseMsg, render, type Lang, type Msg } from "./messages.js";
 import {
@@ -187,6 +188,7 @@ export class TikHubService {
     repos?: Repositories,
     /** The one language every person-facing string is rendered in (Rome's global language). */
     readonly lang: Lang = "en",
+    private readonly dispatchClock: DispatchClock = systemDispatchClock,
   ) {
     this.repos = repos ?? createRepositories(db);
     this.memoKey = db.tablePrefix;
@@ -260,17 +262,18 @@ export class TikHubService {
     const s = this.getSettings();
     return { ...s, fetchImpl: this.fetchImpl, beginRequest: () => {
       try {
-        const lease = this.repos.cache.acquireRequestLease(Math.max(s.timeoutMs, 60_000) + 5_000, Date.now());
+        const lease = this.repos.cache.acquireRequestLease(MAX_QUEUE_MS + Math.max(s.timeoutMs, 60_000) + 5_000, this.dispatchClock.now());
         return () => this.repos.cache.releaseRequestLease(lease);
       } catch { throw new TikHubConfigError(msg("config.busy")); }
-    }, acquireSlot: async () => {
-      const now = Date.now();
-      let slot: number;
-      try { slot = this.repos.cache.reserveRequestSlot(path, s.qps, endpointQps, now); }
+    }, dispatch: send => dispatchWhenReady(() => {
+      try { return this.repos.cache.tryAcquireRequestSlot(path, s.qps, endpointQps, this.dispatchClock.now()); }
       catch { throw new TikHubConfigError(msg("config.busy")); }
-      const delay = Math.max(0, slot - Date.now());
-      if (delay > 0) await new Promise<void>((resolve) => setTimeout(resolve, delay));
-    } };
+    }, send, this.dispatchClock).catch(error => {
+      // Keep local queue errors localized. Sent fetch failures pass through;
+      // the client distinguishes them by whether its send callback ran.
+      if (error instanceof DispatchQueueError) throw new TikHubConfigError(msg("config.busy"));
+      throw error;
+    }) };
   }
 
   // ── schema & prices ─────────────────────────────────────────────────────

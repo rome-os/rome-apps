@@ -65,9 +65,10 @@ export class CacheRepository {
       .run();
   }
 
-  /** One SQLite immediate transaction coordinates API and action worker slots.
+  /** One SQLite immediate transaction coordinates API/action dispatch admission.
+   * Returns 0 when admitted, or milliseconds until another check may succeed.
    * Uses only existing app-cache rows; no schema or credential migration. */
-  reserveRequestSlot(path: string, qps: number, endpointQps: number, now: number): number {
+  tryAcquireRequestSlot(path: string, qps: number, endpointQps: number, now: number): number {
     return this.db.transaction((tx) => {
       now = Math.max(now, Date.now()); // Recheck after waiting for SQLite's write lock.
       const globalKey = "rate:global";
@@ -78,12 +79,13 @@ export class CacheRepository {
         return value;
       };
       const slot = Math.max(now, read(globalKey), read(endpointKey));
-      if (slot > now + 30_000) throw new Error("request queue full");
+      // Do not reserve a future time: an overdue wake-up must compete again.
+      if (slot > now) return slot - now;
       for (const [key, interval] of [[globalKey, 1000 / Math.max(1, Math.min(qps, 10))], [endpointKey, 1000 / Math.max(0.1, Math.min(endpointQps, 10))]] as const) {
         tx.insert(this.t.cache).values({ key, value: String(slot + interval), fetchedAt: new Date(now) })
           .onConflictDoUpdate({ target: this.t.cache.key, set: { value: String(slot + interval), fetchedAt: new Date(now) } }).run();
       }
-      return slot;
+      return 0;
     }, { behavior: "immediate" });
   }
 

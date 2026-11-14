@@ -18,10 +18,10 @@ test("TikHub isolated offline regressions (no live configuration or provider acc
   try {
     await run(process.execPath, [fileURLToPath(import.meta.resolve("typescript/bin/tsc")), "-p", "tsconfig.test.json"], { cwd: root, env, timeout: 90_000, maxBuffer: 8 * 1024 * 1024 });
     const files = readdirSync(join(root, ".test-dist/tests")).filter(f => f.endsWith(".node.js")).sort().map(f => join(root, ".test-dist/tests", f));
-    assert.equal(files.length, 13);
+    assert.equal(files.length, 14);
     const { stdout, stderr } = await run(process.execPath, ["--import", fileURLToPath(new URL("./deny-network.mjs", import.meta.url)), "--test", ...files], { cwd: root, env, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
     assert.doesNotMatch(stderr, /UNEXPECTED_NETWORK_TEST_GUARD/);
-    assert.match(stdout, /tests 105/);
+    assert.match(stdout, /tests 129/);
     assert.match(stdout, /fail 0/);
     console.info(stdout);
   } catch (error) {

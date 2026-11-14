@@ -8,4 +8,5 @@ entry: ./index.ts
 complexity: simple
 speed: moderate
 reliability: medium
-sideEffects: read-only
+# Public provider reads can consume account credits; this is not a free action.
+sideEffects: write
