@@ -1,0 +1,1 @@
+ALTER TABLE `tikhub__calls` ADD `error_json` text;

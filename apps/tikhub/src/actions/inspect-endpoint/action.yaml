@@ -1,0 +1,13 @@
+name: tikhub_inspect_endpoint
+type: custom
+description: >-
+  Show one TikHub endpoint's contract before calling it: HTTP method, query/path
+  parameters, JSON body fields (required flags, types, defaults, examples), a
+  ready-to-edit example request, per-call USD price, and whether it is unsupported
+  (private credentials, mutations and deprecated operations are disabled). Free, no
+  credits spent.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

@@ -1,0 +1,17 @@
+title: TikHub
+description: 用一个 API Key 查询抖音、TikTok、小红书等平台的公开数据。
+long_description: |
+  让 Agent 帮你查询抖音、TikTok、小红书、B 站、快手、微博、知乎、Instagram、YouTube、X 等平台的公开数据，
+  也可以自己按平台搜索接口、查看价格、先预览再发送请求。余额、调用记录和预估花费都在一个页面里；
+  此版本仅允许监护人私有上下文中的公开读取，私有 cookie 和账号变更不可调用；数据请求结果未知时不自动重发。
+categories:
+  - Developer Tools
+  - Productivity
+keywords:
+  - tikhub
+  - douyin
+  - tiktok
+  - xiaohongshu
+  - 社交媒体数据
+  - 达人调研
+noindex: false

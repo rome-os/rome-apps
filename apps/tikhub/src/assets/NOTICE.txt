@@ -1,0 +1,6 @@
+TikHub full-brand icon (unmodified)
+Source: https://github.com/TikHub/TikHub-Multi-Functional-Downloader/blob/845e7f4f5c934550e7ef1ffabef3a9dbd9d125f2/downloader/assets/icon.png
+Upstream repository license: GNU GPL v3.0; full text in TIKHUB-ARTWORK-LICENSE.txt.
+Original brand owner: TikHub. This asset is not relicensed under the app code's MIT license.
+No icon redrawing, recoloring or cropping. No affiliation or endorsement by TikHub is claimed.
+The official website uses the same full-brand design at https://tikhub.io/logo.jpeg.

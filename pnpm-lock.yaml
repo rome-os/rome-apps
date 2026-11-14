@@ -825,6 +825,49 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  apps/tikhub:
+    dependencies:
+      '@rome-os/app-runtime':
+        specifier: ^0.6.7
+        version: 0.6.7(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
+      '@rome-os/app-web-sdk':
+        specifier: ^0.3.5
+        version: 0.3.7(@rome-os/ui@0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)))(@rsbuild/core@2.2.7)(@rspack/core@2.2.5(@swc/helpers@0.5.23))(typescript@5.9.3)
+      '@rome-os/ui':
+        specifier: ^0.3.3
+        version: 0.3.6(@streamdown/code@1.1.1(react@19.2.6))(@streamdown/math@1.0.3(react@19.2.6))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(cmdk@1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(katex@0.16.47)(lucide-react@0.468.0(react@19.2.6))(pele@1.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(streamdown@2.7.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.9.0)
+      lucide-react:
+        specifier: ^0.468.0
+        version: 0.468.0(react@19.2.6)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.0
+        version: 24.19.1
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.2.3(@types/react@19.2.14)
+      drizzle-kit:
+        specifier: ^0.31.9
+        version: 0.31.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@24.19.1)(vite@8.0.10(@types/node@24.19.1)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+
   apps/utility: {}
 
   apps/x-manager:
