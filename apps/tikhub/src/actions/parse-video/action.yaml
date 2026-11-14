@@ -1,0 +1,11 @@
+name: tikhub_parse_video
+type: custom
+description: >-
+  Parse a single Douyin or TikTok video from a share link or pasted share text
+  (e.g. "https://v.douyin.com/xxxx/") via TikHub's hybrid parser: title,
+  author, stats, cover and play/download URLs. Costs about $0.001 per call.
+entry: ./index.ts
+complexity: simple
+speed: moderate
+reliability: medium
+sideEffects: read-only

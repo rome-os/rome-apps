@@ -1,0 +1,38 @@
+formatVersion: 2
+id: tikhub
+name: TikHub
+version: 0.1.4
+description: >-
+  TikHub.io social-media data API for Rome. Search TikHub's OpenAPI catalog
+  (Douyin, TikTok, Xiaohongshu, Bilibili, Weibo, Kuaishou, Instagram, YouTube,
+  X/Twitter, Zhihu, WeChat and more), inspect an endpoint's parameters and
+  base price, make supported public reads with the guardian's stored API key,
+  check account balance and usage, and parse a single Douyin/TikTok share link.
+  Private credentials and mutations are disabled; data calls are not replayed
+  on unknown outcomes. Data-call logs contain bounded redacted estimates.
+tagline: 用一个 API Key 查询抖音、TikTok、小红书等平台的公开数据
+icon: assets/icon.png
+appRoot: dist
+includeSource: true
+
+web:
+  manifest: web/manifest.json
+  displayName: TikHub
+  navLabel: TikHub
+
+api:
+  entry: api/index
+
+db:
+  migrations: db/migrations
+  tablePrefix: tikhub
+
+actions:
+  - actions/search-endpoints
+  - actions/inspect-endpoint
+  - actions/call
+  - actions/account
+  - actions/parse-video
+
+skills:
+  - skills/tikhub

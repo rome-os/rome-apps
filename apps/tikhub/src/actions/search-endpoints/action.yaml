@@ -1,0 +1,13 @@
+name: tikhub_search_endpoints
+type: custom
+description: >-
+  Search TikHub's OpenAPI catalog (1000+ social-media data endpoints) by platform
+  and keywords, e.g. platform "douyin" + "user posts", or "xhs" + "note detail".
+  Returns ranked candidate endpoints (method, path, tag, summary, per-call USD
+  price). Free: no API key needed and no credits spent. Use before
+  tikhub_inspect_endpoint / tikhub_call.
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

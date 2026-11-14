@@ -1,0 +1,11 @@
+name: tikhub_account
+type: custom
+description: >-
+  Check the guardian's TikHub account: balance, free credit, API key name/status/
+  scopes/expiry, TikHub's daily usage report, and this Rome app's own call stats
+  and estimated spend for the last N days. Free (account endpoints cost $0).
+entry: ./index.ts
+complexity: simple
+speed: fast
+reliability: high
+sideEffects: read-only

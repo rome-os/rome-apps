@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.rome/
+.test-dist/
+*.log
+.env*
+*.sqlite*

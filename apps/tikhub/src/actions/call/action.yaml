@@ -1,0 +1,15 @@
+name: tikhub_call
+type: custom
+description: >-
+  Call a documented, supported public TikHub GET/POST read. Requires a
+  host-verified guardian private context. Check the current base price first:
+  prices vary and $0.01 is not a cap. Private credentials, mutations,
+  deprecated or unknown contracts are disabled even with confirm=true.
+  Use dryRun for a free redacted preview. A sent data request is never
+  automatically replayed; an unknown outcome has unknown cost, not $0.
+entry: ./index.ts
+complexity: moderate
+speed: moderate
+reliability: medium
+# Only public reads are supported; no flag enables account-affecting operations.
+sideEffects: read-only

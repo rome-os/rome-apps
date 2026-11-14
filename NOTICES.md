@@ -74,6 +74,14 @@ App icons incorporate vector glyphs from the open-source icon sets listed below.
 - **License:** [MIT](https://github.com/primer/octicons/blob/main/LICENSE)
 - **Source:** https://primer.style/octicons
 
+### TikHub brand artwork — GNU GPL v3.0
+
+- **Used by:** apps/tikhub/src/assets/icon.png (unmodified).
+- **Source:** https://github.com/TikHub/TikHub-Multi-Functional-Downloader/blob/845e7f4f5c934550e7ef1ffabef3a9dbd9d125f2/downloader/assets/icon.png
+- **Owner:** TikHub; supplied in its official GPL-3.0 repository.
+- **License:** upstream GNU General Public License v3.0, preserved at apps/tikhub/src/assets/TIKHUB-ARTWORK-LICENSE.txt; provenance at src/assets/NOTICE.txt.
+- This brand asset is not relicensed under the app source's MIT License. The integration does not claim endorsement or grant trademark rights.
+
 ## License Texts
 
 ### MIT License
