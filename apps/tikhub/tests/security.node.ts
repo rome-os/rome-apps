@@ -97,3 +97,15 @@ test("an invalid settings patch cannot partially replace a configured synthetic 
   assert.throws(() => svc.updateSettings({ apiKey: "other_synthetic_key_9876", baseUrl: "https://attacker.invalid" }));
   assert.equal(svc.publicSettings().apiKeyMasked, "••••••••1234");
 });
+
+
+test("settings labels recognize only exact canonical addresses, never host substrings", async () => {
+  const { baseUrlLabelKey } = await import("../src/web/lib/baseUrlLabel.js");
+  assert.equal(baseUrlLabelKey("https://api.tikhub.io"), "settings.baseUrl.global");
+  assert.equal(baseUrlLabelKey("https://api.tikhub.dev"), "settings.baseUrl.china");
+  for (const value of [
+    "https://api.tikhub.io.attacker.invalid", "https://attacker.invalid/api.tikhub.io",
+    "https://attacker.invalid/?next=https://api.tikhub.dev", "https://api.tikhub.io@attacker.invalid",
+    "http://api.tikhub.io", "https://api.tikhub.io:9443", "https://api.tikhub.dev/path", ""
+  ]) assert.equal(baseUrlLabelKey(value), null);
+});

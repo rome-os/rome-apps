@@ -21,7 +21,7 @@ test("TikHub isolated offline regressions (no live configuration or provider acc
     assert.equal(files.length, 13);
     const { stdout, stderr } = await run(process.execPath, ["--import", fileURLToPath(new URL("./deny-network.mjs", import.meta.url)), "--test", ...files], { cwd: root, env, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
     assert.doesNotMatch(stderr, /UNEXPECTED_NETWORK_TEST_GUARD/);
-    assert.match(stdout, /tests 104/);
+    assert.match(stdout, /tests 105/);
     assert.match(stdout, /fail 0/);
     console.info(stdout);
   } catch (error) {

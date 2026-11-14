@@ -11,6 +11,7 @@ import { Spinner } from "@rome-os/ui/spinner";
 import { formatScalar, postJson, type Health, type PublicSettings } from "../api";
 import { useI18n } from "../i18n";
 import { ErrorAlert } from "./common";
+import { baseUrlLabelKey } from "../lib/baseUrlLabel";
 
 interface TestResult {
   health: Health;
@@ -177,7 +178,7 @@ export function Settings({
               <SelectContent>
                 {settings.baseUrlOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
-                    {o.value.includes("tikhub.dev") ? t("settings.baseUrl.china") : o.value.includes("api.tikhub.io") ? t("settings.baseUrl.global") : o.label}
+                    {baseUrlLabelKey(o.value) ? t(baseUrlLabelKey(o.value)!) : o.label}
                   </SelectItem>
                 ))}
               </SelectContent>
