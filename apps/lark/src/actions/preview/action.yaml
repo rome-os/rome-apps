@@ -1,0 +1,8 @@
+name: preview
+type: custom
+description: >-
+  Validate the selected command and return its normalized brokerInput, identity, operation and approval requirement without executing it.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: read-only

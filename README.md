@@ -45,6 +45,7 @@ Each directory under [`apps/`](apps/) is an independent app package with an `app
 | [Diff](apps/diffview/) | Reviews local Git changes, branches, pull requests and arbitrary refs in a read-only diff browser |
 | [Discord Digest](apps/discord-digest/) | Periodically summarizes Discord channel activity |
 | [Facebook](apps/facebook/) | Extracts public Facebook page data |
+| [Lark](apps/lark/) | Reads Feishu resources and submits approved document and calendar writes |
 | [Learning](apps/learning/) | Provides learning and vocabulary actions |
 | [LinkedIn](apps/linkedin/) | Automates LinkedIn research, messaging, and job workflows |
 | [Memory](apps/memory/) | Adds reusable memory and relationship-management skills |

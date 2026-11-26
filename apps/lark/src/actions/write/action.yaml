@@ -1,0 +1,14 @@
+name: write
+type: custom
+description: >-
+  Validate a write before requesting Rome approval. Omit connectionId to use
+  local-cli or pass exactly local-cli. Provide a stable requestId and
+  connectionRevision. Use lark:core_write on managed Core connections.
+  Never resubmit an uncertain write.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: write
+# App action inputSchema comes from createAction. Approval is gated by the
+# validated call to lark:approve_local_write.
+requiresApproval: false

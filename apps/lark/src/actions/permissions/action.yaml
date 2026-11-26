@@ -1,0 +1,9 @@
+name: permissions
+type: custom
+description: >-
+  Query feishu.scopes.list as the selected connection's app identity. On success, returns checkedAt and scopeName/grantStatus/scopeType rows for tenant or unspecified scope types (1 granted, 2 ungranted). Unauthorized and query_failed leave provider grants unknown.
+complexity: simple
+speed: moderate
+reliability: medium
+sideEffects: read-only
+requiresApproval: false

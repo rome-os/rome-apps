@@ -29,6 +29,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@larksuite/cli",
       "better-sqlite3"
     ]
   }

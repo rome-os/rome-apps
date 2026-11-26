@@ -1,0 +1,27 @@
+{
+	"version": "7",
+	"dialect": "sqlite",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "6",
+			"when": 1777603461167,
+			"tag": "0000_wonderful_wolfsbane",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "6",
+			"when": 1792952511712,
+			"tag": "0001_violet_romulus",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "6",
+			"when": 1792956252200,
+			"tag": "0002_amusing_prodigy",
+			"breakpoints": true
+		}
+	]
+}

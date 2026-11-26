@@ -1,0 +1,8 @@
+name: status
+type: custom
+description: >-
+  Describe all Core operations, grantedOperations, Act and Bot availability for the selected connection, or the independent CLI configuration. Guardian-private.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: read-only

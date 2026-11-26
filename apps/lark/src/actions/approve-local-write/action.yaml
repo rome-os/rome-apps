@@ -1,0 +1,9 @@
+name: approve_local_write
+type: custom
+visibility: explicit
+description: Approve and execute a validated local-cli write submitted by lark:write.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: write
+requiresApproval: true
