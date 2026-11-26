@@ -1,0 +1,32 @@
+{
+  "name": "@rome/app-lark",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rome dev",
+    "build": "rome build",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "test": "vitest run tests/*.test.ts"
+  },
+  "dependencies": {
+    "@larksuite/cli": "1.0.98",
+    "@rome-os/app-runtime": "0.11.3",
+    "@rome-os/app-web-sdk": "0.4.0",
+    "@rome-os/ui": "^0.3.6",
+    "@tanstack/react-query": "^5.62.0",
+    "drizzle-orm": "^0.45.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "drizzle-kit": "^0.31.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  }
+}

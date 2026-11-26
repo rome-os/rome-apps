@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.rome/
+*.log
+.DS_Store
+20[0-9][0-9]/[0-9][0-9]/
+.verification/
+.test-dist/
+
+.build/
+vendor/lark-cli-sidecar-*

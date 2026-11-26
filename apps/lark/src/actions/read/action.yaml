@@ -1,0 +1,8 @@
+name: read
+type: custom
+description: >-
+  Run a reviewed Core bot read or independent CLI read in a guardian private context. Inspect coreInputSchema and coreOutputSchema before invocation. Core errors never fall back to CLI.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: read-only

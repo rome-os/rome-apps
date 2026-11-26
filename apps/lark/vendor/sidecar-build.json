@@ -1,0 +1,10 @@
+{
+  "version": "1.0.98",
+  "commit": "017b19a793ad71794a02887ede04757f3d82e10d",
+  "tags": "authsidecar",
+  "toolchain": "go1.27.3",
+  "platform": "linux-amd64",
+  "sha256": "4b1e0504d758ebf44ff4a3c9076027cdd6c8cd1c195ecd4aa9d91eaa8a426310",
+  "buildVcs": false,
+  "sourceSha256": "d12af6463f83706c449b4e940e02929b73aa9692bc75944589a8bfdc35f56807"
+}

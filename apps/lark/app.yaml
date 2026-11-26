@@ -1,0 +1,38 @@
+formatVersion: 2
+id: lark
+name: Lark
+version: 0.4.0
+description: >-
+  Use an authorized Rome Feishu bot connection to inspect tenant scopes and read
+  documents, Drive, Wiki, Base, Sheets, calendars and chat history. Document
+  creation, updates and calendar creation require approval and a stable request ID.
+  User-only document search, message search and personal sends require local-cli.
+  Use search_commands and inspect_command to discover the exact operation and inputs.
+tagline: 在 Rome 中搜索飞书资料、管理日程并审批写入
+icon: assets/icon.svg
+appRoot: dist
+includeSource: true
+web:
+  manifest: web/manifest.json
+  displayName: Lark
+  navLabel: Lark
+api:
+  entry: api/index
+db:
+  migrations: db/migrations
+  tablePrefix: lark
+actions:
+  - actions/check-access
+  - actions/permissions
+  - actions/status
+  - actions/search-commands
+  - actions/inspect-command
+  - actions/preview
+  - actions/read
+  - actions/core-write
+  - actions/write
+  - actions/approve-local-write
+skills:
+  - skills/lark
+hooks:
+  - hooks/app-started

@@ -1,0 +1,7 @@
+name: check_access
+type: custom
+description: Check effective read access to one document with an explicit connection and identity. Discards document content. This does not list ACL members or prove write access. Guardian-private only.
+complexity: simple
+speed: moderate
+reliability: medium
+sideEffects: read-only

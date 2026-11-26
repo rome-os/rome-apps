@@ -1,0 +1,13 @@
+name: core_write
+type: custom
+description: >-
+  Submit docs.create, docs.update or calendar.create on an explicitly selected
+  managed Core Feishu bot connection. Provide a stable requestId and
+  connectionRevision. The Core broker owns the approval and idempotency record.
+  Inspect data.status, approvalId, approval.approvalId, executionId and requestId.
+  Use lark:write on local-cli. Never repeat a pending, duplicate, in-progress or uncertain write.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: write
+requiresApproval: false

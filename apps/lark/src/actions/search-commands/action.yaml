@@ -1,0 +1,8 @@
+name: search_commands
+type: custom
+description: >-
+  List reviewed commands with identity requirements, risk, Core operation and action names. Use lark:permissions for tenant scopes.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: read-only

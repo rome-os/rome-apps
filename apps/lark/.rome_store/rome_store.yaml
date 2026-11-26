@@ -1,0 +1,17 @@
+title: Lark
+description: Read Feishu resources and approve document and calendar writes from Rome.
+long_description: |
+  Use your Rome Feishu bot connection for documents, Drive, Wiki, Base, Sheets,
+  calendars and chat history. Inspect tenant scopes and grant each operation
+  from the connection details. Review document and calendar writes in Rome
+  Activity. Use the independent Lark CLI for user-only search and messaging.
+categories:
+  - Tools
+keywords:
+  - lark
+  - feishu
+  - 飞书
+  - documents
+  - calendar
+preview: off
+noindex: false

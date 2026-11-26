@@ -1,0 +1,8 @@
+name: inspect_command
+type: custom
+description: >-
+  Get command parameters and examples for local-cli and Core, exact Core operation, success payload and write receipt schemas, identities and action names.
+complexity: simple
+speed: moderate
+reliability: high
+sideEffects: read-only
